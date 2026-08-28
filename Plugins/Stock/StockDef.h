@@ -165,6 +165,9 @@ namespace STOCK
 		Volume volume{ 0 };          // 成交量(股)
 	};
 
+	// 解析各类格式（腾讯QFQ/分钟K、东方财富klines、新浪JSON）为标准KLinePoint列表
+	std::vector<KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey);
+
 	// ========== 智能分析模块：统一K线基础结构体 ==========
 	// 每一根K线统一存储，用于30min/5min周期指标计算
 	struct Bar

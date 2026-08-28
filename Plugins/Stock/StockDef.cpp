@@ -642,8 +642,8 @@ void STOCK::StockInfo::UpdateDisplayFields()
 		displayPrice = std::wstring(priceStr.GetString());
 
 		char buff[32];
-		float diff = currentPrice - prevClosePrice;
-		float change = diff / prevClosePrice * 100;
+		double diff = currentPrice - prevClosePrice;
+		double change = diff / prevClosePrice * 100;
 		if (diff > 0)
 			sprintf_s(buff, "(+%g) ", diff);
 		else
@@ -1334,7 +1334,7 @@ static Volume GetValVolume(yyjson_val* val)
 	return 0L;
 }
 
-static std::vector<STOCK::KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey)
+std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey)
 {
 	std::vector<STOCK::KLinePoint> points;
 	if (jsonData.empty()) return points;

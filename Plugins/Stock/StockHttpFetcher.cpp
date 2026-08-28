@@ -698,7 +698,7 @@ bool CStockHttpFetcher::FetchChipKLines(const std::wstring& stock_id, STOCK::Vol
 		std::string txResp;
 		if (FetchDayKLine(stock_id, 750, txResp) && !txResp.empty())
 		{
-			std::vector<STOCK::KLinePoint> points = ParseKLinePointsFromJson(txResp, stock_id, "day");
+			std::vector<STOCK::KLinePoint> points = STOCK::ParseKLinePointsFromJson(txResp, stock_id, "day");
 			for (const auto& kp : points)
 			{
 				STOCK::ChipKLinePoint point;
