@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "OverviewPanel.h"
 #include "ChartColors.h"
 #include "Common.h"
@@ -35,11 +35,11 @@ COLORREF GetCellBgColor(double percent)
 		return COLOR_BG_DARK_GREEN;
 	else if (percent <= -5.0)
 		return COLOR_BG_GREEN;
-	return COLOR_WHITE;  // 默认白色背景
+	return CLR_INVALID;
 }
 
 // ========== DrawIndexSection ==========
-// 绘制大盘指数区域：每个指数占一列，显示名称(黑色)、当前价格(红涨绿跌)、涨跌额和涨跌幅(红涨绿跌)
+// 绘制大盘指数区域：每个指数占一列，显示名称、当前价格(红涨绿跌)、涨跌额和涨跌幅(红涨绿跌)
 void COverviewPanel::DrawIndexSection(CDC& memDC, int x, int y, int w, const std::vector<std::pair<std::wstring, STOCK::StockInfo>>& indices)
 {
 	if (indices.empty())
@@ -50,7 +50,8 @@ void COverviewPanel::DrawIndexSection(CDC& memDC, int x, int y, int w, const std
 	const int sectionHeight = g_data.RDPI(56);
 
 	// 背景
-	memDC.FillSolidRect(x, y, w, sectionHeight, RGB(245, 245, 245));
+	memDC.FillSolidRect(x, y, w, sectionHeight, COLOR_BG_SUBHEADER);
+	memDC.FillSolidRect(x, y + sectionHeight - 1, w, 1, COLOR_DARK_GRAY_BORDER);
 
 	memDC.SetBkMode(TRANSPARENT);
 
@@ -94,11 +95,11 @@ void COverviewPanel::DrawIndexSection(CDC& memDC, int x, int y, int w, const std
 		int priceY = nameY + normalFontHeight + gap;
 		int changeY = priceY + largeFontHeight + gap;
 
-		// 名称（黑色，普通字体）
+		// 名称（浅白，普通字体）
 		CString name = info.GetStockListName();
 		memDC.SelectObject(pOldFont);
 		CSize nameSz = memDC.GetTextExtent(name);
-		memDC.SetTextColor(COLOR_BLACK);
+		memDC.SetTextColor(COLOR_TEXT_PRIMARY);
 		memDC.TextOut(centerX - nameSz.cx / 2, nameY, name);
 
 		// 当前价格（红涨绿跌，大号字体）
@@ -136,7 +137,8 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 	};
 
 	// 绘制表头背景
-	memDC.FillSolidRect(x, y, w, headerHeight, RGB(230, 230, 230));
+	memDC.FillSolidRect(x, y, w, headerHeight, COLOR_BG_HEADER);
+	memDC.FillSolidRect(x, y + headerHeight - 1, w, 1, COLOR_DARK_GRAY_BORDER);
 
 	// 计算列宽
 	int colWidths[12] = { 0 };
@@ -337,9 +339,9 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 
 	// 绘制表头
 	int currentX = x;
-	memDC.SetTextColor(COLOR_BLACK);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
 	memDC.SetBkMode(TRANSPARENT);
-	CPen gridPen(PS_SOLID, 1, COLOR_GRAY_GRID);
+	CPen gridPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
 	memDC.SelectObject(&gridPen);
 
 	// 计算列起始位置，用于后续绘制竖线
@@ -393,11 +395,9 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 			continue;
 		}
 
-		// 交替行背景
-		if (rowIndex % 2 == 1)
-		{
-			memDC.FillSolidRect(x, rowY, w, rowH, RGB(250, 250, 250));
-		}
+		// 交替行深色背景
+		COLORREF rowBg = (rowIndex % 2 == 1) ? COLOR_BG_PANEL : COLOR_BG_DARK;
+		memDC.FillSolidRect(x, rowY, w, rowH, rowBg);
 
 		currentX = x;
 		CString fields[] = { row.name, row.prevClose, row.current,
@@ -406,22 +406,26 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 
 		for (int i = 0; i < colCount; i++)
 		{
-			COLORREF textColor = COLOR_BLACK;
-			COLORREF bgColor = COLOR_WHITE;  // 默认白色背景
+			COLORREF textColor = COLOR_TEXT_PRIMARY;
+			COLORREF bgColor = CLR_INVALID;
 
 			if (i == colCount - 1) // 操作列（删除按钮）
 			{
 				// 绘制删除按钮背景
-				CBrush btnBrush(RGB(230, 230, 230));
-				memDC.FillRect(CRect(currentX + g_data.RDPI(4), rowY + g_data.RDPI(3),
-					currentX + colWidths[i] - g_data.RDPI(4), rowY + rowH - g_data.RDPI(3)), &btnBrush);
+				CRect btnRc(currentX + g_data.RDPI(4), rowY + g_data.RDPI(3),
+					currentX + colWidths[i] - g_data.RDPI(4), rowY + rowH - g_data.RDPI(3));
+				memDC.FillSolidRect(&btnRc, RGB(30, 34, 45));
+				CPen btnBorderPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
+				CPen* pOldBrd = memDC.SelectObject(&btnBorderPen);
+				memDC.Rectangle(&btnRc);
+				memDC.SelectObject(pOldBrd);
 
 				// 绘制删除文字
 				CString delText = _T("删除");
-				memDC.SetTextColor(COLOR_BLACK);
+				memDC.SetTextColor(RGB(239, 68, 68));
 				CSize sz = memDC.GetTextExtent(delText);
 				int txtX = currentX + (colWidths[i] - sz.cx) / 2;
-				memDC.TextOut(txtX, rowY + g_data.RDPI(3), delText);
+				memDC.TextOut(txtX, rowY + (rowH - sz.cy) / 2, delText);
 				currentX += colWidths[i];
 				continue;
 			}
@@ -446,12 +450,12 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 			}
 
 			// 如果需要特殊背景色，先绘制背景
-			if (bgColor != COLOR_WHITE)
+			if (bgColor != CLR_INVALID)
 			{
 				CBrush bgBrush(bgColor);
 				int paddingX = (i == 0) ? g_data.RDPI(3) : 0;
-				memDC.FillRect(CRect(currentX + paddingX, rowY, currentX + colWidths[i] - paddingX, rowY + rowH), &bgBrush);
-				textColor = COLOR_WHITE;  // 有背景色时使用白色文字
+				memDC.FillRect(CRect(currentX + paddingX, rowY + 1, currentX + colWidths[i] - paddingX, rowY + rowH - 1), &bgBrush);
+				textColor = RGB(255, 255, 255);  // 有背景色时使用白色文字
 			}
 
 			memDC.SetTextColor(textColor);
@@ -459,11 +463,11 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 			CSize sz = memDC.GetTextExtent(fields[i]);
 			int txtX;
 			if (i == 0) // 名称列左对齐
-				txtX = currentX + g_data.RDPI(3);
+				txtX = currentX + g_data.RDPI(4);
 			else // 其余数字列右对齐
-				txtX = currentX + colWidths[i] - sz.cx - g_data.RDPI(3);
+				txtX = currentX + colWidths[i] - sz.cx - g_data.RDPI(4);
 
-			memDC.TextOut(txtX, rowY + g_data.RDPI(3), fields[i]);
+			memDC.TextOut(txtX, rowY + (rowH - sz.cy) / 2, fields[i]);
 			currentX += colWidths[i];
 		}
 
@@ -514,15 +518,15 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 		COLORREF rateColor = CCommon::GetProfitLossColor(profitRate);
 
 		// 总盈亏颜色
-		COLORREF profitColor = sumProfit > 0 ? COLOR_RED_UP : (sumProfit < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK);
+		COLORREF profitColor = sumProfit > 0 ? COLOR_RED_UP : (sumProfit < 0 ? COLOR_GREEN_DOWN : COLOR_TEXT_PRIMARY);
 
 		// 分段计算总宽度以实现居中
 		struct TextSeg { CString text; COLORREF color; };
 		TextSeg segs[] = {
-			{ _T("总成本: "), COLOR_BLACK }, { costStr, COLOR_BLACK },
-			{ _T("  总市值: "), COLOR_BLACK }, { marketStr, COLOR_BLACK },
-			{ _T("  总收益: "), COLOR_BLACK }, { profitStr, profitColor },
-			{ _T("  收益率: "), COLOR_BLACK }, { rateStr, rateColor }
+			{ _T("总成本: "), COLOR_TEXT_MUTED }, { costStr, COLOR_TEXT_PRIMARY },
+			{ _T("  总市值: "), COLOR_TEXT_MUTED }, { marketStr, COLOR_TEXT_PRIMARY },
+			{ _T("  总收益: "), COLOR_TEXT_MUTED }, { profitStr, profitColor },
+			{ _T("  收益率: "), COLOR_TEXT_MUTED }, { rateStr, rateColor }
 		};
 		int totalWidth = 0;
 		for (const auto& seg : segs)
@@ -532,10 +536,11 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 		CSize textSize = memDC.GetTextExtent(_T("Ay"));
 		const int statusBarHeight = textSize.cy + g_data.RDPI(6);
 		int summaryY = totalHeight - statusBarHeight;
-		memDC.FillSolidRect(x, summaryY, w, statusBarHeight, RGB(240, 240, 240));
+		memDC.FillSolidRect(x, summaryY, w, statusBarHeight, COLOR_BG_HEADER);
+		memDC.FillSolidRect(x, summaryY, w, 1, COLOR_DARK_GRAY_BORDER);
 		memDC.SetBkMode(TRANSPARENT);
 		int drawX = x + max(0, (w - totalWidth) / 2);
-		int textY = summaryY + g_data.RDPI(3);
+		int textY = summaryY + (statusBarHeight - textSize.cy) / 2;
 		for (const auto& seg : segs)
 		{
 			memDC.SetTextColor(seg.color);

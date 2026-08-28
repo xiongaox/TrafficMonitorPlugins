@@ -307,9 +307,10 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	const int WIDTH = g_data.RDPI(g_data.m_setting_data.m_kline_width);
 	const int HEIGHT = g_data.RDPI(g_data.m_setting_data.m_kline_height);
 
-	// 固定在屏幕左下角（任务栏上方）
-	int x = screenRect.left + 3;
-	int y = screenRect.bottom - HEIGHT;
+	// 固定在屏幕右下角（任务栏上方）
+	int x = screenRect.right - WIDTH - 3;
+	int y = screenRect.bottom - HEIGHT - 3;
+	x = max(screenRect.left, x);
 	y = max(screenRect.top, y);
 
 	CRect rect(x, y, x + WIDTH, y + HEIGHT);
@@ -1061,7 +1062,8 @@ void CFloatingWnd::OnPaint()
 		// 绘制底部系统状态栏
 		{
 			int bottomBarY = h - indexBarHeight;
-			memDC.FillSolidRect(0, bottomBarY, w, indexBarHeight, RGB(240, 240, 240));
+			memDC.FillSolidRect(0, bottomBarY, w, indexBarHeight, COLOR_BG_HEADER);
+			memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
 			memDC.SetBkMode(TRANSPARENT);
 			m_statusBarPanel.DrawSystemStatusBar(memDC, w, bottomBarY, singleBarHeight);
 		}
