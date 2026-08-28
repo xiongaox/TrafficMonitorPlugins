@@ -440,36 +440,28 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
 	{
-		// 默认指数：上证，深证，创业板指，科创50，沪深300，中证2000
-		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300", L"sz399303" };
+		// 默认4个核心指数：上证，深证，创业板指，科创50
+		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688" };
 	}
-	const int sbCount = static_cast<int>(statusBarCodes.size());
-	const int COLS = 3;
-	const int ROWS = (sbCount <= 3) ? 1 : 2;
-	const int rowHeight = totalBarHeight / ROWS;
-	const int colWidth = w / max(COLS, 1);
+	const int COLS = min(4, static_cast<int>(statusBarCodes.size()));
+	const int colWidth = (COLS > 0) ? (w / COLS) : w;
 
 	CFont statusFont;
-	statusFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+	statusFont.CreateFont(-g_data.RDPI(12), 0, 0, 0, FW_NORMAL, 0, 0, 0,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
 	CFont* pOldFont = memDC.SelectObject(&statusFont);
 
 	CSize sampleSize = memDC.GetTextExtent(_T("00.00%"));
-	int textOffsetY = (rowHeight - sampleSize.cy) / 2;
+	int textOffsetY = (totalBarHeight - sampleSize.cy) / 2;
 	if (textOffsetY < 0) textOffsetY = 0;
 
 	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-	for (int i = 0; i < sbCount; i++)
+	for (int i = 0; i < COLS; i++)
 	{
-		int row = i / COLS;
-		int col = i % COLS;
-		if (row >= ROWS) break;
-
 		auto stockData = g_data.GetStockData(statusBarCodes[i]);
-		int colX = col * colWidth;
-		int cellY = bottomBarY + row * rowHeight;
-		int textY = cellY + textOffsetY;
+		int colX = i * colWidth;
+		int textY = bottomBarY + textOffsetY;
 		int textX = colX + GAP;
 		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
 		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
