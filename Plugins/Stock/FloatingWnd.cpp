@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "FloatingWnd.h"
 #include <afxinet.h>
 #include <memory>
@@ -597,6 +597,7 @@ void CFloatingWnd::OnPaint()
 			tlHover.timelineLastTotalPoints = m_timelineLastTotalPoints;
 			tlHover.stockId = m_stock_id;
 			tlHover.mousePos = m_mousePos;
+			tlHover.timelineIndicator = static_cast<int>(m_timelineIndicator);
 
 			m_timelineChart.DrawTimelineHeader(memDC, ctx, tlHover);
 			m_callAuctionChart.Draw(memDC, ctx, callAuctionData);
@@ -875,6 +876,7 @@ void CFloatingWnd::OnPaint()
 			tlHover.timelineLastTotalPoints = m_timelineLastTotalPoints;
 			tlHover.stockId = m_stock_id;
 			tlHover.mousePos = m_mousePos;
+			tlHover.timelineIndicator = static_cast<int>(m_timelineIndicator);
 
 			m_timelineChart.DrawTimelineHeader(memDC, ctx, tlHover);
 			m_timelineChart.DrawTimelineGridAndLines(memDC, ctx, tlHover);

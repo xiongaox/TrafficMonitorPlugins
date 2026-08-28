@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "ChartContext.h"
 #include "Common.h"
@@ -36,6 +36,7 @@ public:
 		int timelineLastTotalPoints{ 0 };
 		std::wstring stockId;
 		CPoint mousePos;
+		int timelineIndicator{ 0 };   // 0: CJL, 1: MACD, 2: KDJ, 3: WR, 4: RSI
 		// 信号颜色（由DrawPriceChartArea设置，供CFloatingWnd更新按钮文字颜色）
 		COLORREF bollSignalColor{ CLR_INVALID };   // BL按钮信号颜色：超买=绿色，超卖=红色
 		COLORREF macdSignalColor{ CLR_INVALID };   // MACD按钮信号颜色：金叉=红色，死叉=绿色

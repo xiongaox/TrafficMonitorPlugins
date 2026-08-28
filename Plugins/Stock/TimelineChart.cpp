@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "TimelineChart.h"
 #include "ChartColors.h"
 #include "Common.h"
@@ -892,8 +892,8 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	memDC.SetTextColor(dotColor);
 	memDC.TextOut(priceLabelX, priceLabelY, hoverPriceStr);
 
-	memDC.SetViewportOrg(origOrg);
-
+	// 仅在副图为成交量(CJL)或竞价模式时绘制量柱十字光标和左侧刻度标签
+	if (hover.viewMode == UI_VIEW_AUCTION || hover.timelineIndicator == 0)
 	{
 		STOCK::Volume maxVol = 0;
 		for (const auto& tp : timelinePoint)

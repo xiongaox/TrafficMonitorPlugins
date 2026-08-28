@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "IndicatorChart.h"
 #include "TimelineChart.h"
 #include "ChartColors.h"
@@ -444,7 +444,7 @@ void CIndicatorChart::DrawMacdChartArea(CDC& memDC, const TimelineDrawContext& c
 
 	// 标题栏：DIF标签红色/DEA标签蓝色，数值正数红色/负数绿色
 	{
-		int xPos = g_data.RDPI(4);
+		int xPos = g_data.RDPI(228); // 避开左侧 5 个副图切换胶囊按钮 [VOL][MACD][KDJ][RSI][WR] (4 + 5*42 + 4*2 = 222 + margin 6 = 228)
 		int centerY = areaTop + titleH / 2;
 		// 分别绘制标签和数值，标签和数值可以不同颜色
 		auto drawLabel = [&](const CString& label, COLORREF labelColor) {
@@ -595,12 +595,12 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 	int titleH = g_data.RDPI(16);
 	int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 
-	CRect indicatorTitleRect(0, areaTop, ctx.chartWidth, areaTop + titleH);
-	memDC.FillSolidRect(indicatorTitleRect, COLOR_BG_HEADER);
+	// 标题栏文本起始X：避开左侧 5 个副图切换胶囊按钮 [VOL][MACD][KDJ][RSI][WR] (4 + 5*42 + 4*2 = 222 + margin 6 = 228)
+	const int indicatorTitleTextX = g_data.RDPI(228);
 
 	if (indicator == TimelineIndicator::KDJ)
 	{
-		int xPos = g_data.RDPI(4);
+		int xPos = indicatorTitleTextX;
 		int centerY = areaTop + titleH / 2;
 		auto drawKDJLabel = [&](const CString& label, COLORREF labelColor) {
 			memDC.SetTextColor(labelColor);
@@ -716,7 +716,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 	}
 	else if (indicator == TimelineIndicator::WR)
 	{
-		int xPos = g_data.RDPI(4);
+		int xPos = indicatorTitleTextX;
 		int centerY = areaTop + titleH / 2;
 		auto drawWRLabel = [&](const CString& label, const CString& value, COLORREF color) {
 			memDC.SetTextColor(color);
@@ -746,7 +746,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 	}
 	else if (indicator == TimelineIndicator::RSI)
 	{
-		int xPos = g_data.RDPI(4);
+		int xPos = indicatorTitleTextX;
 		int centerY = areaTop + titleH / 2;
 		auto drawRSILabel = [&](const CString& label, const CString& value, COLORREF color) {
 			memDC.SetTextColor(color);
@@ -808,7 +808,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 		double volMa10 = calcVolumeMA(globalVolIdx, 10);
 		double prevVolMa10 = calcVolumeMA(globalVolIdx - 1, 10);
 
-		int xPos = g_data.RDPI(4);
+		int xPos = indicatorTitleTextX;
 		int centerY = areaTop + titleH / 2;
 		const COLORREF hoverBgColor = RGB(38, 45, 60);
 
