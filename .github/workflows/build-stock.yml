@@ -19,7 +19,7 @@ jobs:
           - platform: x64
             output_dir: bin\x64\Release
             pkg_name: Stock_x64
-          - platform: x86
+          - platform: Win32
             output_dir: bin\Release
             pkg_name: Stock_x86
 
@@ -30,9 +30,13 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build Stock Plugin (${{ matrix.platform }})
+      - name: Build utilities (${{ matrix.platform }})
         run: |
-          msbuild TrafficMonitorPlugins.sln /t:Stock /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m
+          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}\" /m
+
+      - name: Build Stock (${{ matrix.platform }})
+        run: |
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}\" /m
 
       - name: Package ${{ matrix.pkg_name }}
         shell: pwsh
