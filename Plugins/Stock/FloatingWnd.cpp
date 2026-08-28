@@ -1923,6 +1923,7 @@ void CFloatingWnd::UpdateModeButtons()
 
 		if (m_btnMA.GetSafeHwnd()) m_btnMA.Invalidate();
 		if (m_btnBoll.GetSafeHwnd()) m_btnBoll.Invalidate();
+		if (m_btnIndicatorCJL.GetSafeHwnd()) m_btnIndicatorCJL.Invalidate();
 		if (m_btnIndicatorMACD.GetSafeHwnd()) m_btnIndicatorMACD.Invalidate();
 		if (m_btnIndicatorKDJ.GetSafeHwnd()) m_btnIndicatorKDJ.Invalidate();
 		if (m_btnIndicatorWR.GetSafeHwnd()) m_btnIndicatorWR.Invalidate();
@@ -1940,9 +1941,9 @@ void CFloatingWnd::UpdateModeButtons()
 		// 缩放按钮在所有模式下显示（除总览模式外）
 		SafeShowWindow(m_btnZoomOut, m_viewMode != UI_VIEW_OVERVIEW);
 		SafeShowWindow(m_btnZoomIn, m_viewMode != UI_VIEW_OVERVIEW);
-		// KDJ/WR/RSI指标按钮在所有模式下显示（除总览模式和放大模式外），CJL按钮已移除
+		// 副图指标按钮在所有模式下显示（除总览模式和放大模式外）
 		bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode;
-		SafeShowWindow(m_btnIndicatorCJL, false);
+		SafeShowWindow(m_btnIndicatorCJL, showIndicatorBtns);
 		SafeShowWindow(m_btnIndicatorMACD, showIndicatorBtns);
 		SafeShowWindow(m_btnIndicatorKDJ, showIndicatorBtns);
 		SafeShowWindow(m_btnIndicatorWR, showIndicatorBtns);
@@ -1951,6 +1952,15 @@ void CFloatingWnd::UpdateModeButtons()
 		SafeShowWindow(m_btnMA, showIndicatorBtns);
 		SafeShowWindow(m_btnBoll, showIndicatorBtns);
 	}
+}
+
+void CFloatingWnd::UpdateIndicatorButtons()
+{
+	if (m_btnIndicatorCJL.GetSafeHwnd()) m_btnIndicatorCJL.Invalidate();
+	if (m_btnIndicatorMACD.GetSafeHwnd()) m_btnIndicatorMACD.Invalidate();
+	if (m_btnIndicatorKDJ.GetSafeHwnd()) m_btnIndicatorKDJ.Invalidate();
+	if (m_btnIndicatorRSI.GetSafeHwnd()) m_btnIndicatorRSI.Invalidate();
+	if (m_btnIndicatorWR.GetSafeHwnd()) m_btnIndicatorWR.Invalidate();
 }
 
 void CFloatingWnd::UpdatePeriodComboVisibility()
@@ -2203,11 +2213,12 @@ void CFloatingWnd::OnBnClickedKLineBtn()
 
 void CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn()
 {
-	m_timelineIndicator = TimelineIndicator::MACD;
+	m_timelineIndicator = (m_timelineIndicator == TimelineIndicator::MACD) ? TimelineIndicator::CJL : TimelineIndicator::MACD;
 	m_timelineMacdTitleTip.Empty();
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
 	m_timelineRsiTitleTip.Empty();
+	UpdateIndicatorButtons();
 	Invalidate();
 }
 
@@ -2644,36 +2655,40 @@ void CFloatingWnd::OnBnClickedIndicatorMACDBtn()
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
 	m_timelineRsiTitleTip.Empty();
+	UpdateIndicatorButtons();
 	Invalidate();
 }
 
 void CFloatingWnd::OnBnClickedIndicatorKDJBtn()
 {
-	m_timelineIndicator = TimelineIndicator::KDJ;
+	m_timelineIndicator = (m_timelineIndicator == TimelineIndicator::KDJ) ? TimelineIndicator::CJL : TimelineIndicator::KDJ;
 	m_timelineMacdTitleTip.Empty();
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
 	m_timelineRsiTitleTip.Empty();
+	UpdateIndicatorButtons();
 	Invalidate();
 }
 
 void CFloatingWnd::OnBnClickedIndicatorWRBtn()
 {
-	m_timelineIndicator = TimelineIndicator::WR;
+	m_timelineIndicator = (m_timelineIndicator == TimelineIndicator::WR) ? TimelineIndicator::CJL : TimelineIndicator::WR;
 	m_timelineMacdTitleTip.Empty();
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
 	m_timelineRsiTitleTip.Empty();
+	UpdateIndicatorButtons();
 	Invalidate();
 }
 
 void CFloatingWnd::OnBnClickedIndicatorRSIBtn()
 {
-	m_timelineIndicator = TimelineIndicator::RSI;
+	m_timelineIndicator = (m_timelineIndicator == TimelineIndicator::RSI) ? TimelineIndicator::CJL : TimelineIndicator::RSI;
 	m_timelineMacdTitleTip.Empty();
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
 	m_timelineRsiTitleTip.Empty();
+	UpdateIndicatorButtons();
 	Invalidate();
 }
 

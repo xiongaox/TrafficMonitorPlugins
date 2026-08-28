@@ -99,6 +99,7 @@ private:
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	void UpdateModeButtons();
+	void UpdateIndicatorButtons();
 	void UpdatePeriodComboVisibility();
 	void ApplySignalColors(COLORREF bollColor, COLORREF macdColor, COLORREF kdjColor, COLORREF wrColor, COLORREF rsiColor, COLORREF maColor);
 
@@ -144,7 +145,7 @@ private:
 
 	// 分时图指标类型
 	enum class TimelineIndicator { CJL, MACD, KDJ, WR, RSI };
-	TimelineIndicator m_timelineIndicator{ TimelineIndicator::KDJ };
+	TimelineIndicator m_timelineIndicator{ TimelineIndicator::CJL };
 	bool m_indicatorBtnsInitialized{ false };
 
 	// 分时图鼠标拖动滚动
