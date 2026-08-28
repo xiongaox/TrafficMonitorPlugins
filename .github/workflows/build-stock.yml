@@ -31,12 +31,22 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Build utilities (${{ matrix.platform }})
+        shell: cmd
         run: |
-          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/"
+          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/" > utilities_build.log 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            type utilities_build.log
+            exit /b 1
+          )
 
       - name: Build Stock (${{ matrix.platform }})
+        shell: cmd
         run: |
-          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/"
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/" > stock_build.log 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+            type stock_build.log
+            exit /b 1
+          )
 
       - name: Package ${{ matrix.pkg_name }}
         shell: pwsh
