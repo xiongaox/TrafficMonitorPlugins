@@ -33,7 +33,8 @@ jobs:
       - name: Show MSBuild Errors on Failure
         if: failure()
         run: |
-          Get-Content msbuild.log | Select-String -Pattern ": error " -Context 2,2
+          $errs = Get-Content msbuild.log | Select-String -Pattern ": error " -Context 2,2
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### MSBuild Errors`n`n```text`n$($errs | Out-String)`n```"
 
       - name: Package Stock_x64
         shell: pwsh
