@@ -26,31 +26,11 @@ jobs:
 
       - name: Build utilities (x64)
         shell: cmd
-        run: |
-          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" > utilities_build.log 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            type utilities_build.log
-            exit /b 1
-          )
+        run: msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (x64)
         shell: cmd
-        run: |
-          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" > stock_build.log 2>&1
-          if %ERRORLEVEL% NEQ 0 (
-            type stock_build.log
-            exit /b 1
-          )
-
-      - name: Upload Build Log Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: stock_build_log
-          path: |
-            utilities_build.log
-            stock_build.log
-          if-no-files-found: ignore
+        run: msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Package Stock_x64
         shell: pwsh
