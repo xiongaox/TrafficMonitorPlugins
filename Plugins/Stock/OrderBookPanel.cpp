@@ -37,7 +37,7 @@ void COrderBookPanel::Draw(CDC& memDC, int left, int right, int height, const ST
 	// 行12: 净比 05 与 99 统计
 	// 行13: 振幅与换手率
 	const int totalRows = 14;
-	const int headerHeight = g_data.RDPI(26) + g_data.RDPI(20);  // 主标题栏+管理股票栏高度
+	const int headerHeight = g_data.RDPI(26);  // 主标题栏高度
 	const int obTitleH = g_data.RDPI(16);       // 盘口标题栏高度
 	const int topOffset = headerHeight + obTitleH;
 	const int panelW = right - left;

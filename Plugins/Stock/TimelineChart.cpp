@@ -1430,19 +1430,10 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 		int bodyHeight = bodyBottom - bodyTop;
 		if (bodyHeight < 1) bodyHeight = 1;
 
-		if (isUp)
-		{
-			CBrush* pOldBrush = memDC.SelectObject((CBrush*)CBrush::FromHandle((HBRUSH)GetStockObject(NULL_BRUSH)));
-			memDC.Rectangle(leftX, bodyTop, leftX + barWidth, bodyBottom + 1);
-			memDC.SelectObject(pOldBrush);
-		}
-		else
-		{
-			CBrush brush(barColor);
-			CBrush* pOldBrush = memDC.SelectObject(&brush);
-			memDC.Rectangle(leftX, bodyTop, leftX + barWidth, bodyBottom + 1);
-			memDC.SelectObject(pOldBrush);
-		}
+		CBrush brush(barColor);
+		CBrush* pOldBrush = memDC.SelectObject(&brush);
+		memDC.Rectangle(leftX, bodyTop, leftX + barWidth, bodyBottom + 1);
+		memDC.SelectObject(pOldBrush);
 	}
 
 	if (hover.showMA)

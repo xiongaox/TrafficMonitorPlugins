@@ -83,11 +83,11 @@ bool CStockHttpFetcher::FetchRealtimeHtml(const std::vector<std::wstring>& allCo
 	outCodes.clear();
 	outCodes = allCodes;
 
-	// onlyNonAG模式：仅获取非A股代码（港股等），A股由共享内存提供
+	// onlyNonAG模式：仅获取非A股代码（港股等），A股个股由共享内存提供（大盘指数继续由HTTP获取）
 	if (onlyNonAG)
 	{
 		outCodes.erase(std::remove_if(outCodes.begin(), outCodes.end(),
-			[](const std::wstring& code) { return CCommon::IsAGStockCode(code); }), outCodes.end());
+			[](const std::wstring& code) { return CCommon::IsAGStockCode(code) && GetStockPriority(code) >= 200; }), outCodes.end());
 	}
 
 	if (outCodes.empty())

@@ -13,12 +13,12 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 {
 	// 按比例分配行高，与盘口面板一致
 	const int totalRows = 19;
-	const int headerHeight = g_data.RDPI(26) + g_data.RDPI(20);  // 主标题栏+管理股票栏高度
+	const int headerHeight = g_data.RDPI(26);  // 主标题栏高度
 	const int obTitleH = g_data.RDPI(16);       // 盘口标题栏高度，与走势图标题栏一致
 	const int topOffset = headerHeight + obTitleH;  // 内容从主标题栏+盘口标题栏下方开始
 	const int panelW = right - left;
-	// 绘制盘口标题栏背景（在主标题栏下方）
-	memDC.FillSolidRect(left, headerHeight, panelW, obTitleH, RGB(245, 245, 245));
+	// 绘制盘口标题栏背景 (#181B22)
+	memDC.FillSolidRect(left, headerHeight, panelW, obTitleH, COLOR_BG_HEADER);
 	const int rowHeight = (height - obTitleH) / totalRows;
 	const int panelH = height - obTitleH;
 	if (panelW <= 0 || panelH <= 0)
@@ -34,12 +34,13 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		return (i < rem) ? (rowHeight + 1) : rowHeight;
 		};
 
-	memDC.FillSolidRect(left, topOffset, panelW, panelH, RGB(250, 250, 250));
+	// 填充内容区域深色背景 (#14161D)
+	memDC.FillSolidRect(left, topOffset, panelW, panelH, COLOR_BG_PANEL);
 	memDC.SetBkMode(TRANSPARENT);
 
 	if (!chipData.IsValid())
 	{
-		memDC.SetTextColor(COLOR_GRAY_TEXT);
+		memDC.SetTextColor(COLOR_TEXT_DIM);
 		memDC.TextOut(left + g_data.RDPI(5), topOffset + max(0, (panelH - memDC.GetTextExtent(_T("暂无筹码数据")).cy) / 2), _T("暂无筹码数据"));
 		return;
 	}
@@ -188,9 +189,11 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	if (maxPrice <= minPrice)
 		return;
 
-	CPen borderPen(PS_SOLID, 1, RGB(220, 220, 220));
+	CPen borderPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
 	CPen* oldPen = memDC.SelectObject(&borderPen);
+	CBrush* pOldBrush = static_cast<CBrush*>(memDC.SelectStockObject(NULL_BRUSH));
 	memDC.Rectangle(chartLeft, chartTop, chartRight, chartBottom);
+	memDC.SelectObject(pOldBrush);
 	memDC.SelectObject(oldPen);
 
 	auto priceToY = [&](double price) -> int {
@@ -209,7 +212,7 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	if (avgCost > minPrice && avgCost < maxPrice)
 	{
 		int avgY = priceToY(avgCost);
-		CPen avgPen(PS_DOT, 1, RGB(0, 80, 204));
+		CPen avgPen(PS_DOT, 1, COLOR_BLUE_AVG1);
 		oldPen = memDC.SelectObject(&avgPen);
 		memDC.MoveTo(chartLeft, avgY);
 		memDC.LineTo(chartRight, avgY);
@@ -217,7 +220,7 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		// 均价标签绘制在线条右侧
 		CString avgLabel;
 		avgLabel.Format(_T("均:%s"), CCommon::FormatFloat(avgCost));
-		memDC.SetTextColor(RGB(0, 80, 204));
+		memDC.SetTextColor(COLOR_BLUE_AVG1);
 		CSize avgLabelSize = memDC.GetTextExtent(avgLabel);
 		int avgLabelX = chartRight - avgLabelSize.cx - g_data.RDPI(2);
 		int avgLabelY = avgY - avgLabelSize.cy / 2;
@@ -229,7 +232,7 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	if (currentPrice > minPrice && currentPrice < maxPrice)
 	{
 		int y = priceToY(currentPrice);
-		CPen curPen(PS_DOT, 1, RGB(112, 32, 176));
+		CPen curPen(PS_DOT, 1, COLOR_GREEN_AVG3);
 		oldPen = memDC.SelectObject(&curPen);
 		memDC.MoveTo(chartLeft, y);
 		memDC.LineTo(chartRight, y);
@@ -237,14 +240,15 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		CString priceTxt;
 		priceTxt.Format(_T("现 %s"), CCommon::FormatFloat(currentPrice));
 		CSize txtSize = memDC.GetTextExtent(priceTxt);
-		int paddingX = g_data.RDPI(4);
-		int paddingY = g_data.RDPI(2);
+		int paddingX = g_data.RDPI(3);
+		int paddingY = g_data.RDPI(1);
 		int labelW = txtSize.cx + paddingX * 2;
 		int labelH = txtSize.cy + paddingY * 2;
 		int labelLeft = chartRight - labelW - g_data.RDPI(2);
 		int labelTop = min(max(chartTop, y - labelH / 2), chartBottom - labelH);
 		CRect labelRect(labelLeft, labelTop, labelLeft + labelW, labelTop + labelH);
-		memDC.SetTextColor(COLOR_BLACK);
+		memDC.FillSolidRect(&labelRect, COLOR_CARD_SELECTED);
+		memDC.SetTextColor(COLOR_TEXT_PRIMARY);
 		memDC.TextOut(labelRect.left + paddingX, labelRect.top + paddingY, priceTxt);
 	}
 
@@ -252,14 +256,13 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	highTxt = CCommon::FormatFloat(maxPrice);
 	CString lowTxt;
 	lowTxt = CCommon::FormatFloat(minPrice);
-	memDC.SetTextColor(COLOR_GRAY_TEXT);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
 	memDC.TextOut(chartRight - memDC.GetTextExtent(highTxt).cx, chartTop, highTxt);
 	memDC.TextOut(chartRight - memDC.GetTextExtent(lowTxt).cx, chartBottom - memDC.GetTextExtent(lowTxt).cy, lowTxt);
 
 	// 文字信息绘制在筹码峰图下方，拆分为3行
-	memDC.SetTextColor(COLOR_GRAY_TEXT);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
 	// 获利比例：标签 + 带红绿背景的数字
-	// 左红（亏损比例）右绿（获利比例），分界点由获利比例决定，红绿各自长度按比例分配
 	CString profitLabelTxt = _T("获利比例:");
 	double profitRatio = totalPercent > 0 ? (profitPercent / totalPercent * 100.0) : 0.0;
 	CString profitNumTxt;
@@ -277,30 +280,23 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		int barY = profitY - g_data.RDPI(1);
 
 		// 红色长度 = 总宽度 × X/100（获利比例）；绿色长度 = 总宽度 × (100-X)/100（套牢比例）
-		// 红色用标准红，绿色与筹码峰 COLOR_GREEN_DOWN 一致
 		int redW = static_cast<int>(barW * profitRatio / 100.0 + 0.5);
 		int greenW = barW - redW;
 		if (redW > 0)
 		{
 			CRect redRect(barX, barY, barX + redW, barY + barH);
-			CBrush redBrush(RGB(179, 64, 65));
-			CBrush* pOldBrush = memDC.SelectObject(&redBrush);
-			memDC.FillRect(&redRect, &redBrush);
-			memDC.SelectObject(pOldBrush);
+			memDC.FillSolidRect(&redRect, COLOR_RED_UP);
 		}
 		if (greenW > 0)
 		{
 			CRect greenRect(barX + redW, barY, barX + redW + greenW, barY + barH);
-			CBrush greenBrush(COLOR_GREEN_DOWN);
-			CBrush* pOldBrush = memDC.SelectObject(&greenBrush);
-			memDC.FillRect(&greenRect, &greenBrush);
-			memDC.SelectObject(pOldBrush);
+			memDC.FillSolidRect(&greenRect, COLOR_GREEN_DOWN);
 		}
 
 		// 数字绘制在背景条左侧（白色文字，带少量内边距）
-		memDC.SetTextColor(RGB(255, 255, 255));
+		memDC.SetTextColor(COLOR_WHITE);
 		memDC.TextOut(barX + g_data.RDPI(4), profitY, profitNumTxt);
-		memDC.SetTextColor(COLOR_GRAY_TEXT);
+		memDC.SetTextColor(COLOR_TEXT_MUTED);
 	}
 	CString avgCostTxt;
 	avgCostTxt.Format(_T("平均成本:%s"), CCommon::FormatFloat(avgCost));

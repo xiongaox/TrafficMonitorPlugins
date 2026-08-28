@@ -15,11 +15,13 @@ Stock Stock::m_instance;
 // 大盘指数优先级列表（用于总览列表排序）
 const std::vector<std::wstring> IndexPriority = {
 	L"sh000001",  // 上证指数
-	L"sh000300",  // 沪深300
+	L"sz399001",  // 深证成指
 	L"sz399006",  // 创业板指
+	L"sh000688",  // 科创50
+	L"sh000300",  // 沪深300
+	L"sz399303",  // 中证2000
 	L"rt_hkHSI",  // 恒生指数
 	L"rt_hkHSTECH", // 恒生科技
-	L"sz399001",  // 深证成指
 	L"sh000016",  // 上证50
 };
 

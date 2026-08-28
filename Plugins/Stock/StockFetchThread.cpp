@@ -696,7 +696,20 @@ void CStockFetchThread::OnQuotesReceived(const std::vector<QuoteItem>& items)
 
 void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 {
-	const auto& codes = g_data.m_setting_data.m_stock_codes;
+	auto codes = g_data.m_setting_data.m_stock_codes;
+	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
+	if (statusBarCodes.empty())
+	{
+		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300", L"sz399303" };
+	}
+	for (const auto& sbCode : statusBarCodes)
+	{
+		if (std::find(codes.begin(), codes.end(), sbCode) == codes.end())
+		{
+			codes.push_back(sbCode);
+		}
+	}
+
 	if (codes.empty())
 	{
 		g_data.ResetText();

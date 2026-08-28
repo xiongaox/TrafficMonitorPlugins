@@ -414,19 +414,30 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 	avgFont.DeleteObject();
 }
 
+static CString GetIndexDisplayName(const std::wstring& code, const CString& defaultName)
+{
+	if (code == L"sh000001") return _T("上证");
+	if (code == L"sz399001") return _T("深证");
+	if (code == L"sz399006") return _T("创业板指");
+	if (code == L"sh000688") return _T("科创50");
+	if (code == L"sh000300") return _T("沪深300");
+	if (code == L"sz399303" || code == L"si932000" || code == L"sh932000") return _T("中证2000");
+	return defaultName;
+}
+
 void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int singleBarHeight)
 {
 	// 绘制底部系统状态栏深色背景 (#161820)
 	memDC.FillSolidRect(0, bottomBarY, w, singleBarHeight, COLOR_BG_FOOTER);
 	memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
 
-	const int GAP = 4;
+	const int GAP = g_data.RDPI(3);
 
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
 	{
-		// 没有配置时使用默认指数：上证指数、深证成指、创业板指
-		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006" };
+		// 默认指数：上证，深证，创业板指，科创50，沪深300，中证2000
+		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300", L"sz399303" };
 	}
 	const int sbCount = static_cast<int>(statusBarCodes.size());
 	const int colWidth = w / max(sbCount, 1);
@@ -437,15 +448,16 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 		auto stockData = g_data.GetStockData(statusBarCodes[i]);
 		int colX = i * colWidth;
 		int textX = colX + GAP;
+		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : statusBarCodes[i].c_str();
+		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
 
-		if (stockData && stockData->info.is_ok)
+		if (stockData && stockData->info.is_ok && (stockData->info.currentPrice > 0 || stockData->info.prevClosePrice > 0))
 		{
 			const auto& info = stockData->info;
 			double displayPrice = info.currentPrice > 0 ? info.currentPrice : info.prevClosePrice;
 			double diff = displayPrice - info.prevClosePrice;
 			double diffPercent = info.prevClosePrice != 0 ? (diff / info.prevClosePrice) * 100 : 0;
 
-			CString nameStr = info.GetStockListName();
 			CString priceStr;
 			priceStr.Format(_T("%.2f"), displayPrice);
 			CString changeStr;
@@ -467,7 +479,6 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 		}
 		else
 		{
-			CString nameStr = (statusBarCodes[i] == L"sh000001") ? _T("上证综指:") : ((statusBarCodes[i] == L"sz399001") ? _T("深证成指:") : ((statusBarCodes[i] == L"sz399006") ? _T("创业板指:") : CString(statusBarCodes[i].c_str()) + _T(":")));
 			memDC.SetTextColor(COLOR_TEXT_DIM);
 			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), nameStr + _T(" --"));
 		}
