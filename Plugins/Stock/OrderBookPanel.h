@@ -25,16 +25,18 @@ private:
 	// 盘口行数据
 	struct OrderBookRow
 	{
-		STOCK::Price price;
+		STOCK::Price price{ 0.0 };
+		STOCK::Volume volume{ 0 };
+		bool isAsk{ false };
 		CString text;
 		CString smallSuffix;
 		CString rightAlignSuffix;  // 右对齐的瞬时变化量（+N/-N）
 		COLORREF rightAlignSuffixColor{ RGB(0,0,0) };  // 右对齐后缀颜色
 		CString cumVolSuffix;      // 累计成交量后缀（显示在瞬时变化量前面）
 		COLORREF cumVolSuffixColor{ RGB(0,0,0) };  // 累计成交量后缀颜色
-		COLORREF textColor;
+		COLORREF textColor{ RGB(0,0,0) };
 		bool fillBackground{ false };
-		COLORREF backgroundColor;
+		COLORREF backgroundColor{ RGB(255,255,255) };
 		bool drawSmallSuffix{ false };
 		bool darkBackground{ false };  // 深色背景时文字改白色
 		bool blink{ false };  // 闪烁效果：当前价=卖一/买一且挂单≤1万

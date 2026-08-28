@@ -337,7 +337,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		unitY = ctx.priceChartHeight / (maxPrice - minPrice);
 	}
 
-	CPen pKLine(PS_SOLID, 1, COLOR_BLACK);
+	CPen pKLine(PS_SOLID, 1, COLOR_BLUE_AVG1);
 
 	std::vector<CPoint> dataPoints;
 	dataPoints.reserve(timelinePoint.size());
@@ -381,9 +381,9 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 	// MA5/MA10/MA20均线配色
 	if (hover.showMA)
 	{
-		const COLORREF ma5Color = RGB(240, 117, 40);
-		const COLORREF ma10Color = RGB(21, 101, 192);
-		const COLORREF ma20Color = RGB(128, 40, 149);
+		const COLORREF ma5Color = COLOR_GOLDEN;
+		const COLORREF ma10Color = RGB(56, 189, 248);
+		const COLORREF ma20Color = RGB(192, 132, 252);
 
 		auto drawMALine = [&](int fieldOffset, COLORREF color) {
 			CPen maPen(PS_SOLID, 1, color);
@@ -468,9 +468,10 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			bool first = true;
 			for (int i = 0; i < totalPoints; i++)
 			{
-				if (band[i] <= 0) continue;
+				if (band[i] <= 0) { first = true; continue; }
 				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
 				int py = priceToY(band[i]);
+				py = max(ctx.priceChartTop, min(py, ctx.priceChartTop + ctx.priceChartHeight));
 				if (first)
 				{
 					memDC.MoveTo(pointX, py);
@@ -484,11 +485,34 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			};
 
 		drawBandLine(upperBand, COLOR_RED_UP);
-		drawBandLine(middleBand, RGB(0, 0, 230));
+		drawBandLine(middleBand, COLOR_BLUE_COST);
 		drawBandLine(lowerBand, COLOR_GREEN_DOWN);
 	}
 
-	// 走势线（黑色实线，最后画，覆盖在均价线和布林带之上）
+	// 走势线下方面积轻微填充（提升现代金融看板质感）
+	if (dataPoints.size() >= 2)
+	{
+		std::vector<CPoint> polyPoints;
+		polyPoints.reserve(dataPoints.size() + 2);
+		int bottomY = ctx.priceChartTop + ctx.priceChartHeight;
+		polyPoints.push_back(CPoint(dataPoints[0].x, bottomY));
+		for (size_t i = 0; i < dataPoints.size(); i++)
+		{
+			polyPoints.push_back(CPoint(dataPoints[i].x, ctx.priceChartTop + ctx.priceChartHeight - dataPoints[i].y));
+		}
+		polyPoints.push_back(CPoint(dataPoints.back().x, bottomY));
+
+		CBrush areaBrush(COLOR_LIGHT_BLUE);
+		CBrush* pOldBrush = memDC.SelectObject(&areaBrush);
+		CPen nullPen(PS_NULL, 0, RGB(0, 0, 0));
+		CPen* pOldPolyPen = memDC.SelectObject(&nullPen);
+		memDC.Polygon(polyPoints.data(), static_cast<int>(polyPoints.size()));
+		memDC.SelectObject(pOldPolyPen);
+		memDC.SelectObject(pOldBrush);
+		areaBrush.DeleteObject();
+	}
+
+	// 走势线（现代宝蓝实线）
 	if (!dataPoints.empty())
 	{
 		memDC.SelectObject(&pKLine);

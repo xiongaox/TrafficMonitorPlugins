@@ -15,9 +15,12 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 	double diffPercent = realtimeData.GetChangePercent();
 	COLORREF diffColor = diff >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 
-	// 标题格式：(股票代码)股票名称：
+	// 标题格式：股票名称
 	CString prefixTxt;
-	prefixTxt.Format(_T("%s:"), realtimeData.displayName.c_str());
+	if (!realtimeData.displayName.empty())
+		prefixTxt.Format(_T("%s "), realtimeData.displayName.c_str());
+	else
+		prefixTxt = _T("股票行情 ");
 
 	CString currentTxt = realtimeData.IsETF() ? CCommon::FormatETFPrice(realtimeData.currentPrice) : CCommon::FormatFloat(realtimeData.currentPrice);
 	CString diffTxt;
@@ -31,6 +34,12 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 	if (!macdTrendSignal.IsEmpty())
 		macdTxt.Format(_T(" [%s]"), macdTrendSignal.GetString());
 
+	CFont headerFont;
+	headerFont.CreateFont(-g_data.RDPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont* pOldFont = memDC.SelectObject(&headerFont);
+
 	// 计算总宽度，在整个标题栏水平居中
 	CSize prefixSize = memDC.GetTextExtent(prefixTxt);
 	CSize currentSize = memDC.GetTextExtent(currentTxt);
@@ -41,7 +50,7 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 	int startX = (windowWidth - totalWidth) / 2;
 	int centerY = headerHeight / 2;
 
-	memDC.SetTextColor(COLOR_GRAY_TEXT);
+	memDC.SetTextColor(COLOR_BLACK);
 	memDC.TextOut(startX, centerY - prefixSize.cy / 2, prefixTxt);
 
 	int curX = startX + prefixSize.cx;
@@ -55,19 +64,22 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 	if (!macdTxt.IsEmpty())
 	{
 		curX += diffSize.cx;
-		// 信号颜色：正T=红色，反T=绿色，持有=橙色，观望=灰色
+		// 信号颜色：正T=红色，反T=绿色，持有=橙色，观望=次要灰色
 		COLORREF macdColor;
 		if (macdTrendSignal == _T("正T"))
-			macdColor = RGB(255, 50, 50);
+			macdColor = COLOR_RED_UP;
 		else if (macdTrendSignal == _T("反T"))
-			macdColor = RGB(0, 180, 0);
+			macdColor = COLOR_GREEN_DOWN;
 		else if (macdTrendSignal == _T("持有"))
-			macdColor = RGB(255, 165, 0);
+			macdColor = COLOR_GOLDEN;
 		else
-			macdColor = RGB(128, 128, 128);
+			macdColor = COLOR_GRAY_TEXT;
 		memDC.SetTextColor(macdColor);
 		memDC.TextOut(curX, centerY - macdSize.cy / 2, macdTxt);
 	}
+
+	memDC.SelectObject(pOldFont);
+	headerFont.DeleteObject();
 }
 
 void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int singleBarHeight, const std::wstring& stockId, int viewMode)

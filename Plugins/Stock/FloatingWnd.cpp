@@ -2553,29 +2553,42 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	// 判断按钮状态
 	bool isSelected = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
 
-	// 背景色：有信号时用信号颜色，否则选中用浅灰，未选中用更浅灰
+	// 背景色：有信号时用信号颜色，否则激活项用现代蓝，未激活项用浅灰
 	COLORREF bgColor;
+	COLORREF textColor;
+	COLORREF borderColor;
 	if (signalColor != CLR_INVALID)
+	{
 		bgColor = signalColor;
+		textColor = RGB(255, 255, 255);
+		borderColor = signalColor;
+	}
 	else if (isActive)
-		bgColor = RGB(225, 225, 225);
+	{
+		bgColor = COLOR_ACCENT_BLUE;
+		textColor = RGB(255, 255, 255);
+		borderColor = COLOR_ACCENT_BLUE;
+	}
 	else
-		bgColor = RGB(245, 245, 245);
+	{
+		bgColor = RGB(241, 245, 249);
+		textColor = COLOR_BLACK;
+		borderColor = COLOR_DARK_GRAY_BORDER;
+	}
 
-	// 按下时稍微变暗
+	// 按下时微调
 	if (isSelected)
 	{
-		int r = max(0, GetRValue(bgColor) - 30);
-		int g = max(0, GetGValue(bgColor) - 30);
-		int b = max(0, GetBValue(bgColor) - 30);
+		int r = max(0, GetRValue(bgColor) - 25);
+		int g = max(0, GetGValue(bgColor) - 25);
+		int b = max(0, GetBValue(bgColor) - 25);
 		bgColor = RGB(r, g, b);
 	}
 
 	// 填充背景
 	dc.FillSolidRect(rect, bgColor);
 
-	// 绘制边框：选中状态用深色边框
-	COLORREF borderColor = isActive ? RGB(0, 0, 128) : RGB(180, 180, 180);
+	// 绘制细边框
 	CPen pen(PS_SOLID, 1, borderColor);
 	CPen* pOldPen = dc.SelectObject(&pen);
 	dc.MoveTo(rect.left, rect.bottom - 1);
@@ -2589,9 +2602,16 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	CString text;
 	GetDlgItemText(nID, text);
 	dc.SetBkMode(TRANSPARENT);
-	// 有信号颜色时文字用白色，否则用黑色
-	dc.SetTextColor(signalColor != CLR_INVALID ? RGB(255, 255, 255) : RGB(0, 0, 0));
+	dc.SetTextColor(textColor);
+
+	CFont btnFont;
+	btnFont.CreateFont(-g_data.RDPI(10), 0, 0, 0, isActive ? FW_BOLD : FW_NORMAL, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont* pOldFont = dc.SelectObject(&btnFont);
 	dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	dc.SelectObject(pOldFont);
+	btnFont.DeleteObject();
 
 	dc.Detach();
 }

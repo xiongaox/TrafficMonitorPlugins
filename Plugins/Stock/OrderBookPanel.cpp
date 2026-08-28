@@ -10,14 +10,14 @@
 
 // 静态成员初始化
 const COLORREF COrderBookPanel::NET_RATIO_RED_COLORS[] = {
-	RGB(240, 40, 40),   // 0-30
-	RGB(180, 50, 50),   // 30-60
-	RGB(130, 20, 40)    // 60以上
+	RGB(251, 113, 133),  // 0-30 浅柔红
+	RGB(244, 63, 94),    // 30-60 现代红
+	RGB(190, 18, 60)     // 60以上 强红
 };
 const COLORREF COrderBookPanel::NET_RATIO_GREEN_COLORS[] = {
-	RGB(40, 240, 40),  // 0~30 浅亮绿（弱多）
-	RGB(50, 180, 50),  // 30~60 中草绿（中多）
-	RGB(20, 130, 40)   // 60以上 深墨绿（强多）
+	RGB(52, 211, 153),   // 0~30 浅薄荷绿
+	RGB(16, 185, 129),   // 30~60 现代绿
+	RGB(5, 150, 105)     // 60以上 强绿
 };
 std::map<std::wstring, double> COrderBookPanel::m_lastNetRatioMap;
 std::map<std::wstring, CString> COrderBookPanel::m_lastNetRatioTrendMap;
@@ -847,20 +847,22 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildAskRow(const STOCK::StockInf
 
 	OrderBookRow row;
 	row.price = price;
+	row.volume = volume;
+	row.isAsk = true;
 	row.text = askTxt;
 	row.smallSuffix = askSuffix;
 	row.rightAlignSuffix = deltaStr;
 	row.rightAlignSuffixColor = delta > 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 	row.cumVolSuffix = cumVolStr;
-	row.cumVolSuffixColor = RGB(128, 0, 128);
+	row.cumVolSuffixColor = RGB(168, 85, 247);
 	row.drawSmallSuffix = true;
-	row.textColor = (stockInfo.highPrice > 0 && price > 0 && price == stockInfo.highPrice) ? RGB(128, 0, 128) : COLOR_RED_UP;
+	row.textColor = (stockInfo.highPrice > 0 && price > 0 && price == stockInfo.highPrice) ? RGB(168, 85, 247) : COLOR_RED_UP;
 	row.bold = (stockInfo.highPrice > 0 && price > 0 && price == stockInfo.highPrice);
 	// 卖一背景色（仅当前价格=卖一时显示）
 	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
 	{
 		row.fillBackground = true;
-		row.backgroundColor = RGB(255, 200, 200);
+		row.backgroundColor = RGB(254, 215, 220);
 		// 挂单量≤1万时闪烁
 		if (volume <= 10000)
 			row.blink = true;
@@ -868,7 +870,7 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildAskRow(const STOCK::StockInf
 	else
 	{
 		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = RGB(255, 200, 200);
+		row.backgroundColor = RGB(254, 215, 220);
 	}
 	return row;
 }
@@ -900,20 +902,22 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildBidRow(const STOCK::StockInf
 
 	OrderBookRow row;
 	row.price = price;
+	row.volume = volume;
+	row.isAsk = false;
 	row.text = bidTxt;
 	row.smallSuffix = bidSuffix;
 	row.rightAlignSuffix = deltaStr;
 	row.rightAlignSuffixColor = delta > 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 	row.cumVolSuffix = cumVolStr;
-	row.cumVolSuffixColor = RGB(0, 100, 0);
+	row.cumVolSuffixColor = RGB(14, 165, 233);
 	row.drawSmallSuffix = true;
-	row.textColor = (stockInfo.lowPrice > 0 && price > 0 && price == stockInfo.lowPrice) ? RGB(0, 100, 0) : COLOR_GREEN_DOWN;
+	row.textColor = (stockInfo.lowPrice > 0 && price > 0 && price == stockInfo.lowPrice) ? RGB(14, 165, 233) : COLOR_GREEN_DOWN;
 	row.bold = (stockInfo.lowPrice > 0 && price > 0 && price == stockInfo.lowPrice);
 	// 买一背景色（仅当前价格=买一时显示）
 	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
 	{
 		row.fillBackground = true;
-		row.backgroundColor = RGB(200, 255, 200);
+		row.backgroundColor = RGB(215, 250, 230);
 		// 挂单量≤1万时闪烁
 		if (volume <= 10000)
 			row.blink = true;
@@ -921,23 +925,45 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildBidRow(const STOCK::StockInf
 	else
 	{
 		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = RGB(200, 255, 200);
+		row.backgroundColor = RGB(215, 250, 230);
 	}
 	return row;
 }
 
 void COrderBookPanel::DrawPriceRows(CDC& memDC, const LayoutContext& lc, const std::vector<OrderBookRow>& rows, int startRow, bool blinkOn)
 {
+	STOCK::Volume maxVol = 1;
+	for (const auto& r : rows)
+	{
+		if (r.volume > maxVol)
+			maxVol = r.volume;
+	}
+
+	int totalW = lc.right - lc.left;
+
 	for (int i = 0; i < static_cast<int>(rows.size()); i++)
 	{
 		int y = lc.RowY(startRow + i);
 		int h = lc.RowH(startRow + i);
+
+		// 绘制基础行背景
+		memDC.FillSolidRect(lc.left, y, totalW, h, RGB(250, 252, 254));
+
+		// 绘制挂单量深度条（Depth Bar 从右往左按挂单量比例绘制）
+		if (rows[i].volume > 0 && maxVol > 0)
+		{
+			int depthW = static_cast<int>((double)rows[i].volume / maxVol * (totalW * 0.65));
+			depthW = max(g_data.RDPI(2), min(totalW, depthW));
+			COLORREF depthColor = rows[i].isAsk ? COLOR_DEPTH_SELL_BG : COLOR_DEPTH_BUY_BG;
+			memDC.FillSolidRect(lc.right - depthW, y + 1, depthW, h - 2, depthColor);
+		}
+
 		if (rows[i].fillBackground)
 		{
 			if (rows[i].blink && !blinkOn)
-				memDC.FillSolidRect(lc.left, y, lc.right - lc.left, h, RGB(250, 250, 250));  // 闪烁关闭时用背景色
+				memDC.FillSolidRect(lc.left, y, totalW, h, RGB(250, 252, 254));  // 闪烁关闭时用背景色
 			else
-				memDC.FillSolidRect(lc.left, y, lc.right - lc.left, h, rows[i].backgroundColor);
+				memDC.FillSolidRect(lc.left, y, totalW, h, rows[i].backgroundColor);
 		}
 		int textVCenter = max(0, (h - memDC.GetTextExtent(rows[i].text).cy) / 2);
 		DrawOrderBookRowText(memDC, rows[i], lc.textX, y + textVCenter, lc.right - lc.textX, rows[i].blink && !blinkOn);
