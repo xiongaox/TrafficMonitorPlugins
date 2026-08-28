@@ -951,6 +951,214 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	memDC.SetTextColor(COLOR_WHITE);
 	memDC.SetBkMode(TRANSPARENT);
 	memDC.TextOut(timeLabelX, timeLabelY, timeStr);
+
+	// ========== 绘制悬浮窗（数据提示卡片） ==========
+	struct TooltipRow {
+		CString label;
+		CString value;
+		COLORREF color{ COLOR_TEXT_PRIMARY };
+	};
+	std::vector<TooltipRow> rows;
+
+	bool isKLine = (hover.viewMode >= UI_VIEW_DAY_KLINE);
+	bool isEtf = ctx.realtimeData.IsETF();
+
+	if (isKLine)
+	{
+		// 日K，周K，月K：时间、收盘价、涨跌幅、涨跌额、成交量、成交额
+		int globalIdx = ctx.startIndex + hover.hoveredBarIndex;
+		STOCK::KLinePoint kp;
+		bool hasKp = false;
+		if (ctx.klineData && globalIdx >= 0 && globalIdx < static_cast<int>(ctx.klineData->size()))
+		{
+			kp = (*ctx.klineData)[globalIdx];
+			hasKp = true;
+		}
+
+		// 1. 时间 (完整日期 YYYY-MM-DD)
+		CString dateStr = hasKp ? CString(kp.day.c_str()) : (!item.fullTime.empty() ? CString(item.fullTime.c_str()) : CString(item.time.c_str()));
+		rows.push_back({ _T("时间"), dateStr, COLOR_TEXT_PRIMARY });
+
+		// 2. 收盘价
+		STOCK::Price closePrice = hasKp ? kp.close : item.price;
+		CString closeStr = isEtf ? CCommon::FormatETFPrice(closePrice) : CCommon::FormatFloat(closePrice);
+
+		// 计算涨跌幅和涨跌额（对比上一根K线收盘价）
+		STOCK::Price prevClose = 0;
+		if (hasKp && ctx.klineData && globalIdx > 0 && (globalIdx - 1) < static_cast<int>(ctx.klineData->size()))
+		{
+			prevClose = (*ctx.klineData)[globalIdx - 1].close;
+		}
+		else if (hasKp)
+		{
+			prevClose = kp.open > 0 ? kp.open : kp.close;
+		}
+		else
+		{
+			prevClose = ctx.realtimeData.prevClosePrice;
+		}
+
+		double diff = 0;
+		double pct = 0;
+		COLORREF changeColor = COLOR_TEXT_PRIMARY;
+		if (prevClose > 0)
+		{
+			diff = closePrice - prevClose;
+			pct = diff / prevClose * 100.0;
+			if (diff > 0.00001)
+				changeColor = COLOR_RED_UP;
+			else if (diff < -0.00001)
+				changeColor = COLOR_GREEN_DOWN;
+		}
+
+		rows.push_back({ _T("收盘价"), closeStr, changeColor });
+
+		// 3. 涨跌幅
+		CString pctStr;
+		if (pct > 0.00001)
+			pctStr.Format(_T("+%.2f%%"), pct);
+		else if (pct < -0.00001)
+			pctStr.Format(_T("%.2f%%"), pct);
+		else
+			pctStr = _T("0.00%");
+		rows.push_back({ _T("涨跌幅"), pctStr, changeColor });
+
+		// 4. 涨跌额
+		CString diffStr;
+		if (diff > 0.00001)
+			diffStr = _T("+") + (isEtf ? CCommon::FormatETFPrice(diff) : CCommon::FormatFloat(diff));
+		else if (diff < -0.00001)
+			diffStr = (isEtf ? CCommon::FormatETFPrice(diff) : CCommon::FormatFloat(diff));
+		else
+			diffStr = isEtf ? _T("0.000") : _T("0.00");
+		rows.push_back({ _T("涨跌额"), diffStr, changeColor });
+
+		// 5. 成交量
+		STOCK::Volume volLots = (hasKp ? kp.volume : item.volume) / 100;
+		CString volStr = CCommon::FormatVolumeInt(static_cast<double>(volLots)) + _T("手");
+		rows.push_back({ _T("成交量"), volStr, COLOR_TEXT_PRIMARY });
+
+		// 6. 成交额
+		double amount = item.amount;
+		if (amount <= 0 && hasKp)
+			amount = static_cast<double>(kp.volume) * kp.close;
+		else if (amount <= 0)
+			amount = static_cast<double>(item.volume) * item.price;
+		CString amountStr = CCommon::FormatAmount(amount);
+		rows.push_back({ _T("成交额"), amountStr, COLOR_TEXT_PRIMARY });
+	}
+	else
+	{
+		// 分时：时间、最新、涨跌幅、涨跌额、成交量、成交额
+		// 1. 时间
+		CString tStr = CString(item.time.c_str());
+		if (tStr.GetLength() > 5) tStr = tStr.Left(5);
+		rows.push_back({ _T("时间"), tStr, COLOR_TEXT_PRIMARY });
+
+		// 2. 最新
+		CString priceStr = isEtf ? CCommon::FormatETFPrice(item.price) : CCommon::FormatFloat(item.price);
+		STOCK::Price prevClose = ctx.realtimeData.prevClosePrice;
+		double diff = 0;
+		double pct = 0;
+		COLORREF changeColor = COLOR_TEXT_PRIMARY;
+		if (prevClose > 0)
+		{
+			diff = item.price - prevClose;
+			pct = diff / prevClose * 100.0;
+			if (diff > 0.00001)
+				changeColor = COLOR_RED_UP;
+			else if (diff < -0.00001)
+				changeColor = COLOR_GREEN_DOWN;
+		}
+		rows.push_back({ _T("最新"), priceStr, changeColor });
+
+		// 3. 涨跌幅
+		CString pctStr;
+		if (pct > 0.00001)
+			pctStr.Format(_T("+%.2f%%"), pct);
+		else if (pct < -0.00001)
+			pctStr.Format(_T("%.2f%%"), pct);
+		else
+			pctStr = _T("0.00%");
+		rows.push_back({ _T("涨跌幅"), pctStr, changeColor });
+
+		// 4. 涨跌额
+		CString diffStr;
+		if (diff > 0.00001)
+			diffStr = _T("+") + (isEtf ? CCommon::FormatETFPrice(diff) : CCommon::FormatFloat(diff));
+		else if (diff < -0.00001)
+			diffStr = (isEtf ? CCommon::FormatETFPrice(diff) : CCommon::FormatFloat(diff));
+		else
+			diffStr = isEtf ? _T("0.000") : _T("0.00");
+		rows.push_back({ _T("涨跌额"), diffStr, changeColor });
+
+		// 5. 成交量
+		STOCK::Volume volLots = item.volume / 100;
+		CString volStr = CCommon::FormatVolumeInt(static_cast<double>(volLots)) + _T("手");
+		rows.push_back({ _T("成交量"), volStr, COLOR_TEXT_PRIMARY });
+
+		// 6. 成交额
+		double amount = item.amount;
+		if (amount <= 0)
+			amount = static_cast<double>(item.volume) * item.price;
+		CString amountStr = CCommon::FormatAmount(amount);
+		rows.push_back({ _T("成交额"), amountStr, COLOR_TEXT_PRIMARY });
+	}
+
+	// 布局与绘制悬浮卡片
+	int padX = g_data.RDPI(8);
+	int padY = g_data.RDPI(6);
+	int rowH = g_data.RDPI(17);
+	int minCardW = g_data.RDPI(135);
+
+	// 计算所需宽度（自适应各行文本最大宽度）
+	int maxRowW = minCardW;
+	for (const auto& r : rows)
+	{
+		CSize lblSz = memDC.GetTextExtent(r.label);
+		CSize valSz = memDC.GetTextExtent(r.value);
+		int reqW = lblSz.cx + valSz.cx + padX * 2 + g_data.RDPI(14);
+		if (reqW > maxRowW)
+			maxRowW = reqW;
+	}
+	int cardW = maxRowW;
+	int cardH = padY * 2 + static_cast<int>(rows.size()) * rowH;
+
+	// 悬停卡片位置：当十字光标位于右半区时，卡片显示在左侧；当光标位于左半区时，卡片显示在右侧
+	int cardX = 0;
+	if (hoverX > ctx.chartWidth / 2)
+	{
+		cardX = g_data.RDPI(6);
+	}
+	else
+	{
+		cardX = ctx.chartWidth - cardW - g_data.RDPI(6);
+	}
+	int cardY = ctx.priceChartTop + g_data.RDPI(6);
+
+	CRect cardRect(cardX, cardY, cardX + cardW, cardY + cardH);
+
+	// 绘制卡片背景与深色边框
+	memDC.FillSolidRect(cardRect, RGB(22, 26, 36));
+	memDC.Draw3dRect(cardRect, RGB(55, 62, 78), RGB(55, 62, 78));
+
+	// 绘制各行数据
+	for (size_t i = 0; i < rows.size(); i++)
+	{
+		const auto& r = rows[i];
+		int currY = cardY + padY + static_cast<int>(i) * rowH;
+
+		// 标签（左对齐，灰色调）
+		memDC.SetTextColor(COLOR_TEXT_MUTED);
+		memDC.SetBkMode(TRANSPARENT);
+		memDC.TextOut(cardX + padX, currY, r.label);
+
+		// 数值（右对齐，带语义颜色）
+		CSize valSz = memDC.GetTextExtent(r.value);
+		int valX = cardX + cardW - padX - valSz.cx;
+		memDC.SetTextColor(r.color);
+		memDC.TextOut(valX, currY, r.value);
+	}
 }
 
 void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover)
