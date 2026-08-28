@@ -50,6 +50,7 @@ jobs:
           path: |
             utilities_build.log
             stock_build.log
+          if-no-files-found: ignore
 
       - name: Package Stock_x64
         shell: pwsh
