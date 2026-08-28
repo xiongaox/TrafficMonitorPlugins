@@ -32,23 +32,13 @@ jobs:
 
       - name: Build utilities (${{ matrix.platform }})
         run: |
-          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}\" /m /fl /flp:logfile=utilities_${{ matrix.platform }}.log
+          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (${{ matrix.platform }})
-        id: build_stock
         run: |
-          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}\" /m /fl /flp:logfile=stock_${{ matrix.platform }}.log
-
-      - name: Print Build Errors if Failed
-        if: failure()
-        shell: pwsh
-        run: |
-          if (Test-Path "stock_${{ matrix.platform }}.log") {
-              Get-Content "stock_${{ matrix.platform }}.log" | Select-String -Pattern "error ", "fatal error", "FAILED" -Context 2,2
-          }
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Package ${{ matrix.pkg_name }}
-        if: success()
         shell: pwsh
         run: |
           $dist = "dist\${{ matrix.pkg_name }}"
@@ -65,17 +55,8 @@ jobs:
           Compress-Archive -Path "$dist\*" -DestinationPath "${{ matrix.pkg_name }}.zip" -Force
 
       - name: Upload ${{ matrix.pkg_name }} Artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.pkg_name }}
           path: ${{ matrix.pkg_name }}.zip
           retention-days: 30
-
-      - name: Upload Build Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-${{ matrix.pkg_name }}
-          path: "*.log"
-          retention-days: 7
