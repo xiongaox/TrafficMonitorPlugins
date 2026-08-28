@@ -1412,6 +1412,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int dragYAxisWidth = g_data.RDPI(50);
 		const int dragStockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
 		const int dragChartLeft = dragStockListWidth + dragYAxisWidth;
+		const int dragHeaderHeight = g_data.RDPI(26);  // 标题栏
 		const int dragIndexBarHeight = g_data.RDPI(36);
 		if (m_viewMode != UI_VIEW_OVERVIEW && point.x >= dragChartLeft && point.x < dragChartWidth && point.y >= dragHeaderHeight && point.y < dragRect.Height() - dragIndexBarHeight)
 		{
