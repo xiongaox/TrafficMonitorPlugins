@@ -25,16 +25,10 @@ jobs:
           vs-version: '[17.0, 18.0)'
 
       - name: Build utilities (x64)
-        shell: pwsh
-        run: |
-          $p = Start-Process -FilePath "msbuild.exe" -ArgumentList "utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir=${{ github.workspace }}/ /v:m" -NoNewWindow -PassThru -Wait
-          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+        run: msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (x64)
-        shell: pwsh
-        run: |
-          $p = Start-Process -FilePath "msbuild.exe" -ArgumentList "Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir=${{ github.workspace }}/ /v:m" -NoNewWindow -PassThru -Wait
-          if ($p.ExitCode -ne 0) { exit $p.ExitCode }
+        run: msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Package Stock_x64
         shell: pwsh
