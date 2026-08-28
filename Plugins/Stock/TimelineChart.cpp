@@ -401,7 +401,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			areaPath.CloseFigure();
 
 			Gdiplus::RectF gradRect(
-				0,
+				0.0f,
 				static_cast<float>(ctx.priceChartTop),
 				static_cast<float>(ctx.chartWidth),
 				static_cast<float>(ctx.priceChartHeight)
@@ -419,16 +419,15 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		if (hover.showBollBands && midPoints.size() >= 2)
 		{
 			Gdiplus::Pen upperPen(Gdiplus::Color(190, 248, 113, 113), 1.1f);
-			Gdiplus::REAL dashValues[] = { 4.0f, 3.0f };
-			upperPen.SetDashPattern(dashValues, 2);
+			upperPen.SetDashStyle(Gdiplus::DashStyleDash);
 			graphics.DrawCurve(&upperPen, upperPoints.data(), static_cast<int>(upperPoints.size()), 0.25f);
 
 			Gdiplus::Pen midPen(Gdiplus::Color(190, 96, 165, 250), 1.1f);
-			midPen.SetDashPattern(dashValues, 2);
+			midPen.SetDashStyle(Gdiplus::DashStyleDash);
 			graphics.DrawCurve(&midPen, midPoints.data(), static_cast<int>(midPoints.size()), 0.25f);
 
 			Gdiplus::Pen lowerPen(Gdiplus::Color(190, 52, 211, 153), 1.1f);
-			lowerPen.SetDashPattern(dashValues, 2);
+			lowerPen.SetDashStyle(Gdiplus::DashStyleDash);
 			graphics.DrawCurve(&lowerPen, lowerPoints.data(), static_cast<int>(lowerPoints.size()), 0.25f);
 		}
 
