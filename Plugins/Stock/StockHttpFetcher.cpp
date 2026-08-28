@@ -178,7 +178,7 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",day,,," + std::to_wstring(days) + L",qfq";
 	CString strHeaders = _T("Referer: https://finance.qq.com");
 	bool ok = CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
-	if (ok && outResp.find("\"data\"") != std::string::npos && outResp.find(CCommon::UnicodeToStr(code)) != std::string::npos)
+	if (ok && outResp.find("\"data\"") != std::string::npos && outResp.find(CCommon::UnicodeToStr(code.c_str())) != std::string::npos)
 	{
 		return true;
 	}

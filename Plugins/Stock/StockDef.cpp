@@ -1163,16 +1163,16 @@ static std::vector<STOCK::KLinePoint> ParseKLinePointsFromJson(const std::string
 		yyjson_val* dataVal = yyjson_obj_get(root, "data");
 		if (dataVal != nullptr && yyjson_is_obj(dataVal))
 		{
-			std::string stockCodeStr = CCommon::UnicodeToStr(stock_id);
+			std::string stockCodeStr = CCommon::UnicodeToStr(stock_id.c_str());
 			yyjson_val* stockObj = yyjson_obj_get(dataVal, stockCodeStr.c_str());
 			if (stockObj == nullptr)
 			{
 				yyjson_obj_iter dataIter;
 				yyjson_obj_iter_init(dataVal, &dataIter);
 				yyjson_val* keyVal;
-				yyjson_val* valVal;
-				while ((keyVal = yyjson_obj_iter_next(&dataIter, &valVal)))
+				while ((keyVal = yyjson_obj_iter_next(&dataIter)))
 				{
+					yyjson_val* valVal = yyjson_obj_iter_get_val(keyVal);
 					if (valVal != nullptr && yyjson_is_obj(valVal))
 					{
 						stockObj = valVal;

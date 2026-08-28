@@ -71,6 +71,7 @@ public:
 	static std::wstring StrToUnicode(const char* str, bool utf8 = false);
 
 	static std::string UnicodeToStr(const wchar_t* wstr, bool utf8 = false);
+	static std::string UnicodeToStr(const std::wstring& wstr, bool utf8 = false);
 
 	//获取URL的内容
 	static bool GetURL(const std::wstring& url, std::string& result, bool utf8 = false, LPCTSTR pstrAgent = NULL, const LPCTSTR headers = NULL, DWORD dwHeadersLength = 0);

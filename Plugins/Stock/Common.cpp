@@ -35,6 +35,11 @@ std::string CCommon::UnicodeToStr(const wchar_t* wstr, bool utf8)
 	return result;
 }
 
+std::string CCommon::UnicodeToStr(const std::wstring& wstr, bool utf8)
+{
+	return UnicodeToStr(wstr.c_str(), utf8);
+}
+
 bool CCommon::GetURL(const std::wstring& url, std::string& result, bool utf8, LPCTSTR user_agent, LPCTSTR headers, DWORD dwHeadersLength)
 {
 	(void)utf8;
