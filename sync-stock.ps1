@@ -38,7 +38,8 @@ Write-Host "[*] Target Commit: $($localHead.Substring(0, 7))" -ForegroundColor G
 # Setup headers
 $headers = @{"User-Agent"="PowerShell"}
 if ($env:GITHUB_TOKEN) {
-    $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+    $tokenVal = $env:GITHUB_TOKEN.Trim()
+    $headers["Authorization"] = if ($tokenVal.StartsWith("Bearer ") -or $tokenVal.StartsWith("token ")) { $tokenVal } else { "token $tokenVal" }
 }
 
 # 2. Wait for GitHub Actions (unless DirectDownload)
@@ -59,9 +60,9 @@ if (-not $DirectDownload) {
                 }
             }
         } catch {
-            if ($_.Exception.Message -match "403" -or $_.Exception.Message -match "rate limit") {
+            if ($_.Exception.Message -match "403" -or $_.Exception.Message -match "401" -or $_.Exception.Message -match "rate limit") {
                 $apiRateLimited = $true
-                Write-Host "[!] GitHub API rate limit reached (anonymous limit 60/hr)." -ForegroundColor Yellow
+                Write-Host "[!] GitHub API rate limit or auth exception." -ForegroundColor Yellow
                 Write-Host "[*] Falling back to direct release download..." -ForegroundColor Cyan
                 break
             }
