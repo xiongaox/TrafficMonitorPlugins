@@ -29,8 +29,14 @@ jobs:
           msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (x64)
+        shell: pwsh
         run: |
-          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
+          & msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" 2>&1 | Tee-Object -FilePath "stock_build.log"
+          $buildLog = Get-Content "stock_build.log" -Raw
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Stock Build Log`n`n\`\`\`text`n$buildLog`n\`\`\`"
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Package Stock_x64
         shell: pwsh
