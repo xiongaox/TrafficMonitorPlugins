@@ -32,17 +32,16 @@ static Price GetJsonPrice(yyjson_val* obj, const char* key);
 
 void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vector<std::wstring>& codes)
 {
-	// 只清空本次要更新的非A股代码，避免覆盖A股通过腾讯API已获取的数据
 	ClearRealtimeData(codes);
 
-	if (json == "")
+	if (json.empty())
 	{
 		CCommon::WriteLog("Response is EMPTY!", g_data.m_log_path.c_str());
 		return;
 	}
 
 	std::vector<std::string> lines = CCommon::split(CCommon::removeChar(json, '\n'), ";");
-	if (lines.size() < 1)
+	if (lines.empty())
 	{
 		CCommon::WriteLog("json is INVALID! lines.size < 1", g_data.m_log_path.c_str());
 		return;
@@ -50,39 +49,59 @@ void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vec
 
 	for (std::string line : lines)
 	{
-		if (line.empty())
+		if (line.empty()) continue;
+
+		// 1. 腾讯格式: v_sh600519="1~贵州茅台~600519~1500.00~1490.00~1495.00~..."
+		if (line.find("v_") == 0 || (line.find("=") != std::string::npos && line.find("~") != std::string::npos))
 		{
-			continue;
-		}
-		line = CCommon::removeChar(CCommon::removeStr(line, "var hq_str_"), '\"');
+			size_t pos = line.find("=\"");
+			if (pos == std::string::npos) pos = line.find("=");
+			if (pos == std::string::npos) continue;
 
-		std::vector<std::string> item_arr = CCommon::split(line, '=');
-		if (item_arr.size() <= 0)
+			std::string key_str = line.substr(0, pos);
+			if (key_str.substr(0, 2) == "v_")
+				key_str = key_str.substr(2);
+
+			if (key_str.find("r_hk") == 0)
+				key_str = "rt_hk" + key_str.substr(4);
+
+			std::wstring key = CCommon::StrToUnicode(key_str.c_str());
+			auto stockData = getStock(key);
+			if (!stockData) continue;
+
+			stockData->info.code = key;
+
+			std::string values = line.substr(pos + (line[pos + 1] == '\"' ? 2 : 1));
+			if (!values.empty() && values.back() == '\"')
+				values.pop_back();
+
+			std::vector<std::string> data_arr = CCommon::split(values, "~");
+			if (data_arr.size() >= 30)
+			{
+				stockData->info.is_ok = true;
+				stockData->info.LoadTencent(key, data_arr);
+				stockData->UpdateOrderPriceAccum();
+			}
+		}
+		// 2. 新浪格式: var hq_str_sh600519="贵州茅台,1495.00,1490.00,1500.00,..."
+		else
 		{
-			CCommon::WriteLog("json is INVALID! item_arr.size <= 0", g_data.m_log_path.c_str());
-			continue;
+			line = CCommon::removeChar(CCommon::removeStr(line, "var hq_str_"), '\"');
+
+			std::vector<std::string> item_arr = CCommon::split(line, '=');
+			if (item_arr.size() < 2) continue;
+
+			std::wstring key = CCommon::StrToUnicode(item_arr[0].c_str());
+			auto stockData = getStock(key);
+			if (!stockData) continue;
+			stockData->info.code = key;
+			stockData->info.is_ok = true;
+
+			std::string data = item_arr[1];
+			std::vector<std::string> data_arr = CCommon::split(data, ",");
+			stockData->info.Load(key, data_arr);
+			stockData->UpdateOrderPriceAccum();
 		}
-
-		std::wstring key = CCommon::StrToUnicode(item_arr[0].c_str());
-		auto stockData = getStock(key);
-		stockData->info.code = CCommon::StrToUnicode(item_arr[0].c_str());
-
-		stockData->info.is_ok = item_arr.size() >= 2;
-
-		if (!stockData->info.is_ok)
-		{
-			CCommon::WriteLog("json is INVALID! stockData->info.is_ok =false", g_data.m_log_path.c_str());
-			continue;
-		}
-
-		std::string data = item_arr[1];
-
-		std::vector<std::string> data_arr = CCommon::split(data, ",");
-
-		stockData->info.Load(key, data_arr);
-
-		// 更新五档挂单变化量
-		stockData->UpdateOrderPriceAccum();
 	}
 }
 
@@ -681,6 +700,84 @@ void STOCK::StockInfo::Load(std::wstring key, std::vector<std::string> data_arr)
 	}
 }
 
+void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::string>& data)
+{
+	// 腾讯格式:
+	// [0]=市场 [1]=名称 [2]=代码 [3]=现价 [4]=昨收 [5]=今开 [6]=成交量(手)
+	// [7]=外盘(手) [8]=内盘(手)
+	// [9..18]=买一价,买一量,买二价,买二量,买三价,买三量,买四价,买四量,买五价,买五量
+	// [19..28]=卖一价,卖一量,卖二价,卖二量,卖三价,卖三量,卖四价,卖四量,卖五价,卖五量
+	// [29]=最近逐笔 [30]=时间 [31]=涨跌额 [32]=涨跌幅 [33]=最高 [34]=最低
+	// [35]=价格/成交量/成交额 [36]=成交量(手) [37]=成交额(万元) [38]=换手率(%)
+	// [39]=市盈率 [40]=最高 [41]=最低 [42]=振幅 [43]=流通市值(亿) [44]=总市值(亿)
+	// [45]=市净率 [46]=涨停价 [47]=跌停价 [48]=量比
+	if (data.size() < 30) return;
+
+	displayName = CCommon::StrToUnicode(data[1].c_str());
+	currentPrice = { convert<Price>(data[3]) };
+	prevClosePrice = { convert<Price>(data[4]) };
+	openPrice = { convert<Price>(data[5]) };
+	volume = { convert<Volume>(data[6]) * 100 };
+	if (data.size() > 7 && !data[7].empty())
+		outerVolume = { convert<Volume>(data[7]) * 100 };
+	if (data.size() > 8 && !data[8].empty())
+		innerVolume = { convert<Volume>(data[8]) * 100 };
+
+	// 买五档
+	for (int i = 0; i < 5; i++)
+	{
+		int pIdx = 9 + i * 2;
+		int vIdx = 10 + i * 2;
+		if (data.size() > (size_t)vIdx)
+		{
+			bidLevels[i] = { convert<Price>(data[pIdx]), convert<Volume>(data[vIdx]) * 100 };
+		}
+	}
+
+	// 卖五档
+	for (int i = 0; i < 5; i++)
+	{
+		int pIdx = 19 + i * 2;
+		int vIdx = 20 + i * 2;
+		if (data.size() > (size_t)vIdx)
+		{
+			askLevels[i] = { convert<Price>(data[pIdx]), convert<Volume>(data[vIdx]) * 100 };
+		}
+	}
+
+	if (data.size() > 33) highPrice = { convert<Price>(data[33]) };
+	if (data.size() > 34) lowPrice = { convert<Price>(data[34]) };
+
+	if (data.size() > 37 && !data[37].empty())
+		turnover = { convert<Amount>(data[37]) * 10000.0 }; // 万元 -> 元
+
+	if (data.size() > 38 && !data[38].empty())
+		turnoverRate = { convert<Amount>(data[38]) };
+
+	if (data.size() > 44 && !data[44].empty() && currentPrice > 0)
+	{
+		double flowMarketValue = atof(data[44].c_str());
+		if (flowMarketValue > 0)
+		{
+			circulatingAShares = static_cast<STOCK::Volume>(flowMarketValue / currentPrice * 100000000.0);
+		}
+	}
+
+	Price upperLimit = abs(highPrice - prevClosePrice);
+	Price lowerLimit = abs(lowPrice - prevClosePrice);
+	priceLimit = max(upperLimit, lowerLimit);
+
+	UpdateDisplayFields();
+
+	if (iopv > 0)
+	{
+		iopvPremium = currentPrice - iopv;
+		iopvPremiumRate = iopvPremium / iopv * 100;
+		if (iopvPrevClose > 0)
+			iopvChange = (iopv - iopvPrevClose) / iopvPrevClose * 100;
+	}
+}
+
 void STOCK::StockInfo::LoadMG(std::vector<std::string> data, size_t size)
 {
 	if (size < _DATA_LEN_MG)
@@ -1003,97 +1100,192 @@ void STOCK::StockData::addTimelinePoint(const CString& json_data)
 void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<TimelinePoint>& outPoints)
 {
 	std::string _json_data = CCommon::UnicodeToStr(json_data);
+	if (_json_data.empty()) return;
+
 	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
 	if (doc != nullptr)
 	{
 		yyjson_val* root = yyjson_doc_get_root(doc);
-		if (root == nullptr)
+		if (root != nullptr)
 		{
-			yyjson_doc_free(doc);
-			return;
-		}
-
-		yyjson_val* result = yyjson_obj_get(root, "result");
-		if (result == nullptr)
-		{
-			yyjson_doc_free(doc);
-			return;
-		}
-
-		yyjson_val* data = yyjson_obj_get(result, "data");
-		if (data != nullptr && yyjson_is_arr(data))
-		{
-			yyjson_val* item;
-			yyjson_arr_iter iter;
-			yyjson_arr_iter_init(data, &iter);
-			while ((item = yyjson_arr_iter_next(&iter)))
+			// 1. 新浪格式: { "result": { "data": [ { "m": "09:30", "p": "...", "v": "..." }, ... ] } }
+			yyjson_val* result = yyjson_obj_get(root, "result");
+			if (result != nullptr)
 			{
-				if (item != nullptr)
+				yyjson_val* data = yyjson_obj_get(result, "data");
+				if (data != nullptr && yyjson_is_arr(data))
 				{
-					TimelinePoint point = TimelinePoint();
-					point.time = utilities::JsonHelper::GetJsonString(item, "m");
-					point.volume = GetJsonVolume(item, "v");
-					point.price = GetJsonPrice(item, "p");
-					point.averagePrice = GetJsonPrice(item, "avg_p");
-					point.amount = point.price * point.volume;
-					outPoints.push_back(point);
-				}
-			}
-		}
-
-		// 解析IOPV时序数据，按最近时间匹配到分时点
-		yyjson_val* iopvTimeline = yyjson_obj_get(result, "iopv_timeline");
-		if (iopvTimeline && yyjson_is_arr(iopvTimeline) && !outPoints.empty())
-		{
-			// 收集IOPV时序点
-			struct IopvTimePoint { std::string time; Price iopv; };
-			std::vector<IopvTimePoint> iopvPoints;
-
-			yyjson_val* iopvItem;
-			yyjson_arr_iter iopvIter;
-			yyjson_arr_iter_init(iopvTimeline, &iopvIter);
-			while ((iopvItem = yyjson_arr_iter_next(&iopvIter)))
-			{
-				if (!iopvItem || !yyjson_is_obj(iopvItem)) continue;
-				IopvTimePoint pt;
-				pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "m");
-				if (pt.time.empty())
-					pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "time");
-				pt.iopv = GetJsonPrice(iopvItem, "iopv");
-				if (!pt.time.empty() && pt.iopv > 0)
-					iopvPoints.push_back(pt);
-			}
-
-			// 按最近时间匹配：对每个分时点，找到时间最接近的IOPV点
-			if (!iopvPoints.empty())
-			{
-				// IOPV点按时间排序，用双指针高效匹配
-				for (auto& tp : outPoints)
-				{
-					Price bestIopv = 0;
-					int bestDist = INT_MAX;
-					for (const auto& ip : iopvPoints)
+					yyjson_val* item;
+					yyjson_arr_iter iter;
+					yyjson_arr_iter_init(data, &iter);
+					while ((item = yyjson_arr_iter_next(&iter)))
 					{
-						// 时间字符串长度不同时跳过
-						if (tp.time.size() != ip.time.size())
-							continue;
-						int dist = 0;
-						for (size_t i = 0; i < tp.time.size() && dist == 0; i++)
+						if (item != nullptr)
 						{
-							if (tp.time[i] != ip.time[i])
-								dist = abs(tp.time[i] - ip.time[i]);
-						}
-						if (dist < bestDist)
-						{
-							bestDist = dist;
-							bestIopv = ip.iopv;
+							TimelinePoint point = TimelinePoint();
+							point.time = utilities::JsonHelper::GetJsonString(item, "m");
+							point.volume = GetJsonVolume(item, "v");
+							point.price = GetJsonPrice(item, "p");
+							point.averagePrice = GetJsonPrice(item, "avg_p");
+							point.amount = point.price * point.volume;
+							outPoints.push_back(point);
 						}
 					}
-					tp.iopv = bestIopv;
+				}
+
+				// 解析IOPV时序数据，按最近时间匹配到分时点
+				yyjson_val* iopvTimeline = yyjson_obj_get(result, "iopv_timeline");
+				if (iopvTimeline && yyjson_is_arr(iopvTimeline) && !outPoints.empty())
+				{
+					struct IopvTimePoint { std::string time; Price iopv; };
+					std::vector<IopvTimePoint> iopvPoints;
+
+					yyjson_val* iopvItem;
+					yyjson_arr_iter iopvIter;
+					yyjson_arr_iter_init(iopvTimeline, &iopvIter);
+					while ((iopvItem = yyjson_arr_iter_next(&iopvIter)))
+					{
+						if (!iopvItem || !yyjson_is_obj(iopvItem)) continue;
+						IopvTimePoint pt;
+						pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "m");
+						if (pt.time.empty())
+							pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "time");
+						pt.iopv = GetJsonPrice(iopvItem, "iopv");
+						if (!pt.time.empty() && pt.iopv > 0)
+							iopvPoints.push_back(pt);
+					}
+
+					if (!iopvPoints.empty())
+					{
+						for (auto& tp : outPoints)
+						{
+							Price bestIopv = 0;
+							int bestDist = INT_MAX;
+							for (const auto& ip : iopvPoints)
+							{
+								if (tp.time.size() != ip.time.size())
+									continue;
+								int dist = 0;
+								for (size_t i = 0; i < tp.time.size() && dist == 0; i++)
+								{
+									if (tp.time[i] != ip.time[i])
+										dist = abs(tp.time[i] - ip.time[i]);
+								}
+								if (dist < bestDist)
+								{
+									bestDist = dist;
+									bestIopv = ip.iopv;
+								}
+							}
+							tp.iopv = bestIopv;
+						}
+					}
+				}
+			}
+			// 2. 腾讯格式: { "code": 0, "data": { "sh600519": { "data": { "minute": [ "0930 1500.00 123 184500.00", ... ] } } } }
+			// 3. 东方财富格式: { "data": { "trends": [ "2026-08-28 09:30,1500.00,1500.00,1500.00,1500.00,123,184500.00,1500.00", ... ] } }
+			else
+			{
+				yyjson_val* dataVal = yyjson_obj_get(root, "data");
+				if (dataVal != nullptr && yyjson_is_obj(dataVal))
+				{
+					// 查找包含 minute 的腾讯结构
+					yyjson_obj_iter dataIter;
+					yyjson_obj_iter_init(dataVal, &dataIter);
+					yyjson_val* keyVal;
+					while ((keyVal = yyjson_obj_iter_next(&dataIter)))
+					{
+						yyjson_val* stockObj = yyjson_obj_iter_get_val(keyVal);
+						if (stockObj && yyjson_is_obj(stockObj))
+						{
+							yyjson_val* innerData = yyjson_obj_get(stockObj, "data");
+							if (!innerData || !yyjson_is_obj(innerData))
+								innerData = stockObj;
+
+							yyjson_val* minuteArr = yyjson_obj_get(innerData, "minute");
+							if (minuteArr && yyjson_is_arr(minuteArr))
+							{
+								yyjson_val* minItem;
+								yyjson_arr_iter minIter;
+								yyjson_arr_iter_init(minuteArr, &minIter);
+								double cumVolume = 0.0;
+								double cumAmount = 0.0;
+								while ((minItem = yyjson_arr_iter_next(&minIter)))
+								{
+									const char* minStr = yyjson_get_str(minItem);
+									if (!minStr) continue;
+									std::vector<std::string> parts = CCommon::split(minStr, ' ');
+									if (parts.size() >= 2)
+									{
+										TimelinePoint pt;
+										std::string t = parts[0];
+										if (t.size() == 4)
+											pt.time = t.substr(0, 2) + ":" + t.substr(2, 2);
+										else
+											pt.time = t;
+										pt.price = static_cast<Price>(atof(parts[1].c_str()));
+										if (parts.size() >= 3)
+										{
+											double volVal = atof(parts[2].c_str());
+											pt.volume = static_cast<Volume>(volVal * 100);
+										}
+										if (parts.size() >= 4)
+										{
+											pt.amount = atof(parts[3].c_str());
+											cumAmount += pt.amount;
+											cumVolume += pt.volume;
+											if (cumVolume > 0)
+												pt.averagePrice = static_cast<Price>(cumAmount / cumVolume);
+											else
+												pt.averagePrice = pt.price;
+										}
+										else
+										{
+											pt.amount = pt.price * pt.volume;
+											pt.averagePrice = pt.price;
+										}
+										outPoints.push_back(pt);
+									}
+								}
+								break;
+							}
+						}
+					}
+
+					// 东方财富 trends
+					if (outPoints.empty())
+					{
+						yyjson_val* trendsArr = yyjson_obj_get(dataVal, "trends");
+						if (trendsArr && yyjson_is_arr(trendsArr))
+						{
+							yyjson_val* tItem;
+							yyjson_arr_iter tIter;
+							yyjson_arr_iter_init(trendsArr, &tIter);
+							while ((tItem = yyjson_arr_iter_next(&tIter)))
+							{
+								const char* tStr = yyjson_get_str(tItem);
+								if (!tStr) continue;
+								std::vector<std::string> parts = CCommon::split(tStr, ',');
+								if (parts.size() >= 8)
+								{
+									TimelinePoint pt;
+									std::string dt = parts[0];
+									if (dt.size() >= 16)
+										pt.time = dt.substr(11, 5);
+									else
+										pt.time = dt;
+									pt.price = static_cast<Price>(atof(parts[2].c_str()));
+									pt.volume = static_cast<Volume>(atof(parts[5].c_str()) * 100);
+									pt.amount = atof(parts[6].c_str());
+									pt.averagePrice = static_cast<Price>(atof(parts[7].c_str()));
+									outPoints.push_back(pt);
+								}
+							}
+						}
+					}
 				}
 			}
 		}
-
 		yyjson_doc_free(doc);
 	}
 }
@@ -1157,67 +1349,95 @@ static std::vector<STOCK::KLinePoint> ParseKLinePointsFromJson(const std::string
 		return points;
 	}
 
-	// 1. 腾讯前复权格式: { "code": 0, "data": { "sz159558": { "qfqday": [ ["2026-08-28","1.16","1.13","1.17","1.13","12278502"], ... ] } } }
+	// 1. 腾讯格式或东财格式: { "code": 0, "data": ... }
 	if (yyjson_is_obj(root))
 	{
 		yyjson_val* dataVal = yyjson_obj_get(root, "data");
 		if (dataVal != nullptr && yyjson_is_obj(dataVal))
 		{
-			std::string stockCodeStr = CCommon::UnicodeToStr(stock_id.c_str());
-			yyjson_val* stockObj = yyjson_obj_get(dataVal, stockCodeStr.c_str());
-			if (stockObj == nullptr)
+			// 1.1 检查是否为东方财富格式: data.klines
+			yyjson_val* eastmoneyKlines = yyjson_obj_get(dataVal, "klines");
+			if (eastmoneyKlines != nullptr && yyjson_is_arr(eastmoneyKlines))
 			{
-				yyjson_obj_iter dataIter;
-				yyjson_obj_iter_init(dataVal, &dataIter);
-				yyjson_val* keyVal;
-				while ((keyVal = yyjson_obj_iter_next(&dataIter)))
+				yyjson_val* item;
+				yyjson_arr_iter arrIter;
+				yyjson_arr_iter_init(eastmoneyKlines, &arrIter);
+				while ((item = yyjson_arr_iter_next(&arrIter)))
 				{
-					yyjson_val* valVal = yyjson_obj_iter_get_val(keyVal);
-					if (valVal != nullptr && yyjson_is_obj(valVal))
+					const char* line = yyjson_get_str(item);
+					if (!line) continue;
+					std::vector<std::string> values = CCommon::split(line, ',');
+					if (values.size() >= 6)
 					{
-						stockObj = valVal;
-						break;
+						STOCK::KLinePoint point;
+						point.day = values[0];
+						point.open = static_cast<Price>(atof(values[1].c_str()));
+						point.close = static_cast<Price>(atof(values[2].c_str()));
+						point.high = static_cast<Price>(atof(values[3].c_str()));
+						point.low = static_cast<Price>(atof(values[4].c_str()));
+						point.volume = static_cast<Volume>(atof(values[5].c_str()) * 100);
+						points.push_back(point);
 					}
 				}
 			}
-
-			if (stockObj != nullptr && yyjson_is_obj(stockObj))
+			// 1.2 腾讯前复权与普通格式
+			else
 			{
-				std::string qfqKey = "qfq" + periodKey;
-				yyjson_val* klineArr = yyjson_obj_get(stockObj, qfqKey.c_str());
-				if (klineArr == nullptr || !yyjson_is_arr(klineArr) || yyjson_arr_size(klineArr) == 0)
+				std::string stockCodeStr = CCommon::UnicodeToStr(stock_id.c_str());
+				yyjson_val* stockObj = yyjson_obj_get(dataVal, stockCodeStr.c_str());
+				if (stockObj == nullptr)
 				{
-					klineArr = yyjson_obj_get(stockObj, periodKey.c_str());
+					yyjson_obj_iter dataIter;
+					yyjson_obj_iter_init(dataVal, &dataIter);
+					yyjson_val* keyVal;
+					while ((keyVal = yyjson_obj_iter_next(&dataIter)))
+					{
+						yyjson_val* valVal = yyjson_obj_iter_get_val(keyVal);
+						if (valVal != nullptr && yyjson_is_obj(valVal))
+						{
+							stockObj = valVal;
+							break;
+						}
+					}
 				}
 
-				if (klineArr != nullptr && yyjson_is_arr(klineArr))
+				if (stockObj != nullptr && yyjson_is_obj(stockObj))
 				{
-					yyjson_val* item;
-					yyjson_arr_iter arrIter;
-					yyjson_arr_iter_init(klineArr, &arrIter);
-					while ((item = yyjson_arr_iter_next(&arrIter)))
+					std::string qfqKey = "qfq" + periodKey;
+					yyjson_val* klineArr = yyjson_obj_get(stockObj, qfqKey.c_str());
+					if (klineArr == nullptr || !yyjson_is_arr(klineArr) || yyjson_arr_size(klineArr) == 0)
 					{
-						// 腾讯格式数组项: [0]=day, [1]=open, [2]=close, [3]=high, [4]=low, [5]=volume(手)
-						if (item != nullptr && yyjson_is_arr(item) && yyjson_arr_size(item) >= 6)
+						klineArr = yyjson_obj_get(stockObj, periodKey.c_str());
+					}
+
+					if (klineArr != nullptr && yyjson_is_arr(klineArr))
+					{
+						yyjson_val* item;
+						yyjson_arr_iter arrIter;
+						yyjson_arr_iter_init(klineArr, &arrIter);
+						while ((item = yyjson_arr_iter_next(&arrIter)))
 						{
-							STOCK::KLinePoint point;
-							yyjson_val* v0 = yyjson_arr_get(item, 0);
-							yyjson_val* v1 = yyjson_arr_get(item, 1);
-							yyjson_val* v2 = yyjson_arr_get(item, 2);
-							yyjson_val* v3 = yyjson_arr_get(item, 3);
-							yyjson_val* v4 = yyjson_arr_get(item, 4);
-							yyjson_val* v5 = yyjson_arr_get(item, 5);
+							// 腾讯格式数组项: [0]=day, [1]=open, [2]=close, [3]=high, [4]=low, [5]=volume(手)
+							if (item != nullptr && yyjson_is_arr(item) && yyjson_arr_size(item) >= 6)
+							{
+								STOCK::KLinePoint point;
+								yyjson_val* v0 = yyjson_arr_get(item, 0);
+								yyjson_val* v1 = yyjson_arr_get(item, 1);
+								yyjson_val* v2 = yyjson_arr_get(item, 2);
+								yyjson_val* v3 = yyjson_arr_get(item, 3);
+								yyjson_val* v4 = yyjson_arr_get(item, 4);
+								yyjson_val* v5 = yyjson_arr_get(item, 5);
 
-							if (v0 && yyjson_is_str(v0))
-								point.day = yyjson_get_str(v0);
-							point.open = GetValPrice(v1);
-							point.close = GetValPrice(v2);
-							point.high = GetValPrice(v3);
-							point.low = GetValPrice(v4);
-							// 腾讯成交量单位为手，换算为股 (* 100)
-							point.volume = GetValVolume(v5) * 100;
+								if (v0 && yyjson_is_str(v0))
+									point.day = yyjson_get_str(v0);
+								point.open = GetValPrice(v1);
+								point.close = GetValPrice(v2);
+								point.high = GetValPrice(v3);
+								point.low = GetValPrice(v4);
+								point.volume = GetValVolume(v5) * 100;
 
-							points.push_back(point);
+								points.push_back(point);
+							}
 						}
 					}
 				}

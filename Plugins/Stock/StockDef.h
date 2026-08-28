@@ -386,6 +386,7 @@ namespace STOCK
 		}
 
 		void Load(std::wstring key, std::vector<std::string> data);
+		void LoadTencent(std::wstring key, const std::vector<std::string>& data);
 		void UpdateDisplayFields();  // 更新displayPrice/displayFluctuation等显示字段
 		void LoadMG(std::vector<std::string> data, size_t size);
 		void LoadAG(std::vector<std::string> data, size_t size);
