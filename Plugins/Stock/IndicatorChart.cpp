@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "IndicatorChart.h"
 #include "TimelineChart.h"
 #include "ChartColors.h"
@@ -196,7 +196,7 @@ void CIndicatorChart::DrawVolumeChartArea(CDC& memDC, const TimelineDrawContext&
 	int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 
 	CRect volumeTitleRect(0, areaTop, ctx.chartWidth, areaTop + titleH);
-	memDC.FillSolidRect(volumeTitleRect, RGB(245, 245, 245));
+	memDC.FillSolidRect(volumeTitleRect, COLOR_BG_HEADER);
 
 	CString perVolStr, perAmtStr;
 	bool isVolHovering = !hover.timelineVolumeTitleTip.IsEmpty();
@@ -231,7 +231,7 @@ void CIndicatorChart::DrawVolumeChartArea(CDC& memDC, const TimelineDrawContext&
 
 	int xPos = g_data.RDPI(4);
 	int centerY = areaTop + titleH / 2;
-	const COLORREF hoverBgColor = RGB(200, 220, 255);
+	const COLORREF hoverBgColor = RGB(38, 45, 60);
 
 	auto drawLabelValueHL = [&](const CString& labelText, const CString& valStr, COLORREF labelColor, COLORREF valueColor, bool highlight) {
 		memDC.SetTextColor(labelColor);
@@ -1669,7 +1669,9 @@ void CIndicatorChart::DrawVolumeChart(CDC& memDC, int x, int y, int width, int h
 
 		CPen highlightPen(PS_SOLID, 2, color);
 		CPen* pOldPen = memDC.SelectObject(&highlightPen);
+		CBrush* pOldBrush = static_cast<CBrush*>(memDC.SelectStockObject(NULL_BRUSH));
 		memDC.Rectangle(CRect(barX - 1, barY - 1, barX + barWidth + 1, y + height + 1));
+		memDC.SelectObject(pOldBrush);
 		memDC.SelectObject(pOldPen);
 	}
 }

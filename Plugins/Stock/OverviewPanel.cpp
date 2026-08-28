@@ -415,10 +415,7 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 				CRect btnRc(currentX + g_data.RDPI(4), rowY + g_data.RDPI(3),
 					currentX + colWidths[i] - g_data.RDPI(4), rowY + rowH - g_data.RDPI(3));
 				memDC.FillSolidRect(&btnRc, RGB(30, 34, 45));
-				CPen btnBorderPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
-				CPen* pOldBrd = memDC.SelectObject(&btnBorderPen);
-				memDC.Rectangle(&btnRc);
-				memDC.SelectObject(pOldBrd);
+				memDC.Draw3dRect(&btnRc, COLOR_DARK_GRAY_BORDER, COLOR_DARK_GRAY_BORDER);
 
 				// 绘制删除文字
 				CString delText = _T("删除");

@@ -793,7 +793,7 @@ void CKLineChart::DrawBollBands(CDC& memDC, const KLineDrawData& drawData)
 		if (prevUpperY >= 0 && prevLowerY >= 0 && prevX >= 0)
 		{
 			// 绘制梯形填充（用4个点构成的多边形）
-			CBrush fillBrush(RGB(240, 240, 220));
+			CBrush fillBrush(RGB(22, 28, 40));
 			CPoint pts[4] = {
 				CPoint(prevX, prevUpperY),
 				CPoint(barX, upperY),

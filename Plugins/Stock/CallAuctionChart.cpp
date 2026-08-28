@@ -39,7 +39,7 @@ void CCallAuctionChart::Draw(CDC& memDC, const TimelineDrawContext& ctx, const S
 
 	// ==================== 竖线网格（9:15-9:25，每5分钟） ====================
 	{
-		CPen gridPen(PS_SOLID, 1, RGB(220, 220, 220));
+		CPen gridPen(PS_SOLID, 1, COLOR_GRAY_GRID);
 		CPen* pOldPen = memDC.SelectObject(&gridPen);
 		for (int minute = startMinute; minute <= endMinute; minute += 5)
 		{
@@ -183,7 +183,7 @@ void CCallAuctionChart::Draw(CDC& memDC, const TimelineDrawContext& ctx, const S
 		int volMidY = ctx.volumeChartTop + volHalfHeight;  // 中线
 
 		// 中线分隔线
-		CPen midPen(PS_SOLID, 1, RGB(200, 200, 200));
+		CPen midPen(PS_SOLID, 1, COLOR_GRAY_MIDDLE);
 		CPen* pOldPen = memDC.SelectObject(&midPen);
 		memDC.MoveTo(0, volMidY);
 		memDC.LineTo(ctx.chartWidth, volMidY);

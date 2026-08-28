@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "TimelineChart.h"
 #include "ChartColors.h"
 #include "Common.h"
@@ -888,8 +888,10 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	int priceLabelY = dotY - hoverPriceSize.cy / 2;
 	priceLabelY = max(ctx.priceChartTop, min(priceLabelY, ctx.priceChartTop + ctx.priceChartHeight - hoverPriceSize.cy));
 	CRect priceBgRect(priceLabelX - g_data.RDPI(2), priceLabelY, priceLabelX + hoverPriceSize.cx + g_data.RDPI(2), priceLabelY + hoverPriceSize.cy);
-	memDC.FillSolidRect(priceBgRect, RGB(200, 220, 255));
+	memDC.FillSolidRect(priceBgRect, RGB(33, 40, 56));
+	memDC.Draw3dRect(priceBgRect, COLOR_DARK_GRAY_BORDER, COLOR_DARK_GRAY_BORDER);
 	memDC.SetTextColor(dotColor);
+	memDC.SetBkMode(TRANSPARENT);
 	memDC.TextOut(priceLabelX, priceLabelY, hoverPriceStr);
 
 	// 仅在副图为成交量(CJL)或竞价模式时绘制量柱十字光标和左侧刻度标签
@@ -918,8 +920,10 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 			int volLabelY = volBarY - volLabelSize.cy / 2;
 			volLabelY = max(ctx.volumeChartTop, min(volLabelY, ctx.volumeChartTop + ctx.volumeChartHeight - volLabelSize.cy));
 			CRect volBgRect(volLabelX - g_data.RDPI(2), volLabelY, volLabelX + volLabelSize.cx + g_data.RDPI(2), volLabelY + volLabelSize.cy);
-			memDC.FillSolidRect(volBgRect, RGB(200, 220, 255));
-			memDC.SetTextColor(COLOR_GRAY_TEXT);
+			memDC.FillSolidRect(volBgRect, RGB(33, 40, 56));
+			memDC.Draw3dRect(volBgRect, COLOR_DARK_GRAY_BORDER, COLOR_DARK_GRAY_BORDER);
+			memDC.SetTextColor(COLOR_WHITE);
+			memDC.SetBkMode(TRANSPARENT);
 			memDC.TextOut(volLabelX, volLabelY, volLabel);
 			memDC.SetViewportOrg(origOrg);
 		}
@@ -942,8 +946,9 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	timeLabelX = max(g_data.RDPI(2), min(timeLabelX, ctx.chartWidth - timeSize.cx - g_data.RDPI(2)));
 	int timeLabelY = ctx.positionY;
 	CRect timeBgRect(timeLabelX - g_data.RDPI(3), timeLabelY, timeLabelX + timeSize.cx + g_data.RDPI(3), timeLabelY + timeSize.cy);
-	memDC.FillSolidRect(timeBgRect, RGB(220, 235, 250));
-	memDC.SetTextColor(COLOR_BLACK);
+	memDC.FillSolidRect(timeBgRect, RGB(33, 40, 56));
+	memDC.Draw3dRect(timeBgRect, COLOR_DARK_GRAY_BORDER, COLOR_DARK_GRAY_BORDER);
+	memDC.SetTextColor(COLOR_WHITE);
 	memDC.SetBkMode(TRANSPARENT);
 	memDC.TextOut(timeLabelX, timeLabelY, timeStr);
 }
