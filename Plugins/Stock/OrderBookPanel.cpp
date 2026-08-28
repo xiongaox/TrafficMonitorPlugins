@@ -214,102 +214,78 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	int textY = y + max(0, (h - memDC.GetTextExtent(_T("Ay")).cy) / 2);
 
 	auto stockDataPtr = g_data.GetStockData(stockInfo.code);
-	if (lastNetRatioIt != m_lastNetRatioMap.end())
+	STOCK::Volume diff05 = 0;
+	double ratio05 = 0;
+	bool has05 = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(5, diff05, ratio05);
+
+	STOCK::Volume diff99 = 0;
+	double ratio99 = 0;
+	bool has99 = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(99, diff99, ratio99);
+
+	// 净比 05
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(lc.textX, textY, _T("净比 05: "));
+	int n05X = lc.textX + memDC.GetTextExtent(_T("净比 05: ")).cx;
+	if (has05)
 	{
-		double lastAbsNetRatio = std::abs(lastNetRatioIt->second);
-		if (absNetRatio > lastAbsNetRatio)
-		{
-			netRatioTrend = _T("↑");
-			m_lastNetRatioMap[stockId] = netRatio;
-			m_lastNetRatioTrendMap[stockId] = netRatioTrend;
-		}
-		else if (absNetRatio < lastAbsNetRatio)
-		{
-			netRatioTrend = _T("↓");
-			m_lastNetRatioMap[stockId] = netRatio;
-			m_lastNetRatioTrendMap[stockId] = netRatioTrend;
-		}
-		else
-		{
-			auto lastTrendIt = m_lastNetRatioTrendMap.find(stockId);
-			if (lastTrendIt != m_lastNetRatioTrendMap.end())
-				netRatioTrend = lastTrendIt->second;
-		}
+		COLORREF net05Color = diff05 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff05) / 100.0);
+		CString n05Val = CString(diff05 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+		memDC.SetTextColor(net05Color);
+		memDC.TextOut(n05X, textY, n05Val);
 	}
 	else
 	{
-		double previousRatio = 0;
-		if (stockDataPtr && stockDataPtr->GetPreviousInnerOuterTotalRatio(previousRatio))
-		{
-			netRatioTrend = CalcNetRatioTrend(netRatio, previousRatio);
-			if (!netRatioTrend.IsEmpty())
-				m_lastNetRatioTrendMap[stockId] = netRatioTrend;
-		}
-		m_lastNetRatioMap[stockId] = netRatio;
+		memDC.SetTextColor(COLOR_TEXT_MUTED);
+		memDC.TextOut(n05X, textY, _T("--"));
 	}
 
-	CString netDiffStr = CCommon::FormatVolumeInt(std::abs(netDiff));
-
-	int barY = lc.RowY(15);
-	int barH = lc.rowHeight;
-	CString netRatioLabel = _T("净比99:");
-	memDC.SetTextColor(netDiff > 0 ? COLOR_RED_UP : (netDiff < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK));
-	memDC.TextOut(lc.textX, barY + max(0, (barH - memDC.GetTextExtent(netRatioLabel).cy) / 2), netRatioLabel);
-	int barX = lc.textX + memDC.GetTextExtent(netRatioLabel).cx + g_data.RDPI(4);
-	int barW = lc.right - barX - g_data.RDPI(4);
-	if (barW > 0)
+	// 净比 99
+	if (has99)
 	{
-		DrawRatioBar(memDC, barX, barY, barW, barH, netRatio);
-
-		CString diffSign = netDiff >= 0 ? _T("+") : _T("-");
-		CString netRatioTxt;
-		netRatioTxt.Format(_T("%.2f%s"), std::abs(netRatio), netRatioTrend.GetString());
-		CString netDiffTxt;
-		netDiffTxt.Format(_T("%s%s"), diffSign.GetString(), netDiffStr.GetString());
-		DrawNetRatioBarText(memDC, barX, barY, barW, barH, netRatioTxt, netDiffTxt);
+		COLORREF net99Color = diff99 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff99) / 100.0);
+		CString n99Val = CString(diff99 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+		CString full99 = _T("99: ") + n99Val;
+		CSize full99Size = memDC.GetTextExtent(full99);
+		int n99X = lc.right - full99Size.cx - g_data.RDPI(6);
+		memDC.SetTextColor(COLOR_TEXT_DIM);
+		memDC.TextOut(n99X, textY, _T("99: "));
+		int n99ValX = n99X + memDC.GetTextExtent(_T("99: ")).cx;
+		memDC.SetTextColor(net99Color);
+		memDC.TextOut(n99ValX, textY, n99Val);
 	}
 }
 
 // ============================================================================
-// 绘制振幅（行16）
+// 绘制振幅与换手率（行13）
 // ============================================================================
-void COrderBookPanel::DrawAmplitude(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo,
+void COrderBookPanel::DrawStatsRow(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo,
 	const std::vector<STOCK::KLinePoint>& klineData)
 {
-	if (!klineData.empty())
+	(void)klineData;
+	int y = lc.RowY(13);
+	int h = lc.RowH(13);
+	int textY = y + max(0, (h - memDC.GetTextExtent(_T("Ay")).cy) / 2);
+
+	// 振幅
+	double amplitude = 0.0;
+	if (stockInfo.prevClosePrice > 0 && stockInfo.highPrice > 0 && stockInfo.lowPrice > 0)
 	{
-		int textXAmp = lc.left + g_data.RDPI(5) + 3;
-
-		CString ampTxt;
-		float fluctuation = stockInfo.highPrice - stockInfo.lowPrice;
-		float fluctuationPercent = stockInfo.prevClosePrice != 0 ? (fluctuation / stockInfo.prevClosePrice) * 100 : 0;
-
-		auto stockDataPtr2 = g_data.GetStockData(stockInfo.code);
-		auto* klinePtr2 = stockDataPtr2 ? stockDataPtr2->getKLineData() : nullptr;
-		double avgAmplitude5 = klinePtr2 ? klinePtr2->CalculateAverageAmplitude(5) : 0;
-		CString amp5Str;
-		if (avgAmplitude5 > 0)
-			amp5Str.Format(_T("%.2f%%"), avgAmplitude5);
-		else
-			amp5Str = _T("--");
-		ampTxt.Format(_T("振幅: 01:%.2f%% 05:%s"), fluctuationPercent, amp5Str.GetString());
-		memDC.SetTextColor(COLOR_BLACK);
-		memDC.TextOut(textXAmp, lc.RowY(16) + max(0, (lc.RowH(16) - memDC.GetTextExtent(ampTxt).cy) / 2), ampTxt);
+		amplitude = (stockInfo.highPrice - stockInfo.lowPrice) / stockInfo.prevClosePrice * 100.0;
 	}
-}
+	CString ampStr;
+	ampStr.Format(_T("振幅: %.2f%%"), amplitude);
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(lc.textX, textY, ampStr);
 
-// ============================================================================
-// 绘制换手率（行17）
-// ============================================================================
-void COrderBookPanel::DrawTurnoverRate(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
-{
-	CString turnoverTxt;
-	turnoverTxt.Format(_T("换手率: %.2f%%"), stockInfo.turnoverRate);
-	if (stockInfo.turnoverRate >= 5)
-		memDC.SetTextColor(COLOR_RED_UP);
-	else
-		memDC.SetTextColor(COLOR_GRAY_TEXT);
-	memDC.TextOut(lc.textX, lc.RowY(17) + max(0, (lc.RowH(17) - memDC.GetTextExtent(turnoverTxt).cy) / 2), turnoverTxt);
+	// 换手率
+	CString toStr;
+	toStr.Format(_T("换手: %.2f%%"), stockInfo.turnoverRate);
+	CSize toSize = memDC.GetTextExtent(toStr);
+	int toX = lc.right - toSize.cx - g_data.RDPI(6);
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(toX, textY, toStr);
 }
 
 // ============================================================================
