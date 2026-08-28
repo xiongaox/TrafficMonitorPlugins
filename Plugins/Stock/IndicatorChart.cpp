@@ -988,6 +988,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 			{
 				CPen dotPen(PS_DOT, 1, COLOR_GRAY_MIDDLE);
 				memDC.SelectObject(&dotPen);
+				memDC.SetBkMode(TRANSPARENT);
 				memDC.SetTextColor(COLOR_GRAY_TEXT);
 				for (int i = 1; i <= 2; i++)
 				{
@@ -1024,6 +1025,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 	{
 		const int totalPts = static_cast<int>(timelinePoint.size());
 		const int numVLines = 6;
+		memDC.SetBkMode(TRANSPARENT);
 		memDC.SetTextColor(COLOR_GRAY_TEXT);
 		int chartBottom = areaTop + areaHeight;
 		for (int i = 0; i <= numVLines; i++)
@@ -1259,6 +1261,7 @@ void CIndicatorChart::DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDra
 	memDC.SelectObject(pOldPen);
 	if (drawTimeLabels && totalPts > 0)
 	{
+		memDC.SetBkMode(TRANSPARENT);
 		memDC.SetTextColor(COLOR_GRAY_TEXT);
 		for (int i = 0; i <= numVLines; i++)
 		{

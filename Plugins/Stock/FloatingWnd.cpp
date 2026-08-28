@@ -521,41 +521,7 @@ void CFloatingWnd::OnPaint()
 
 	if (m_viewMode != UI_VIEW_OVERVIEW)
 	{
-		// 数据加载前也先把顶部按钮定位到目标标题栏，避免停留在初始坐标
 		{
-			const int titleH = g_data.RDPI(16);
-			int origVolTop = priceChartTop + priceChartHeight;
-			int origIndicatorTop = origVolTop + volumeChartHeight;
-			int origKdjTop = origIndicatorTop + macdChartHeight;
-			int btnW = yAxisWidth - g_data.RDPI(4);
-			int btnX = stockListWidth + g_data.RDPI(2);
-			int btnGap = g_data.RDPI(1);
-			// JZ/MA/BL在MACD区域
-			int macdAreaTop = origIndicatorTop + titleH;
-			int macdAreaBottom = origKdjTop;
-			int macdAreaH = max(1, macdAreaBottom - macdAreaTop);
-			int macdBtnH = max(g_data.RDPI(16), (macdAreaH - btnGap * 2) / 3);
-			int btn1Y = macdAreaTop;
-			int btn2Y = btn1Y + macdBtnH + btnGap;
-			int btn3Y = btn2Y + macdBtnH + btnGap;
-			SafeSetWindowPos(m_btnMA, btnX, btn1Y, btnW, macdBtnH);
-			SafeSetWindowPos(m_btnBoll, btnX, btn2Y, btnW, macdBtnH);
-			SafeSetWindowPos(m_btnIndicatorMACD, btnX, btn3Y, btnW, macdBtnH);
-			// KDJ/W&R/RSI在KDJ区域
-			int kdjAreaTop = origKdjTop + titleH;
-			int kdjAreaBottom = origKdjTop + kdjChartHeight;
-			int kdjAreaH = max(1, kdjAreaBottom - kdjAreaTop);
-			int kdjBtnH = max(g_data.RDPI(16), (kdjAreaH - btnGap * 2) / 3);
-			int btn4Y = kdjAreaTop;
-			int btn5Y = btn4Y + kdjBtnH + btnGap;
-			int btn6Y = min(btn5Y + kdjBtnH + btnGap, kdjAreaBottom - kdjBtnH);
-			SafeSetWindowPos(m_btnIndicatorKDJ, btnX, btn4Y, btnW, kdjBtnH);
-			SafeSetWindowPos(m_btnIndicatorWR, btnX, btn5Y, btnW, kdjBtnH);
-			SafeSetWindowPos(m_btnIndicatorRSI, btnX, btn6Y, btnW, kdjBtnH);
-			SafeShowWindow(m_btnIndicatorCJL, false);
-			// 强制重绘自绘按钮，避免初始零尺寸创建后不显示
-			m_btnIndicatorMACD.Invalidate();
-
 			int closeBtnW = g_data.RDPI(20);
 			int closeBtnH = g_data.RDPI(18);
 			int headerBtnTop = g_data.RDPI(2);
@@ -2396,7 +2362,12 @@ void CFloatingWnd::OnBnClickedKLineBtn()
 
 void CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn()
 {
-	// MACD按钮仅展示信号颜色，不切换指标
+	m_timelineIndicator = TimelineIndicator::MACD;
+	m_timelineMacdTitleTip.Empty();
+	m_timelineKdjTitleTip.Empty();
+	m_timelineWrTitleTip.Empty();
+	m_timelineRsiTitleTip.Empty();
+	Invalidate();
 }
 
 void CFloatingWnd::OnBnClickedChipPeakBtn()
@@ -2448,9 +2419,6 @@ void CFloatingWnd::SafeSetWindowPos(CWnd& wnd, int x, int y, int cx, int cy)
 	if (!wnd.GetSafeHwnd()) return;
 	CRect curRect;
 	wnd.GetWindowRect(&curRect);
-	wnd.ScreenToClient(&curRect);
-	// GetWindowRect返回屏幕坐标，需要转换
-	CRect parentRect;
 	CWnd* parent = wnd.GetParent();
 	if (parent)
 	{
@@ -2458,7 +2426,8 @@ void CFloatingWnd::SafeSetWindowPos(CWnd& wnd, int x, int y, int cx, int cy)
 	}
 	if (curRect.left != x || curRect.top != y || curRect.Width() != cx || curRect.Height() != cy)
 	{
-		wnd.SetWindowPos(nullptr, x, y, cx, cy, SWP_NOZORDER | SWP_NOREDRAW);
+		wnd.SetWindowPos(nullptr, x, y, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE);
+		wnd.Invalidate();
 	}
 }
 
@@ -2485,11 +2454,17 @@ void CFloatingWnd::SafeSetButtonStyle(CButton& btn, UINT style)
 
 HBRUSH CFloatingWnd::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-	return CWnd::OnCtlColor(pDC, pWnd, nCtlColor);
+	(void)pWnd; (void)nCtlColor;
+	pDC->SetBkColor(COLOR_BG_HEADER);
+	pDC->SetTextColor(COLOR_WHITE);
+	pDC->SetBkMode(TRANSPARENT);
+	static CBrush s_darkBrush(COLOR_BG_HEADER);
+	return s_darkBrush;
 }
 
 void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 {
+	(void)nIDCtl;
 	if (lpDrawItemStruct->CtlType != ODT_BUTTON) return;
 	UINT nID = lpDrawItemStruct->CtlID;
 
@@ -2571,9 +2546,31 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	dc.LineTo(rect.left, rect.bottom - 1);
 	dc.SelectObject(pOldPen);
 
-	// 绘制文字
+	// 明确获取按钮文本
 	CString text;
-	GetDlgItemText(nID, text);
+	if (nID == IDC_CALL_AUCTION_BTN) text = _T("竞价");
+	else if (nID == IDC_TIMELINE_BTN) text = _T("分时");
+	else if (nID == IDC_MIN5_KLINE_BTN) text = _T("5分");
+	else if (nID == IDC_MIN30_KLINE_BTN) text = _T("30分");
+	else if (nID == IDC_KLINE_BTN) text = _T("日K");
+	else if (nID == IDC_CLOSE_BTN) text = _T("✕");
+	else if (nID == IDC_EXPAND_BTN) text = m_expandedMode ? _T("△") : _T("□");
+	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) text = m_showStockList ? _T("|>") : _T("<|");
+	else if (nID == IDC_CHIP_PEAK_BTN) text = _T("CM");
+	else if (nID == IDC_ORDER_BOOK_BTN) text = _T("PK");
+	else if (nID == IDC_INDICATOR_MACD_BTN) text = _T("VOL");
+	else if (nID == IDC_INDICATOR_MACD_SIGNAL_BTN) text = _T("MACD");
+	else if (nID == IDC_INDICATOR_KDJ_BTN) text = _T("KDJ");
+	else if (nID == IDC_INDICATOR_RSI_BTN) text = _T("RSI");
+	else if (nID == IDC_INDICATOR_WR_BTN) text = _T("W&R");
+	else if (nID == IDC_ZOOM_IN_BTN) text = _T(">");
+	else if (nID == IDC_ZOOM_OUT_BTN) text = _T("<");
+	else
+	{
+		CWnd* pBtn = CWnd::FromHandle(lpDrawItemStruct->hwndItem);
+		if (pBtn) pBtn->GetWindowText(text);
+	}
+
 	dc.SetBkMode(TRANSPARENT);
 	dc.SetTextColor(textColor);
 
@@ -2835,7 +2832,7 @@ void CFloatingWnd::OnBnClickedZoomInBtn()
 
 void CFloatingWnd::OnBnClickedIndicatorMACDBtn()
 {
-	// CJL按钮已移除（成交量图始终显示在下方），此处理程序不再使用
+	m_timelineIndicator = TimelineIndicator::CJL;
 	m_timelineMacdTitleTip.Empty();
 	m_timelineKdjTitleTip.Empty();
 	m_timelineWrTitleTip.Empty();
