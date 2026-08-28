@@ -14,8 +14,8 @@ public:
     // 绘制管理股票栏（关联股票状态栏，位于标题栏下方）
     void DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int singleBarHeight, const std::wstring& stockId, int viewMode);
 
-    // 绘制系统状态栏（底部单行）
-    void DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int singleBarHeight);
+    // 绘制系统状态栏（底部两行三列指数）
+    void DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int totalBarHeight);
 
 private:
 };

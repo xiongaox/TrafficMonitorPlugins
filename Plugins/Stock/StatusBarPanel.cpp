@@ -429,13 +429,13 @@ static CString GetIndexDisplayName(const std::wstring& code, const CString& defa
 	return defaultName;
 }
 
-void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int singleBarHeight)
+void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int totalBarHeight)
 {
 	// 绘制底部系统状态栏深色背景 (#161820)
-	memDC.FillSolidRect(0, bottomBarY, w, singleBarHeight, COLOR_BG_FOOTER);
+	memDC.FillSolidRect(0, bottomBarY, w, totalBarHeight, COLOR_BG_FOOTER);
 	memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
 
-	const int GAP = g_data.RDPI(3);
+	const int GAP = g_data.RDPI(4);
 
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
@@ -444,13 +444,32 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300", L"sz399303" };
 	}
 	const int sbCount = static_cast<int>(statusBarCodes.size());
-	const int colWidth = w / max(sbCount, 1);
+	const int COLS = 3;
+	const int ROWS = (sbCount <= 3) ? 1 : 2;
+	const int rowHeight = totalBarHeight / ROWS;
+	const int colWidth = w / max(COLS, 1);
+
+	CFont statusFont;
+	statusFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont* pOldFont = memDC.SelectObject(&statusFont);
+
+	CSize sampleSize = memDC.GetTextExtent(_T("00.00%"));
+	int textOffsetY = (rowHeight - sampleSize.cy) / 2;
+	if (textOffsetY < 0) textOffsetY = 0;
 
 	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
 	for (int i = 0; i < sbCount; i++)
 	{
+		int row = i / COLS;
+		int col = i % COLS;
+		if (row >= ROWS) break;
+
 		auto stockData = g_data.GetStockData(statusBarCodes[i]);
-		int colX = i * colWidth;
+		int colX = col * colWidth;
+		int cellY = bottomBarY + row * rowHeight;
+		int textY = cellY + textOffsetY;
 		int textX = colX + GAP;
 		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
 		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
@@ -471,21 +490,25 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 				changeStr.Format(_T("%.2f%%"), diffPercent);
 
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
-			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), nameStr);
+			memDC.TextOut(textX, textY, nameStr);
 			textX += memDC.GetTextExtent(nameStr).cx + GAP;
 
 			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), priceStr);
+			memDC.TextOut(textX, textY, priceStr);
 			textX += memDC.GetTextExtent(priceStr).cx + GAP;
 
 			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), changeStr);
+			memDC.TextOut(textX, textY, changeStr);
 		}
 		else
 		{
 			memDC.SetTextColor(COLOR_TEXT_DIM);
-			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), nameStr + _T(" --"));
+			memDC.TextOut(textX, textY, nameStr + _T(" --"));
 		}
 	}
+
+	if (pOldFont)
+		memDC.SelectObject(pOldFont);
+	statusFont.DeleteObject();
 }
 

@@ -379,9 +379,9 @@ void CFloatingWnd::OnPaint()
 
 	const int headerHeight = g_data.RDPI(26);
 	const int xAxisLabelHeight = g_data.RDPI(20);
-	const int singleBarHeight = g_data.RDPI(20);  // 单行状态栏高度
+	const int singleBarHeight = g_data.RDPI(18);  // 单行状态栏高度
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
-	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（1行）
+	const int indexBarHeight = singleBarHeight * 2;    // 底部系统状态栏高度（2行三个）
 
 	// 统一现代双层布局：标题栏 + 主走势图(约62%) + 单一副图(约38%) + 时间标签 + 底部系统状态栏
 	int chartArea = h - headerHeight - relatedBarHeight - xAxisLabelHeight - indexBarHeight;
@@ -1037,7 +1037,7 @@ void CFloatingWnd::OnPaint()
 			memDC.FillSolidRect(0, bottomBarY, w, indexBarHeight, COLOR_BG_HEADER);
 			memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
 			memDC.SetBkMode(TRANSPARENT);
-			m_statusBarPanel.DrawSystemStatusBar(memDC, w, bottomBarY, singleBarHeight);
+			m_statusBarPanel.DrawSystemStatusBar(memDC, w, bottomBarY, indexBarHeight);
 		}
 	} // end if (m_viewMode != UI_VIEW_OVERVIEW)
 
@@ -1176,6 +1176,41 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				if (clickedCode != m_stock_id)
 				{
 					SetStockId(clickedCode);
+					UpdateModeButtons();
+				}
+				return;
+			}
+		}
+	}
+
+	// 底部系统状态栏指数点击切换
+	if (m_viewMode != UI_VIEW_OVERVIEW)
+	{
+		CRect clRect;
+		GetClientRect(&clRect);
+		const int bottomBarHeight = g_data.RDPI(36);
+		int bottomBarY = clRect.Height() - bottomBarHeight;
+		if (point.y >= bottomBarY && point.y < clRect.Height())
+		{
+			std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
+			if (statusBarCodes.empty())
+			{
+				statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300", L"sz399303" };
+			}
+			const int sbCount = static_cast<int>(statusBarCodes.size());
+			const int COLS = 3;
+			const int ROWS = (sbCount <= 3) ? 1 : 2;
+			const int rowH = bottomBarHeight / ROWS;
+			const int colW = clRect.Width() / max(COLS, 1);
+			int row = (point.y - bottomBarY) / max(rowH, 1);
+			int col = point.x / max(colW, 1);
+			int idx = row * COLS + col;
+			if (idx >= 0 && idx < sbCount)
+			{
+				const std::wstring& targetCode = statusBarCodes[idx];
+				if (targetCode != m_stock_id)
+				{
+					SetStockId(targetCode);
 					UpdateModeButtons();
 				}
 				return;
@@ -1377,8 +1412,8 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int dragYAxisWidth = g_data.RDPI(50);
 		const int dragStockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
 		const int dragChartLeft = dragStockListWidth + dragYAxisWidth;
-		const int dragHeaderHeight = g_data.RDPI(26);  // 标题栏
-		if (m_viewMode != UI_VIEW_OVERVIEW && point.x >= dragChartLeft && point.x < dragChartWidth && point.y >= dragHeaderHeight)
+		const int dragIndexBarHeight = g_data.RDPI(36);
+		if (m_viewMode != UI_VIEW_OVERVIEW && point.x >= dragChartLeft && point.x < dragChartWidth && point.y >= dragHeaderHeight && point.y < dragRect.Height() - dragIndexBarHeight)
 		{
 			// 分时图拖动（5分钟K线模式和日K线模式也使用分时拖动逻辑）
 			{
@@ -1597,9 +1632,9 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	const int chartLeft = stockListWidth + yAxisWidth;
 	const int headerHeight = g_data.RDPI(26);
 	const int xAxisLabelHeight = g_data.RDPI(20);
-	const int singleBarHeight = g_data.RDPI(20);
+	const int singleBarHeight = g_data.RDPI(18);
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
-	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（1行）
+	const int indexBarHeight = singleBarHeight * 2;    // 底部系统状态栏高度（2行三个）
 
 	// 统一布局：标题栏 + 走势图(2/5) + 成交量(1/5) + MACD(1/5) + KDJ(1/5) + 时间标签 + 底部系统状态栏
 	int chartArea = rect.Height() - headerHeight - relatedBarHeight - xAxisLabelHeight - indexBarHeight;
