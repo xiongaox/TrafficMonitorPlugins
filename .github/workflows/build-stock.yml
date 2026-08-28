@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Stock Plugin (${{ matrix.platform }})
         run: |
-          msbuild TrafficMonitorPlugins.sln /t:utilities;Stock /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m
+          msbuild TrafficMonitorPlugins.sln /t:Stock /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m
 
       - name: Package ${{ matrix.pkg_name }}
         shell: pwsh
