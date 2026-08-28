@@ -1,8 +1,9 @@
-﻿param(
+param(
     [string]$PluginDir = "D:\Program Files (x86)\NIR\TrafficMonitor\plugins",
     [string]$AppPath = "D:\Program Files (x86)\NIR\TrafficMonitor\TrafficMonitor.exe",
     [switch]$NoPush,
-    [switch]$NoRestart
+    [switch]$NoRestart,
+    [switch]$DirectDownload
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +15,7 @@ Write-Host "  TrafficMonitor Stock Plugin Fast Sync Tool (x64)" -ForegroundColor
 Write-Host "==================================================" -ForegroundColor Cyan
 
 # 1. Check and push changes
-if (-not $NoPush) {
+if (-not $NoPush -and -not $DirectDownload) {
     $status = git status --porcelain
     if ($status) {
         Write-Host "[*] Detected uncommitted changes, committing..." -ForegroundColor Yellow
@@ -34,64 +35,88 @@ if (-not $NoPush) {
 $localHead = (git rev-parse HEAD).Trim()
 Write-Host "[*] Target Commit: $($localHead.Substring(0, 7))" -ForegroundColor Gray
 
-# 2. Wait for GitHub Actions
-Write-Host "[*] Waiting for GitHub Actions workflow to start..." -ForegroundColor Yellow
-$startTime = Get-Date
-$runFound = $null
+# Setup headers
+$headers = @{"User-Agent"="PowerShell"}
+if ($env:GITHUB_TOKEN) {
+    $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+}
 
-for ($i = 0; $i -lt 30; $i++) {
-    Start-Sleep -Seconds 2
-    try {
-        $apiUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs?event=push&per_page=5"
-        $runsResp = Invoke-RestMethod -Uri $apiUri -Headers @{"User-Agent"="PowerShell"}
-        foreach ($run in $runsResp.workflow_runs) {
-            if ($run.head_sha -eq $localHead) {
-                $runFound = $run
+# 2. Wait for GitHub Actions (unless DirectDownload)
+if (-not $DirectDownload) {
+    Write-Host "[*] Checking GitHub Actions workflow status..." -ForegroundColor Yellow
+    $startTime = Get-Date
+    $runFound = $null
+    $apiRateLimited = $false
+
+    for ($i = 0; $i -lt 15; $i++) {
+        try {
+            $apiUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs?event=push&per_page=5"
+            $runsResp = Invoke-RestMethod -Uri $apiUri -Headers $headers
+            foreach ($run in $runsResp.workflow_runs) {
+                if ($run.head_sha -eq $localHead) {
+                    $runFound = $run
+                    break
+                }
+            }
+        } catch {
+            if ($_.Exception.Message -match "403" -or $_.Exception.Message -match "rate limit") {
+                $apiRateLimited = $true
+                Write-Host "[!] GitHub API rate limit reached (anonymous limit 60/hr)." -ForegroundColor Yellow
+                Write-Host "[*] Falling back to direct release download..." -ForegroundColor Cyan
                 break
             }
         }
-    } catch {}
-    if ($runFound) { break }
-}
+        if ($runFound) { break }
+        Start-Sleep -Seconds 2
+    }
 
-if (-not $runFound) {
-    try {
-        $apiUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs?per_page=1"
-        $runsResp = Invoke-RestMethod -Uri $apiUri -Headers @{"User-Agent"="PowerShell"}
-        $runFound = $runsResp.workflow_runs[0]
-    } catch {}
-}
-
-if (-not $runFound) {
-    Write-Error "Failed to locate GitHub Actions workflow run."
-    exit 1
-}
-
-Write-Host "[*] Tracking Run ID: $($runFound.id)" -ForegroundColor Gray
-Write-Host "[*] Run URL: $($runFound.html_url)" -ForegroundColor Gray
-
-# Poll run completion
-while ($true) {
-    $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
-    Write-Host "`r[*] Building in cloud (x64)... elapsed: ${elapsed}s  " -NoNewline -ForegroundColor Cyan
-
-    try {
-        $checkUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs/" + $runFound.id
-        $check = Invoke-RestMethod -Uri $checkUri -Headers @{"User-Agent"="PowerShell"}
-        if ($check.status -eq "completed") {
-            Write-Host ""
-            if ($check.conclusion -eq "success") {
-                Write-Host "[+] Cloud build succeeded! Total time: ${elapsed}s" -ForegroundColor Green
-                break
-            } else {
-                Write-Host "[-] Cloud build failed (conclusion: $($check.conclusion))!" -ForegroundColor Red
-                Write-Host "[-] Check log: $($check.html_url)" -ForegroundColor Yellow
-                exit 1
+    if (-not $runFound -and -not $apiRateLimited) {
+        try {
+            $apiUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs?per_page=1"
+            $runsResp = Invoke-RestMethod -Uri $apiUri -Headers $headers
+            $runFound = $runsResp.workflow_runs[0]
+        } catch {
+            if ($_.Exception.Message -match "403" -or $_.Exception.Message -match "rate limit") {
+                $apiRateLimited = $true
+                Write-Host "[!] GitHub API rate limit reached." -ForegroundColor Yellow
             }
         }
-    } catch {}
+    }
 
-    Start-Sleep -Seconds 3
+    if ($runFound -and -not $apiRateLimited) {
+        Write-Host "[*] Tracking Run ID: $($runFound.id)" -ForegroundColor Gray
+        Write-Host "[*] Run URL: $($runFound.html_url)" -ForegroundColor Gray
+
+        # Poll run completion
+        while ($true) {
+            $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
+            Write-Host "`r[*] Building in cloud (x64)... elapsed: ${elapsed}s  " -NoNewline -ForegroundColor Cyan
+
+            try {
+                $checkUri = "https://api.github.com/repos/" + $RepoOwner + "/" + $RepoName + "/actions/runs/" + $runFound.id
+                $check = Invoke-RestMethod -Uri $checkUri -Headers $headers
+                if ($check.status -eq "completed") {
+                    Write-Host ""
+                    if ($check.conclusion -eq "success") {
+                        Write-Host "[+] Cloud build succeeded! Total time: ${elapsed}s" -ForegroundColor Green
+                        break
+                    } else {
+                        Write-Host "[-] Cloud build failed (conclusion: $($check.conclusion))!" -ForegroundColor Red
+                        Write-Host "[-] Check log: $($check.html_url)" -ForegroundColor Yellow
+                        exit 1
+                    }
+                }
+            } catch {
+                Write-Host ""
+                Write-Host "[!] API rate limited during poll. Proceeding to download latest release directly..." -ForegroundColor Yellow
+                break
+            }
+
+            Start-Sleep -Seconds 3
+        }
+    } else {
+        Write-Host "[*] Proceeding with direct release download..." -ForegroundColor Cyan
+    }
 }
 
 # 3. Download Stock.dll from Release
