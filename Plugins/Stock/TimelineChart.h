@@ -15,8 +15,8 @@ public:
 		bool isHoveringVolume{ false };
 		int hoveredBarIndex{ -1 };
 		STOCK::TimelinePoint hoveredData;
-		STOCK::Price hoverMa1{ 0 }, hoverMa5{ 0 }, hoverMa10{ 0 }, hoverMa20{ 0 };
-		STOCK::Price hoverPrevMa1{ 0 }, hoverPrevMa5{ 0 }, hoverPrevMa10{ 0 }, hoverPrevMa20{ 0 };
+		STOCK::Price hoverMa1{ 0 }, hoverMa5{ 0 }, hoverMa17{ 0 }, hoverMa60{ 0 };
+		STOCK::Price hoverPrevMa1{ 0 }, hoverPrevMa5{ 0 }, hoverPrevMa17{ 0 }, hoverPrevMa60{ 0 };
 		CString hoverTip;
 		CString timelinePriceTitleTip;
 		CString timelineVolumeTitleTip;

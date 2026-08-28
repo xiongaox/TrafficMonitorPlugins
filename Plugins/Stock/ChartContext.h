@@ -33,14 +33,14 @@ struct TimelineDrawContext {
 	const std::vector<STOCK::KLinePoint>* klineData;
 	// 滚动均价（最新数据点的值）
 	STOCK::Price ma1{ 0 };    // MA1（1分钟均价 = 当前价格）
-	STOCK::Price ma5{ 0 };    // MA5（5分钟滚动均价）
-	STOCK::Price ma10{ 0 };   // MA10（10分钟滚动均价）
-	STOCK::Price ma20{ 0 };   // MA20（20分钟滚动均价）
-	// 前一分钟数据点的MA值（用于箭头方向判断）
+	STOCK::Price ma5{ 0 };    // MA5（5周期移动均价）
+	STOCK::Price ma17{ 0 };   // MA17（17周期移动均价）
+	STOCK::Price ma60{ 0 };   // MA60（60周期移动均价）
+	// 前一数据点的MA值（用于箭头方向判断）
 	STOCK::Price prevMa1{ 0 };
 	STOCK::Price prevMa5{ 0 };
-	STOCK::Price prevMa10{ 0 };
-	STOCK::Price prevMa20{ 0 };
+	STOCK::Price prevMa17{ 0 };
+	STOCK::Price prevMa60{ 0 };
 };
 
 // K线图公共数据结构

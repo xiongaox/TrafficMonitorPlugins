@@ -69,7 +69,7 @@ public:
 
 	// ========== 滚动均价计算 ==========
 
-	// 为每个分时数据点计算MA5/MA10/MA20滚动均价（滑动窗口，修改timelinePoint中的ma5/ma10/ma20字段）
+	// 为每个分时/K线数据点计算MA5/MA17/MA60移动均价（修改timelinePoint中的ma5/ma17/ma60字段）
 	static void CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>& timelinePoint);
 
 	// ========== Y轴整齐刻度计算（Nice Number算法） ==========

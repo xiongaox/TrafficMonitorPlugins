@@ -210,9 +210,8 @@ void CKLineChart::DrawMAIndicators(CDC& memDC, const KLineDrawData& drawData, co
 	};
 	const MAConfig maConfigs[] = {
 		{ 5, COLOR_GOLDEN, 1 },
-		{ 10, RGB(56, 189, 248), 1 },
-		{ 20, RGB(192, 132, 252), 1 },
-		{ 60, RGB(52, 211, 153), 1 },
+		{ 17, RGB(56, 189, 248), 1 },
+		{ 60, RGB(192, 132, 252), 1 },
 	};
 
 	auto stockDataPtr = g_data.GetStockData(hover.stockId);

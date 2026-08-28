@@ -307,12 +307,12 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		memDC.SelectObject(pOldAvgPen);
 	}
 
-	// MA5/MA10/MA20均线配色
+	// MA5/MA17/MA60均线配色
 	if (hover.showMA)
 	{
 		const COLORREF ma5Color = COLOR_GOLDEN;
-		const COLORREF ma10Color = RGB(56, 189, 248);
-		const COLORREF ma20Color = RGB(192, 132, 252);
+		const COLORREF ma17Color = RGB(56, 189, 248);
+		const COLORREF ma60Color = RGB(192, 132, 252);
 
 		auto drawMALine = [&](int fieldOffset, COLORREF color) {
 			CPen maPen(PS_SOLID, 1, color);
@@ -325,8 +325,8 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				switch (fieldOffset)
 				{
 				case 5: maVal = item.ma5; break;
-				case 10: maVal = item.ma10; break;
-				case 20: maVal = item.ma20; break;
+				case 17: maVal = item.ma17; break;
+				case 60: maVal = item.ma60; break;
 				}
 				if (maVal <= 0) { first = true; continue; }
 				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
@@ -345,8 +345,8 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			};
 
 		drawMALine(5, ma5Color);
-		drawMALine(10, ma10Color);
-		drawMALine(20, ma20Color);
+		drawMALine(17, ma17Color);
+		drawMALine(60, ma60Color);
 	}
 
 	// 布林带（短横线虚线）
@@ -1084,10 +1084,10 @@ void CTimelineChart::DrawMin5KLinePriceChart(CDC& memDC, const TimelineDrawConte
 
 	if (hover.showMA)
 	{
-		// MA5/MA10/MA20均线配色
+		// MA5/MA17/MA60均线配色
 		const COLORREF ma5Color = RGB(240, 117, 40);
-		const COLORREF ma10Color = RGB(21, 101, 192);
-		const COLORREF ma20Color = RGB(128, 40, 149);
+		const COLORREF ma17Color = RGB(21, 101, 192);
+		const COLORREF ma60Color = RGB(128, 40, 149);
 
 		auto drawMALine = [&](int fieldOffset, COLORREF color) {
 			CPen maPen(PS_SOLID, 1, color);
@@ -1100,8 +1100,8 @@ void CTimelineChart::DrawMin5KLinePriceChart(CDC& memDC, const TimelineDrawConte
 				switch (fieldOffset)
 				{
 				case 5: maVal = item.ma5; break;
-				case 10: maVal = item.ma10; break;
-				case 20: maVal = item.ma20; break;
+				case 17: maVal = item.ma17; break;
+				case 60: maVal = item.ma60; break;
 				}
 				if (maVal <= 0) { first = true; continue; }
 				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) / 2);
@@ -1120,8 +1120,8 @@ void CTimelineChart::DrawMin5KLinePriceChart(CDC& memDC, const TimelineDrawConte
 			};
 
 		drawMALine(5, ma5Color);
-		drawMALine(10, ma10Color);
-		drawMALine(20, ma20Color);
+		drawMALine(17, ma17Color);
+		drawMALine(60, ma60Color);
 	}
 
 	if (hover.showBollBands)
@@ -1440,8 +1440,8 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 	{
 		// 日K线MA均线配色
 		const COLORREF ma5Color = RGB(240, 117, 40);
-		const COLORREF ma10Color = RGB(21, 101, 192);
-		const COLORREF ma20Color = RGB(128, 40, 149);
+		const COLORREF ma17Color = RGB(21, 101, 192);
+		const COLORREF ma60Color = RGB(128, 40, 149);
 
 		auto drawMALine = [&](int fieldOffset, COLORREF color) {
 			CPen maPen(PS_SOLID, 1, color);
@@ -1454,8 +1454,8 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 				switch (fieldOffset)
 				{
 				case 5: maVal = item.ma5; break;
-				case 10: maVal = item.ma10; break;
-				case 20: maVal = item.ma20; break;
+				case 17: maVal = item.ma17; break;
+				case 60: maVal = item.ma60; break;
 				}
 				if (maVal <= 0) { first = true; continue; }
 				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) / 2);
@@ -1474,8 +1474,8 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 			};
 
 		drawMALine(5, ma5Color);
-		drawMALine(10, ma10Color);
-		drawMALine(20, ma20Color);
+		drawMALine(17, ma17Color);
+		drawMALine(60, ma60Color);
 	}
 
 	if (hover.showBollBands)
@@ -1983,16 +1983,16 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			if (hover.showMA)
 			{
 				STOCK::Price dispMa5 = isHovering ? hover.hoverMa5 : ctx.ma5;
-				STOCK::Price dispMa10 = isHovering ? hover.hoverMa10 : ctx.ma10;
-				STOCK::Price dispMa20 = isHovering ? hover.hoverMa20 : ctx.ma20;
+				STOCK::Price dispMa17 = isHovering ? hover.hoverMa17 : ctx.ma17;
+				STOCK::Price dispMa60 = isHovering ? hover.hoverMa60 : ctx.ma60;
 				std::vector<std::pair<CString, COLORREF>> items;
 				// 30分钟/日K线MA均线配色
 				const COLORREF ma5TextColor = RGB(240, 117, 40);
-				const COLORREF ma10TextColor = RGB(21, 101, 192);
-				const COLORREF ma20TextColor = RGB(128, 40, 149);
+				const COLORREF ma17TextColor = RGB(21, 101, 192);
+				const COLORREF ma60TextColor = RGB(128, 40, 149);
 				if (dispMa5 > 0) items.push_back({ _T("MA5:") + formatPrice(dispMa5), ma5TextColor });
-				if (dispMa10 > 0) items.push_back({ _T("MA10:") + formatPrice(dispMa10), ma10TextColor });
-				if (dispMa20 > 0) items.push_back({ _T("MA20:") + formatPrice(dispMa20), ma20TextColor });
+				if (dispMa17 > 0) items.push_back({ _T("MA17:") + formatPrice(dispMa17), ma17TextColor });
+				if (dispMa60 > 0) items.push_back({ _T("MA60:") + formatPrice(dispMa60), ma60TextColor });
 				drawRightLabelValues(items);
 			}
 		}

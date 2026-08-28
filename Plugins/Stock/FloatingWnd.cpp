@@ -625,9 +625,9 @@ void CFloatingWnd::OnPaint()
 			tlHover.hoveredBarIndex = m_hoveredBarIndex;
 			tlHover.hoveredData = m_hoveredData;
 			tlHover.hoverMa1 = m_hoverMa1; tlHover.hoverMa5 = m_hoverMa5;
-			tlHover.hoverMa10 = m_hoverMa10; tlHover.hoverMa20 = m_hoverMa20;
+			tlHover.hoverMa17 = m_hoverMa17; tlHover.hoverMa60 = m_hoverMa60;
 			tlHover.hoverPrevMa1 = m_hoverPrevMa1; tlHover.hoverPrevMa5 = m_hoverPrevMa5;
-			tlHover.hoverPrevMa10 = m_hoverPrevMa10; tlHover.hoverPrevMa20 = m_hoverPrevMa20;
+			tlHover.hoverPrevMa17 = m_hoverPrevMa17; tlHover.hoverPrevMa60 = m_hoverPrevMa60;
 			tlHover.hoverTip = m_hoverTip;
 			tlHover.timelinePriceTitleTip = m_timelinePriceTitleTip;
 			tlHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
@@ -758,16 +758,16 @@ void CFloatingWnd::OnPaint()
 				const auto& lastPt = subTimeline.back();
 				ctx.ma1 = lastPt.price;
 				ctx.ma5 = lastPt.ma5;
-				ctx.ma10 = lastPt.ma10;
-				ctx.ma20 = lastPt.ma20;
-				// 前一分钟数据用于箭头方向判断
+				ctx.ma17 = lastPt.ma17;
+				ctx.ma60 = lastPt.ma60;
+				// 前一数据点用于箭头方向判断
 				if (subTimeline.size() >= 2)
 				{
 					const auto& prevPt = subTimeline[subTimeline.size() - 2];
 					ctx.prevMa1 = prevPt.price;
 					ctx.prevMa5 = prevPt.ma5;
-					ctx.prevMa10 = prevPt.ma10;
-					ctx.prevMa20 = prevPt.ma20;
+					ctx.prevMa17 = prevPt.ma17;
+					ctx.prevMa60 = prevPt.ma60;
 				}
 			}
 
@@ -802,6 +802,29 @@ void CFloatingWnd::OnPaint()
 							visMax = (std::max)(visMax, kp.high);
 						if (kp.low > 0)
 							visMin = (std::min)(visMin, kp.low);
+					}
+				}
+
+				// 开启MA均线时，Y轴范围同时包含可见区间的MA均线值，避免均线超出价格图区发生截断或异常
+				if (m_showMA && !subTimeline.empty())
+				{
+					for (const auto& tp : subTimeline)
+					{
+						if (tp.ma5 > 0)
+						{
+							visMax = (std::max)(visMax, tp.ma5);
+							visMin = (std::min)(visMin, tp.ma5);
+						}
+						if (tp.ma17 > 0)
+						{
+							visMax = (std::max)(visMax, tp.ma17);
+							visMin = (std::min)(visMin, tp.ma17);
+						}
+						if (tp.ma60 > 0)
+						{
+							visMax = (std::max)(visMax, tp.ma60);
+							visMin = (std::min)(visMin, tp.ma60);
+						}
 					}
 				}
 
@@ -880,9 +903,9 @@ void CFloatingWnd::OnPaint()
 			tlHover.hoveredBarIndex = m_hoveredBarIndex;
 			tlHover.hoveredData = m_hoveredData;
 			tlHover.hoverMa1 = m_hoverMa1; tlHover.hoverMa5 = m_hoverMa5;
-			tlHover.hoverMa10 = m_hoverMa10; tlHover.hoverMa20 = m_hoverMa20;
+			tlHover.hoverMa17 = m_hoverMa17; tlHover.hoverMa60 = m_hoverMa60;
 			tlHover.hoverPrevMa1 = m_hoverPrevMa1; tlHover.hoverPrevMa5 = m_hoverPrevMa5;
-			tlHover.hoverPrevMa10 = m_hoverPrevMa10; tlHover.hoverPrevMa20 = m_hoverPrevMa20;
+			tlHover.hoverPrevMa17 = m_hoverPrevMa17; tlHover.hoverPrevMa60 = m_hoverPrevMa60;
 			tlHover.hoverTip = m_hoverTip;
 			tlHover.timelinePriceTitleTip = m_timelinePriceTitleTip;
 			tlHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
@@ -1904,16 +1927,16 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				// 保存hover点的MA值
 				m_hoverMa1 = m_hoveredData.price;
 				m_hoverMa5 = m_hoveredData.ma5;
-				m_hoverMa10 = m_hoveredData.ma10;
-				m_hoverMa20 = m_hoveredData.ma20;
+				m_hoverMa17 = m_hoveredData.ma17;
+				m_hoverMa60 = m_hoveredData.ma60;
 				// 保存前一点MA值（用于箭头方向）
-				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa10 = 0; m_hoverPrevMa20 = 0;
+				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa17 = 0; m_hoverPrevMa60 = 0;
 				if (relIndex > 0)
 				{
 					m_hoverPrevMa1 = subTimeline[relIndex - 1].price;
 					m_hoverPrevMa5 = subTimeline[relIndex - 1].ma5;
-					m_hoverPrevMa10 = subTimeline[relIndex - 1].ma10;
-					m_hoverPrevMa20 = subTimeline[relIndex - 1].ma20;
+					m_hoverPrevMa17 = subTimeline[relIndex - 1].ma17;
+					m_hoverPrevMa60 = subTimeline[relIndex - 1].ma60;
 				}
 
 				CString timeStr(m_hoveredData.time.c_str());
@@ -2015,8 +2038,8 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				m_timelineKdjTitleTip.Empty();
 				m_timelineWrTitleTip.Empty();
 				m_timelineRsiTitleTip.Empty();
-				m_hoverMa1 = 0; m_hoverMa5 = 0; m_hoverMa10 = 0; m_hoverMa20 = 0;
-				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa10 = 0; m_hoverPrevMa20 = 0;
+				m_hoverMa1 = 0; m_hoverMa5 = 0; m_hoverMa17 = 0; m_hoverMa60 = 0;
+				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa17 = 0; m_hoverPrevMa60 = 0;
 			}
 
 			// 只在悬停状态变化时重绘图表区域，避免按钮闪烁

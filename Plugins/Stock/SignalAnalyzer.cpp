@@ -3797,64 +3797,64 @@ CSignalAnalyzer::RealtimeSignal CSignalAnalyzer::CalcRealtimeSignals(const std::
 		else sig.wrStr = 1;
 	}
 
-	// 6. MA：MA5上穿MA10或MA10上穿MA20=金叉(买入)，MA5下穿MA10或MA10下穿MA20=死叉(卖出)
-	// MA5>MA10>MA20=上涨趋势加强信号，MA20>MA10>MA5=下跌趋势加强信号
+	// 6. MA：MA5上穿MA17或MA17上穿MA60=金叉(买入)，MA5下穿MA17或MA17下穿MA60=死叉(卖出)
+	// MA5>MA17>MA60=上涨趋势加强信号，MA60>MA17>MA5=下跌趋势加强信号
 	{
 		int barCount = static_cast<int>(subBars.size());
-		if (barCount >= 21)  // 至少需要21根K线才能计算MA20
+		if (barCount >= 18)  // 至少需要18根K线才能计算MA17
 		{
-			// 计算当前MA5/MA10/MA20
+			// 计算当前MA5/MA17/MA60
 			std::vector<double> closes(subBars.size());
 			for (size_t i = 0; i < subBars.size(); i++) closes[i] = subBars[i].close;
 
 			double ma5 = CalcMA(closes, 5);
-			double ma10 = CalcMA(closes, 10);
-			double ma20 = CalcMA(closes, 20);
+			double ma17 = CalcMA(closes, 17);
+			double ma60 = CalcMA(closes, 60, false);
 
-			// 计算前一根K线的MA5/MA10/MA20
+			// 计算前一根K线的MA5/MA17/MA60
 			std::vector<double> prevCloses(closes.begin(), closes.end() - 1);
 			double prevMa5 = CalcMA(prevCloses, 5);
-			double prevMa10 = CalcMA(prevCloses, 10);
-			double prevMa20 = CalcMA(prevCloses, 20);
+			double prevMa17 = CalcMA(prevCloses, 17);
+			double prevMa60 = CalcMA(prevCloses, 60, false);
 
-			// 金叉检测：MA5上穿MA10，或MA10上穿MA20
-			bool goldenCross5_10 = (prevMa5 > 0 && prevMa10 > 0 && ma5 > 0 && ma10 > 0 &&
-				prevMa5 <= prevMa10 && ma5 > ma10);
-			bool goldenCross10_20 = (prevMa10 > 0 && prevMa20 > 0 && ma10 > 0 && ma20 > 0 &&
-				prevMa10 <= prevMa20 && ma10 > ma20);
+			// 金叉检测：MA5上穿MA17，或MA17上穿MA60
+			bool goldenCross5_17 = (prevMa5 > 0 && prevMa17 > 0 && ma5 > 0 && ma17 > 0 &&
+				prevMa5 <= prevMa17 && ma5 > ma17);
+			bool goldenCross17_60 = (prevMa17 > 0 && prevMa60 > 0 && ma17 > 0 && ma60 > 0 &&
+				prevMa17 <= prevMa60 && ma17 > ma60);
 
-			// 死叉检测：MA5下穿MA10，或MA10下穿MA20
-			bool deathCross5_10 = (prevMa5 > 0 && prevMa10 > 0 && ma5 > 0 && ma10 > 0 &&
-				prevMa5 >= prevMa10 && ma5 < ma10);
-			bool deathCross10_20 = (prevMa10 > 0 && prevMa20 > 0 && ma10 > 0 && ma20 > 0 &&
-				prevMa10 >= prevMa20 && ma10 < ma20);
+			// 死叉检测：MA5下穿MA17，或MA17下穿MA60
+			bool deathCross5_17 = (prevMa5 > 0 && prevMa17 > 0 && ma5 > 0 && ma17 > 0 &&
+				prevMa5 >= prevMa17 && ma5 < ma17);
+			bool deathCross17_60 = (prevMa17 > 0 && prevMa60 > 0 && ma17 > 0 && ma60 > 0 &&
+				prevMa17 >= prevMa60 && ma17 < ma60);
 
-			if (goldenCross5_10 || goldenCross10_20)
+			if (goldenCross5_17 || goldenCross17_60)
 			{
 				sig.ma = -1;  // 金叉=买入信号
-				// MA10上穿MA20比MA5上穿MA10更强（中长期金叉）
-				if (goldenCross10_20 && goldenCross5_10) sig.maStr = 3;
-				else if (goldenCross10_20) sig.maStr = 2;
+				// MA17上穿MA60比MA5上穿MA17更强（中长期金叉）
+				if (goldenCross17_60 && goldenCross5_17) sig.maStr = 3;
+				else if (goldenCross17_60) sig.maStr = 2;
 				else sig.maStr = 1;
 			}
-			else if (deathCross5_10 || deathCross10_20)
+			else if (deathCross5_17 || deathCross17_60)
 			{
 				sig.ma = 1;  // 死叉=卖出信号
-				if (deathCross10_20 && deathCross5_10) sig.maStr = 3;
-				else if (deathCross10_20) sig.maStr = 2;
+				if (deathCross17_60 && deathCross5_17) sig.maStr = 3;
+				else if (deathCross17_60) sig.maStr = 2;
 				else sig.maStr = 1;
 			}
 			// 非交叉时，根据均线排列判断趋势强度（仅当已有交叉信号时增强，不单独产生信号）
-			// MA5>MA10>MA20 上涨趋势 或 MA20>MA10>MA5 下跌趋势，增强交叉信号强度
-			else if (ma5 > 0 && ma10 > 0 && ma20 > 0)
+			// MA5>MA17>MA60 上涨趋势 或 MA60>MA17>MA5 下跌趋势，增强交叉信号强度
+			else if (ma5 > 0 && ma17 > 0 && ma60 > 0)
 			{
-				if (ma5 > ma10 && ma10 > ma20)
+				if (ma5 > ma17 && ma17 > ma60)
 				{
 					// 上涨趋势排列，视为弱买入信号
 					sig.ma = -1;
 					sig.maStr = 1;
 				}
-				else if (ma20 > ma10 && ma10 > ma5)
+				else if (ma60 > ma17 && ma17 > ma5)
 				{
 					// 下跌趋势排列，视为弱卖出信号
 					sig.ma = 1;

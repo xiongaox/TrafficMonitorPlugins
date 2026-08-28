@@ -17,42 +17,55 @@
 
 // ========== 滚动均价计算 ==========
 
-// 为每个分时数据点计算MA5/MA10/MA20滚动均价（滑动窗口）
+// 为每个分时/K线数据点计算MA5/MA17/MA60移动均价（简单移动平均SMA）
 void CStockIndicator::CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>& timelinePoint)
 {
 	int n = static_cast<int>(timelinePoint.size());
 	if (n == 0)
 		return;
 
-	// 计算每个窗口的滚动均价，使用滑动窗口避免重复求和
+	// 计算每个窗口的简单移动平均价（SMA），基于有效价格序列避免成交量为0或浮点漂移导致断续
 	auto calcWindow = [&](int windowSize, int fieldOffset) {
-		STOCK::Amount sumAmount = 0;
-		STOCK::Volume sumVolume = 0;
 		for (int i = 0; i < n; i++)
 		{
-			sumAmount += timelinePoint[i].amount;
-			sumVolume += timelinePoint[i].volume;
-			if (i >= windowSize)
+			if (timelinePoint[i].price <= 0)
 			{
-				sumAmount -= timelinePoint[i - windowSize].amount;
-				sumVolume -= timelinePoint[i - windowSize].volume;
+				switch (fieldOffset)
+				{
+				case 5: timelinePoint[i].ma5 = 0; break;
+				case 17: timelinePoint[i].ma17 = 0; break;
+				case 60: timelinePoint[i].ma60 = 0; break;
+				}
+				continue;
 			}
-			if (sumVolume > 0)
+
+			double sumPrice = 0;
+			int count = 0;
+			for (int j = i; j >= 0 && count < windowSize; j--)
 			{
-				STOCK::Price maVal = sumAmount / sumVolume;
+				if (timelinePoint[j].price > 0)
+				{
+					sumPrice += timelinePoint[j].price;
+					count++;
+				}
+			}
+
+			if (count > 0)
+			{
+				STOCK::Price maVal = sumPrice / count;
 				switch (fieldOffset)
 				{
 				case 5: timelinePoint[i].ma5 = maVal; break;
-				case 10: timelinePoint[i].ma10 = maVal; break;
-				case 20: timelinePoint[i].ma20 = maVal; break;
+				case 17: timelinePoint[i].ma17 = maVal; break;
+				case 60: timelinePoint[i].ma60 = maVal; break;
 				}
 			}
 		}
 	};
 
 	calcWindow(5, 5);
-	calcWindow(10, 10);
-	calcWindow(20, 20);
+	calcWindow(17, 17);
+	calcWindow(60, 60);
 }
 
 // ========== Y轴整齐刻度计算（Nice Number算法） ==========

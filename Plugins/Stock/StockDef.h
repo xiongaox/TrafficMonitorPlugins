@@ -47,12 +47,12 @@ namespace STOCK
 		Price openPrice;       // 开盘价（K线模式下用于判断涨跌颜色，分时模式下为0）
 		Price averagePrice;    // 均价（全天累计）
 		Amount amount;         // 成交额（price * volume）
-		Price ma5;             // 5分钟滚动均价
-		Price ma10;            // 10分钟滚动均价
-		Price ma20;            // 20分钟滚动均价
+		Price ma5;             // 5周期移动均价 (MA5)
+		Price ma17;            // 17周期移动均价 (MA17)
+		Price ma60;            // 60周期移动均价 (MA60)
 		Price iopv;            // IOPV 基金份额参考净值
 
-		TimelinePoint() : volume(0), price(0), openPrice(0), averagePrice(0), amount(0), ma5(0), ma10(0), ma20(0), iopv(0) {}
+		TimelinePoint() : volume(0), price(0), openPrice(0), averagePrice(0), amount(0), ma5(0), ma17(0), ma60(0), iopv(0) {}
 	};
 
 	// 交易明细点（一档行情逐笔成交）

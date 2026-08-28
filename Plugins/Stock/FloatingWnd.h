@@ -166,11 +166,11 @@ private:
 	int m_hoveredBarIndex{ -1 };
 	STOCK::TimelinePoint m_hoveredData;
 	// 悬停点的MA值及前一点MA值（用于箭头方向）
-	STOCK::Price m_hoverMa1{ 0 }, m_hoverMa5{ 0 }, m_hoverMa10{ 0 }, m_hoverMa20{ 0 };
-	STOCK::Price m_hoverPrevMa1{ 0 }, m_hoverPrevMa5{ 0 }, m_hoverPrevMa10{ 0 }, m_hoverPrevMa20{ 0 };
+	STOCK::Price m_hoverMa1{ 0 }, m_hoverMa5{ 0 }, m_hoverMa17{ 0 }, m_hoverMa60{ 0 };
+	STOCK::Price m_hoverPrevMa1{ 0 }, m_hoverPrevMa5{ 0 }, m_hoverPrevMa17{ 0 }, m_hoverPrevMa60{ 0 };
 	CString m_hoverTip;
 	// 分时图标题栏悬停提示
-	CString m_timelinePriceTitleTip;   // 走势图标题栏：现价/均价/MA5/MA10...
+	CString m_timelinePriceTitleTip;   // 走势图标题栏：现价/均价/MA5/MA17/MA60...
 	CString m_timelineVolumeTitleTip;  // 量柱图标题栏：成交量/成交额
 	CString m_timelineMacdTitleTip;    // MACD标题栏：DIF/DEA/MACD
 	CString m_timelineKdjTitleTip;     // KDJ标题栏：K/D/J
