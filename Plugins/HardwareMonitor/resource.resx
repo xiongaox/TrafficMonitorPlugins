@@ -1,0 +1,388 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="Add" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\Add.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="AddItemFailedMsg" xml:space="preserve">
+    <value>Add failed, monitor item already exists!</value>
+  </data>
+  <data name="AddToMonitorItem" xml:space="preserve">
+    <value>Add to monitor item</value>
+  </data>
+  <data name="AMD" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\AMD.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="batteries" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\batteries.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Clock" xml:space="preserve">
+    <value>Clock</value>
+  </data>
+  <data name="Conductivity" xml:space="preserve">
+    <value>Conductivity</value>
+  </data>
+  <data name="Control" xml:space="preserve">
+    <value>Controls</value>
+  </data>
+  <data name="CPU" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\CPU.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Current" xml:space="preserve">
+    <value>Current</value>
+  </data>
+  <data name="Data" xml:space="preserve">
+    <value>Data</value>
+  </data>
+  <data name="Delete" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\Delete.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Energy" xml:space="preserve">
+    <value>Energy</value>
+  </data>
+  <data name="Factor" xml:space="preserve">
+    <value>Factor</value>
+  </data>
+  <data name="Fan" xml:space="preserve">
+    <value>Fan</value>
+  </data>
+  <data name="FanColtroller" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\FanColtroller.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Flow" xml:space="preserve">
+    <value>Flow</value>
+  </data>
+  <data name="Frequency" xml:space="preserve">
+    <value>Frequency</value>
+  </data>
+  <data name="HardwareInfo" xml:space="preserve">
+    <value>Hardware info</value>
+  </data>
+  <data name="Humidity" xml:space="preserve">
+    <value>Humidity</value>
+  </data>
+  <data name="intel" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\intel.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Level" xml:space="preserve">
+    <value>Level</value>
+  </data>
+  <data name="Load" xml:space="preserve">
+    <value>Load</value>
+  </data>
+  <data name="logo" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\logo.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MotherBoard" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\MotherBoard.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MoveDown" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\MoveDown.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MoveUp" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\MoveUp.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Network" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\Network.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Noise" xml:space="preserve">
+    <value>Noise</value>
+  </data>
+  <data name="Nvidia" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\Nvidia.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="PluginDescription" xml:space="preserve">
+    <value>Hardware monitor plugin for TrafficMonitor.</value>
+  </data>
+  <data name="PluginName" xml:space="preserve">
+    <value>Hardware monitor plugin</value>
+  </data>
+  <data name="Power" xml:space="preserve">
+    <value>Power</value>
+  </data>
+  <data name="RAM" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\RAM.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="RemoveMonitorItemInquery" xml:space="preserve">
+    <value>Are you sure you want to remove the selected item?</value>
+  </data>
+  <data name="Storage" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>res\Storage.ico;System.Drawing.Icon, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Temperature" xml:space="preserve">
+    <value>Temperature</value>
+  </data>
+  <data name="Throughput" xml:space="preserve">
+    <value>Throughput</value>
+  </data>
+  <data name="TimeSpan" xml:space="preserve">
+    <value>TimeSpan</value>
+  </data>
+  <data name="Voltage" xml:space="preserve">
+    <value>Voltage</value>
+  </data>
+  <data name="Designed Capacity" xml:space="preserve">
+    <value>Designed Capacity</value>
+  </data>
+  <data name="Fully-Charged Capacity" xml:space="preserve">
+    <value>Fully-Charged Capacity</value>
+  </data>
+  <data name="Degradation Level" xml:space="preserve">
+    <value>Degradation Level</value>
+  </data>
+  <data name="Charge Level" xml:space="preserve">
+    <value>Charge Level</value>
+  </data>
+  <data name="Remaining Capacity" xml:space="preserve">
+    <value>Remaining Capacity</value>
+  </data>
+  <data name="Charge/Discharge Current" xml:space="preserve">
+    <value>Charge/Discharge Current</value>
+  </data>
+  <data name="Charge/Discharge Rate" xml:space="preserve">
+    <value>Charge/Discharge Rate</value>
+  </data>
+  <data name="Remaining Time (Estimated)" xml:space="preserve">
+    <value>Remaining Time (Estimated)</value>
+  </data>
+  <data name="Battery Temperature" xml:space="preserve">
+    <value>Battery Temperature</value>
+  </data>
+  <data name="Bus Speed" xml:space="preserve">
+    <value>Bus Speed</value>
+  </data>
+  <data name="GPU Memory Total" xml:space="preserve">
+    <value>GPU Memory Total</value>
+  </data>
+  <data name="D3D Dedicated Memory Used" xml:space="preserve">
+    <value>D3D Dedicated Memory Used</value>
+  </data>
+  <data name="D3D Dedicated Memory Free" xml:space="preserve">
+    <value>D3D Dedicated Memory Free</value>
+  </data>
+  <data name="D3D Dedicated Memory Total" xml:space="preserve">
+    <value>D3D Dedicated Memory Total</value>
+  </data>
+  <data name="D3D Shared Memory Used" xml:space="preserve">
+    <value>D3D Shared Memory Used</value>
+  </data>
+  <data name="D3D Shared Memory Free" xml:space="preserve">
+    <value>D3D Shared Memory Free</value>
+  </data>
+  <data name="D3D Shared Memory Total" xml:space="preserve">
+    <value>D3D Shared Memory Total</value>
+  </data>
+  <data name="GPU Memory Used" xml:space="preserve">
+    <value>GPU Memory Used</value>
+  </data>
+  <data name="GPU Memory Free" xml:space="preserve">
+    <value>GPU Memory Free</value>
+  </data>
+  <data name="GPU Memory" xml:space="preserve">
+    <value>GPU Memory</value>
+  </data>
+  <data name="Memory Used" xml:space="preserve">
+    <value>Memory Used</value>
+  </data>
+  <data name="Memory Available" xml:space="preserve">
+    <value>Memory Available</value>
+  </data>
+  <data name="Memory" xml:space="preserve">
+    <value>Memory</value>
+  </data>
+  <data name="Virtual Memory Used" xml:space="preserve">
+    <value>Virtual Memory Used</value>
+  </data>
+  <data name="Virtual Memory Available" xml:space="preserve">
+    <value>Virtual Memory Available</value>
+  </data>
+  <data name="Virtual Memory" xml:space="preserve">
+    <value>Virtual Memory</value>
+  </data>
+  <data name="Data Uploaded" xml:space="preserve">
+    <value>Data Uploaded</value>
+  </data>
+  <data name="Data Downloaded" xml:space="preserve">
+    <value>Data Downloaded</value>
+  </data>
+  <data name="Upload Speed" xml:space="preserve">
+    <value>Upload Speed</value>
+  </data>
+  <data name="Download Speed" xml:space="preserve">
+    <value>Download Speed</value>
+  </data>
+  <data name="Network Utilization" xml:space="preserve">
+    <value>Network Utilization</value>
+  </data>
+  <data name="Used Space" xml:space="preserve">
+    <value>Used Space</value>
+  </data>
+  <data name="Read Activity" xml:space="preserve">
+    <value>Read Activity</value>
+  </data>
+  <data name="Write Activity" xml:space="preserve">
+    <value>Write Activity</value>
+  </data>
+  <data name="Total Activity" xml:space="preserve">
+    <value>Total Activity</value>
+  </data>
+  <data name="Read Rate" xml:space="preserve">
+    <value>Read Rate</value>
+  </data>
+  <data name="Write Rate" xml:space="preserve">
+    <value>Write Rate</value>
+  </data>
+  <data name="Available Spare" xml:space="preserve">
+    <value>Available Spare</value>
+  </data>
+  <data name="Available Spare Threshold" xml:space="preserve">
+    <value>Available Spare Threshold</value>
+  </data>
+  <data name="Percentage Used" xml:space="preserve">
+    <value>Percentage Used</value>
+  </data>
+  <data name="Data Read" xml:space="preserve">
+    <value>Data Read</value>
+  </data>
+  <data name="Data Written" xml:space="preserve">
+    <value>Data Written</value>
+  </data>
+  <data name="Generic Memory" xml:space="preserve">
+    <value>Generic Memory</value>
+  </data>
+  <data name="GPU Core" xml:space="preserve">
+    <value>GPU Core</value>
+  </data>
+  <data name="Package" xml:space="preserve">
+    <value>Package</value>
+  </data>
+  <data name="Charge Rate" xml:space="preserve">
+    <value>Charge Rate</value>
+  </data>
+  <data name="Charge Current" xml:space="preserve">
+    <value>Charge Current</value>
+  </data>
+  <data name="Discharge Rate" xml:space="preserve">
+    <value>Discharge Rate</value>
+  </data>
+  <data name="Discharge Current" xml:space="preserve">
+    <value>Discharge Current</value>
+  </data>
+</root>

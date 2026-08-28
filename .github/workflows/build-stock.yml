@@ -1,0 +1,57 @@
+name: Build Stock Plugin
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Stock Plugin
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        include:
+          - platform: x64
+            output_dir: bin\x64\Release
+            pkg_name: Stock_x64
+          - platform: Win32
+            output_dir: bin\Release
+            pkg_name: Stock_x86
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build utilities static library (${{ matrix.platform }})
+        run: |
+          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m
+
+      - name: Build Stock plugin DLL (${{ matrix.platform }})
+        run: |
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /m
+
+      - name: Package ${{ matrix.pkg_name }}
+        shell: pwsh
+        run: |
+          $dist = "dist\${{ matrix.pkg_name }}"
+          New-Item -ItemType Directory -Force -Path $dist
+          
+          # 拷贝编译生成的 Stock.dll
+          Copy-Item "${{ matrix.output_dir }}\Stock.dll" -Destination "$dist\" -Force
+          
+          # 打包为 zip
+          Compress-Archive -Path "$dist\*" -DestinationPath "${{ matrix.pkg_name }}.zip" -Force
+
+      - name: Upload ${{ matrix.pkg_name }} Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pkg_name }}
+          path: ${{ matrix.pkg_name }}.zip
+          retention-days: 30
