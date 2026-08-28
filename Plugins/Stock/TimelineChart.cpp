@@ -1537,14 +1537,6 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 				std::vector<STOCK::Bar> bars1m = CSignalAnalyzer::ConvertTimelineToBars(fullTl);
 
 				int signalEndIndex = -1;
-				if (isHovering)
-				{
-					// ctx.startIndex + hover.hoveredBarIndex 是分时数据的全局索引，与bars1m索引一致
-					int hoverIdx = ctx.startIndex + hover.hoveredBarIndex;
-					if (hoverIdx >= 25 && hoverIdx < static_cast<int>(bars1m.size()))
-						signalEndIndex = hoverIdx;
-				}
-
 				auto rtSig = CSignalAnalyzer::CalcRealtimeSignals(bars1m, signalEndIndex);
 
 				static const COLORREF BUY_COLORS[] = {
@@ -1624,13 +1616,6 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			if (bars.size() >= 26)
 			{
 				int signalEndIndex = -1;
-				if (isHovering)
-				{
-					int hoverKlineIdx = ctx.startIndex + hover.hoveredBarIndex;
-					if (hoverKlineIdx >= 25 && hoverKlineIdx < static_cast<int>(bars.size()))
-						signalEndIndex = hoverKlineIdx;
-				}
-
 				auto rtSig = CSignalAnalyzer::CalcRealtimeSignals(bars, signalEndIndex);
 
 				static const COLORREF BUY_COLORS[] = { RGB(40, 240, 40), RGB(50, 180, 50), RGB(20, 130, 40) };

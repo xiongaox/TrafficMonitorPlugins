@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "FloatingWnd.h"
 #include <afxinet.h>
 #include <memory>
@@ -939,12 +939,6 @@ void CFloatingWnd::OnPaint()
 
 				SafeSetWindowPos(m_btnIndicatorWR, tabX + (tabW + tabGap) * 4, tabY, tabW, tabH);
 				SafeShowWindow(m_btnIndicatorWR, true);
-
-				m_btnIndicatorCJL.Invalidate();
-				m_btnIndicatorMACD.Invalidate();
-				m_btnIndicatorKDJ.Invalidate();
-				m_btnIndicatorRSI.Invalidate();
-				m_btnIndicatorWR.Invalidate();
 
 				// 定位缩放按钮到副图标题栏右侧
 				int zoomBtnW = g_data.RDPI(22);
@@ -2353,12 +2347,6 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		textColor = isSelected ? RGB(255, 255, 255) : RGB(148, 163, 184);
 		borderColor = RGB(38, 42, 54);
 	}
-	else if (signalColor != CLR_INVALID)
-	{
-		bgColor = signalColor;
-		textColor = RGB(255, 255, 255);
-		borderColor = signalColor;
-	}
 	else if (isActive)
 	{
 		bgColor = COLOR_ACCENT_BLUE;
@@ -2393,6 +2381,15 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	dc.LineTo(rect.left, rect.bottom - 1);
 	dc.SelectObject(pOldPen);
 
+	// 若存在实时买卖信号，在右上角绘制小圆点提示（不破坏Tab选中状态）
+	if (signalColor != CLR_INVALID && !isCloseBtn)
+	{
+		int dotSize = g_data.RDPI(3);
+		int dotMargin = g_data.RDPI(2);
+		CRect dotRect(rect.right - dotMargin - dotSize, rect.top + dotMargin, rect.right - dotMargin, rect.top + dotMargin + dotSize);
+		dc.FillSolidRect(dotRect, signalColor);
+	}
+
 	// 明确获取按钮文本
 	CString text;
 	if (nID == IDC_CALL_AUCTION_BTN) text = _T("竞价");
@@ -2426,7 +2423,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
 	CFont* pOldFont = dc.SelectObject(&btnFont);
-	dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	dc.SelectObject(pOldFont);
 	btnFont.DeleteObject();
 
