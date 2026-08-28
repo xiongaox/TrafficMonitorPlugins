@@ -28,7 +28,12 @@ jobs:
         run: msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (x64)
-        run: msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
+        run: msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" /fl /flp:logfile=msbuild.log;verbosity=normal
+
+      - name: Show MSBuild Errors on Failure
+        if: failure()
+        run: |
+          Get-Content msbuild.log | Select-String -Pattern ": error " -Context 2,2
 
       - name: Package Stock_x64
         shell: pwsh
