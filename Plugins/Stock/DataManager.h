@@ -192,4 +192,6 @@ private:
 	// 每日重置跟踪：记录上次更新日期，跨天时标记待重置
 	std::string m_avg_diff_last_date;
 	bool m_avg_diff_reset_pending{ false };  // 跨天待重置标识，等交易时段获取到今日数据后才执行
+
+	ULONG_PTR m_gdiplusToken{ 0 };
 };

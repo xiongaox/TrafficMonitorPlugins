@@ -24,7 +24,25 @@ void CStockIndicator::CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>&
 	if (n == 0)
 		return;
 
-	// 计算每个窗口的简单移动平均价（SMA），基于有效价格序列避免成交量为0或浮点漂移导致断续
+	// 前值填充：若某分钟数据缺失或为0，向前继承上一分钟有效价格与均价，消除断点
+	STOCK::Price lastValidPrice = 0;
+	STOCK::Price lastValidAvgPrice = 0;
+	for (int i = 0; i < n; i++)
+	{
+		if (timelinePoint[i].price > 0)
+			lastValidPrice = timelinePoint[i].price;
+		else if (lastValidPrice > 0)
+			timelinePoint[i].price = lastValidPrice;
+
+		if (timelinePoint[i].averagePrice > 0)
+			lastValidAvgPrice = timelinePoint[i].averagePrice;
+		else if (lastValidAvgPrice > 0)
+			timelinePoint[i].averagePrice = lastValidAvgPrice;
+		else if (timelinePoint[i].price > 0)
+			timelinePoint[i].averagePrice = timelinePoint[i].price;
+	}
+
+	// 计算每个窗口的移动平均价（SMA），自适应扩展窗口确保早盘第1分钟起连续出线
 	auto calcWindow = [&](int windowSize, int fieldOffset) {
 		for (int i = 0; i < n; i++)
 		{

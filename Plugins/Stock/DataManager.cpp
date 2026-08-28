@@ -39,12 +39,23 @@ CDataManager::CDataManager()
 	HDC hDC = ::GetDC(HWND_DESKTOP);
 	m_dpi = GetDeviceCaps(hDC, LOGPIXELSY);
 	::ReleaseDC(HWND_DESKTOP, hDC);
+
+	// 初始化GDI+
+	Gdiplus::GdiplusStartupInput gdiplusStartupInput;
+	Gdiplus::GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, NULL);
 }
 
 CDataManager::~CDataManager()
 {
 	SaveConfig();
 	// m_db_mgr 自动析构会关闭数据库连接
+
+	// 释放GDI+
+	if (m_gdiplusToken != 0)
+	{
+		Gdiplus::GdiplusShutdown(m_gdiplusToken);
+		m_gdiplusToken = 0;
+	}
 }
 
 CDataManager& CDataManager::Instance()

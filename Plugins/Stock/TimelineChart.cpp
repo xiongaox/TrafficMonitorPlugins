@@ -266,222 +266,247 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		unitY = ctx.priceChartHeight / (maxPrice - minPrice);
 	}
 
-	CPen pKLine(PS_SOLID, 1, COLOR_BLUE_AVG1);
-
-	std::vector<CPoint> dataPoints;
-	dataPoints.reserve(timelinePoint.size());
+	// 1. 提取价格点列与前值顺延（保证永不断线）
+	std::vector<Gdiplus::PointF> pricePoints;
+	pricePoints.reserve(totalPoints);
+	STOCK::Price lastValidPrice = ctx.realtimeData.prevClosePrice > 0 ? ctx.realtimeData.prevClosePrice : 0;
 	for (int i = 0; i < totalPoints; i++)
 	{
-		const auto& item = timelinePoint[i];
-		int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
-		double yVal = (item.price - minPrice) * unitY;
-		dataPoints.push_back(CPoint(pointX, static_cast<int>(round(yVal))));
+		STOCK::Price p = timelinePoint[i].price;
+		if (p > 0)
+			lastValidPrice = p;
+		else if (lastValidPrice > 0)
+			p = lastValidPrice;
+
+		float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+		float yVal = static_cast<float>((p - minPrice) * unitY);
+		float py = ctx.priceChartTop + ctx.priceChartHeight - yVal;
+		py = (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
+		pricePoints.push_back(Gdiplus::PointF(pointX, py));
 	}
 
-	// 均价线（点虚线，先画）
+	// 2. 提取均价点列与前值顺延（保证均价线永不断线）
+	std::vector<Gdiplus::PointF> avgPoints;
+	avgPoints.reserve(totalPoints);
+	STOCK::Price lastValidAvgPrice = (pricePoints.empty() ? 0 : timelinePoint[0].price);
+	for (int i = 0; i < totalPoints; i++)
 	{
-		CPen avgLinePen(PS_SOLID, 1, COLOR_GOLDEN);
-		CPen* pOldAvgPen = memDC.SelectObject(&avgLinePen);
-		bool firstAvgPoint = true;
-		for (int i = 0; i < totalPoints; i++)
-		{
-			const auto& item = timelinePoint[i];
-			if (item.averagePrice <= 0)
-			{
-				firstAvgPoint = true;
-				continue;
-			}
-			int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
-			int py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round((item.averagePrice - minPrice) * unitY));
-			py = max(ctx.priceChartTop, min(py, ctx.priceChartTop + ctx.priceChartHeight));
-			if (firstAvgPoint)
-			{
-				memDC.MoveTo(pointX, py);
-				firstAvgPoint = false;
-			}
-			else
-			{
-				memDC.LineTo(pointX, py);
-			}
-		}
-		memDC.SelectObject(pOldAvgPen);
+		STOCK::Price ap = timelinePoint[i].averagePrice;
+		if (ap > 0)
+			lastValidAvgPrice = ap;
+		else if (lastValidAvgPrice > 0)
+			ap = lastValidAvgPrice;
+		else if (timelinePoint[i].price > 0)
+			ap = timelinePoint[i].price;
+
+		float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+		float yVal = static_cast<float>((ap - minPrice) * unitY);
+		float py = ctx.priceChartTop + ctx.priceChartHeight - yVal;
+		py = (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
+		avgPoints.push_back(Gdiplus::PointF(pointX, py));
 	}
 
-	// MA5/MA17/MA60均线配色
-	if (hover.showMA)
-	{
-		const COLORREF ma5Color = COLOR_GOLDEN;
-		const COLORREF ma17Color = RGB(56, 189, 248);
-		const COLORREF ma60Color = RGB(192, 132, 252);
-
-		auto drawMALine = [&](int fieldOffset, COLORREF color) {
-			CPen maPen(PS_SOLID, 1, color);
-			memDC.SelectObject(&maPen);
-			bool first = true;
-			for (int i = 0; i < totalPoints; i++)
-			{
-				const auto& item = timelinePoint[i];
-				STOCK::Price maVal = 0;
-				switch (fieldOffset)
-				{
-				case 5: maVal = item.ma5; break;
-				case 17: maVal = item.ma17; break;
-				case 60: maVal = item.ma60; break;
-				}
-				if (maVal <= 0) { first = true; continue; }
-				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
-				double yVal = (maVal - minPrice) * unitY;
-				int py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round(yVal));
-				if (first)
-				{
-					memDC.MoveTo(pointX, py);
-					first = false;
-				}
-				else
-				{
-					memDC.LineTo(pointX, py);
-				}
-			}
-			};
-
-		drawMALine(5, ma5Color);
-		drawMALine(17, ma17Color);
-		drawMALine(60, ma60Color);
-	}
-
-	// 布林带（短横线虚线）
+	// 3. 布林带数据计算（自适应扩展累积窗口，从09:30第1分钟起连续出线，绝不断线）
+	std::vector<Gdiplus::PointF> upperPoints, midPoints, lowerPoints;
 	if (hover.showBollBands)
 	{
 		const int N = 20;
-		const int K = 2;
-
+		const double K = 2.0;
 		const auto& fullData = ctx.fullTimeline ? *ctx.fullTimeline : timelinePoint;
 
-		std::vector<double> upperBand(totalPoints, 0);
-		std::vector<double> middleBand(totalPoints, 0);
-		std::vector<double> lowerBand(totalPoints, 0);
+		upperPoints.reserve(totalPoints);
+		midPoints.reserve(totalPoints);
+		lowerPoints.reserve(totalPoints);
 
 		for (int i = 0; i < totalPoints; i++)
 		{
 			int globalIdx = ctx.startIndex + i;
-			if (globalIdx < N - 1)
-			{
-				upperBand[i] = middleBand[i] = lowerBand[i] = 0;
-				continue;
-			}
+			int availableCount = (std::min)(N, globalIdx + 1);
+			int startJ = (std::max)(0, globalIdx - availableCount + 1);
+
 			double sum = 0;
-			for (int j = globalIdx - N + 1; j <= globalIdx; j++)
+			int validCnt = 0;
+			for (int j = startJ; j <= globalIdx && j < static_cast<int>(fullData.size()); j++)
 			{
-				sum += fullData[j].price;
+				if (fullData[j].price > 0)
+				{
+					sum += fullData[j].price;
+					validCnt++;
+				}
 			}
-			double ma = sum / N;
+
+			double ma = validCnt > 0 ? (sum / validCnt) : (i < static_cast<int>(pricePoints.size()) ? timelinePoint[i].price : minPrice);
 			double variance = 0;
-			for (int j = globalIdx - N + 1; j <= globalIdx; j++)
+			for (int j = startJ; j <= globalIdx && j < static_cast<int>(fullData.size()); j++)
 			{
-				double diff = fullData[j].price - ma;
-				variance += diff * diff;
+				if (fullData[j].price > 0)
+				{
+					double diff = fullData[j].price - ma;
+					variance += diff * diff;
+				}
 			}
-			double stddev = std::sqrt(variance / N);
-			middleBand[i] = ma;
-			upperBand[i] = ma + K * stddev;
-			lowerBand[i] = ma - K * stddev;
-		}
+			double stddev = validCnt > 1 ? std::sqrt(variance / validCnt) : 0.0;
+			double upper = ma + K * stddev;
+			double lower = ma - K * stddev;
 
-		auto priceToY = [&](double price) -> int {
-			return ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round((price - minPrice) * unitY));
+			float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+			auto calcPy = [&](double price) -> float {
+				float py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<float>((price - minPrice) * unitY);
+				return (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
 			};
 
-		auto drawBandLine = [&](const std::vector<double>& band, COLORREF color) {
-			CPen bandPen(PS_DASH, 1, color);
-			memDC.SelectObject(&bandPen);
-			bool first = true;
-			for (int i = 0; i < totalPoints; i++)
-			{
-				if (band[i] <= 0) { first = true; continue; }
-				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
-				int py = priceToY(band[i]);
-				py = max(ctx.priceChartTop, min(py, ctx.priceChartTop + ctx.priceChartHeight));
-				if (first)
-				{
-					memDC.MoveTo(pointX, py);
-					first = false;
-				}
-				else
-				{
-					memDC.LineTo(pointX, py);
-				}
-			}
+			upperPoints.push_back(Gdiplus::PointF(pointX, calcPy(upper)));
+			midPoints.push_back(Gdiplus::PointF(pointX, calcPy(ma)));
+			lowerPoints.push_back(Gdiplus::PointF(pointX, calcPy(lower)));
+		}
+	}
+
+	// 4. MA均线点列（MA5/MA17/MA60）
+	std::vector<Gdiplus::PointF> ma5Points, ma17Points, ma60Points;
+	if (hover.showMA)
+	{
+		ma5Points.reserve(totalPoints);
+		ma17Points.reserve(totalPoints);
+		ma60Points.reserve(totalPoints);
+
+		for (int i = 0; i < totalPoints; i++)
+		{
+			const auto& item = timelinePoint[i];
+			float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+			auto calcPy = [&](STOCK::Price price) -> float {
+				float py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<float>((price - minPrice) * unitY);
+				return (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
 			};
 
-		drawBandLine(upperBand, COLOR_RED_UP);
-		drawBandLine(middleBand, COLOR_BLUE_COST);
-		drawBandLine(lowerBand, COLOR_GREEN_DOWN);
-	}
-
-	// 走势线下方面积轻微填充（提升现代金融看板质感）
-	if (dataPoints.size() >= 2)
-	{
-		std::vector<CPoint> polyPoints;
-		polyPoints.reserve(dataPoints.size() + 2);
-		int bottomY = ctx.priceChartTop + ctx.priceChartHeight;
-		polyPoints.push_back(CPoint(dataPoints[0].x, bottomY));
-		for (size_t i = 0; i < dataPoints.size(); i++)
-		{
-			polyPoints.push_back(CPoint(dataPoints[i].x, ctx.priceChartTop + ctx.priceChartHeight - dataPoints[i].y));
+			if (item.ma5 > 0) ma5Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma5)));
+			if (item.ma17 > 0) ma17Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma17)));
+			if (item.ma60 > 0) ma60Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma60)));
 		}
-		polyPoints.push_back(CPoint(dataPoints.back().x, bottomY));
-
-		CBrush areaBrush(COLOR_LIGHT_BLUE);
-		CBrush* pOldBrush = memDC.SelectObject(&areaBrush);
-		CPen nullPen(PS_NULL, 0, RGB(0, 0, 0));
-		CPen* pOldPolyPen = memDC.SelectObject(&nullPen);
-		memDC.Polygon(polyPoints.data(), static_cast<int>(polyPoints.size()));
-		memDC.SelectObject(pOldPolyPen);
-		memDC.SelectObject(pOldBrush);
-		areaBrush.DeleteObject();
 	}
 
-	// 走势线（现代宝蓝实线）
-	if (!dataPoints.empty())
+	// 5. GDI+ 抗锯齿丝滑渲染
 	{
-		memDC.SelectObject(&pKLine);
-		memDC.MoveTo(dataPoints[0].x, ctx.priceChartTop + ctx.priceChartHeight - dataPoints[0].y);
-		for (int i = 1; i < static_cast<int>(dataPoints.size()); i++)
-			memDC.LineTo(dataPoints[i].x, ctx.priceChartTop + ctx.priceChartHeight - dataPoints[i].y);
+		Gdiplus::Graphics graphics(memDC.GetSafeHdc());
+		graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeAntiAlias);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetMode::PixelOffsetModeHalf);
 
-		// 最高/最低价标签
+		// (1) 走势线下方面积柔和垂直线性渐变（同花顺高级金融质感）
+		if (pricePoints.size() >= 2)
 		{
-			STOCK::Price hiPrice = 0, loPrice = (std::numeric_limits<STOCK::Price>::max)();
-			int hiIdx = -1, loIdx = -1;
-			for (int i = 0; i < totalPoints; i++)
-			{
-				STOCK::Price p = timelinePoint[i].price;
-				if (p > 0)
-				{
-					if (p > hiPrice) { hiPrice = p; hiIdx = i; }
-					if (p >= hiPrice) { hiPrice = p; hiIdx = i; }
-					if (p < loPrice) { loPrice = p; loIdx = i; }
-					if (p <= loPrice) { loPrice = p; loIdx = i; }
-				}
-			}
+			Gdiplus::GraphicsPath areaPath;
+			float bottomY = static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight);
+			areaPath.AddLine(pricePoints[0].X, bottomY, pricePoints[0].X, pricePoints[0].Y);
+			areaPath.AddCurve(pricePoints.data(), static_cast<int>(pricePoints.size()), 0.25f);
+			areaPath.AddLine(pricePoints.back().X, pricePoints.back().Y, pricePoints.back().X, bottomY);
+			areaPath.CloseFigure();
 
-			STOCK::Price prevClose = ctx.realtimeData.prevClosePrice;
+			Gdiplus::RectF gradRect(
+				0,
+				static_cast<float>(ctx.priceChartTop),
+				static_cast<float>(ctx.chartWidth),
+				static_cast<float>(ctx.priceChartHeight)
+			);
+			Gdiplus::LinearGradientBrush areaBrush(
+				gradRect,
+				Gdiplus::Color(45, 33, 150, 243),  // 顶部半透明宝蓝
+				Gdiplus::Color(2, 33, 150, 243),   // 底部近透明消隐
+				Gdiplus::LinearGradientMode::LinearGradientModeVertical
+			);
+			graphics.FillPath(&areaBrush, &areaPath);
+		}
 
-			if (hiIdx >= 0 && hiPrice > 0)
-			{
-				int hiX = dataPoints[hiIdx].x;
-				int hiY = ctx.priceChartTop + ctx.priceChartHeight - dataPoints[hiIdx].y;
-				DrawPricePointLabel(memDC, hiX, hiY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
-					hiPrice, true, COLOR_RED_UP);
-			}
+		// (2) 布林带（半透明抗锯齿平滑虚线）
+		if (hover.showBollBands && midPoints.size() >= 2)
+		{
+			Gdiplus::Pen upperPen(Gdiplus::Color(190, 248, 113, 113), 1.1f);
+			Gdiplus::REAL dashValues[] = { 4.0f, 3.0f };
+			upperPen.SetDashPattern(dashValues, 2);
+			graphics.DrawCurve(&upperPen, upperPoints.data(), static_cast<int>(upperPoints.size()), 0.25f);
 
-			if (loIdx >= 0 && loPrice > 0 && loIdx != hiIdx)
+			Gdiplus::Pen midPen(Gdiplus::Color(190, 96, 165, 250), 1.1f);
+			midPen.SetDashPattern(dashValues, 2);
+			graphics.DrawCurve(&midPen, midPoints.data(), static_cast<int>(midPoints.size()), 0.25f);
+
+			Gdiplus::Pen lowerPen(Gdiplus::Color(190, 52, 211, 153), 1.1f);
+			lowerPen.SetDashPattern(dashValues, 2);
+			graphics.DrawCurve(&lowerPen, lowerPoints.data(), static_cast<int>(lowerPoints.size()), 0.25f);
+		}
+
+		// (3) MA均线（平滑抗锯齿实线）
+		if (hover.showMA)
+		{
+			if (ma5Points.size() >= 2)
 			{
-				int loX = dataPoints[loIdx].x;
-				int loY = ctx.priceChartTop + ctx.priceChartHeight - dataPoints[loIdx].y;
-				DrawPricePointLabel(memDC, loX, loY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
-					loPrice, false, COLOR_GREEN_DOWN);
+				Gdiplus::Pen ma5Pen(Gdiplus::Color(220, 251, 191, 36), 1.1f);
+				ma5Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				graphics.DrawCurve(&ma5Pen, ma5Points.data(), static_cast<int>(ma5Points.size()), 0.25f);
 			}
+			if (ma17Points.size() >= 2)
+			{
+				Gdiplus::Pen ma17Pen(Gdiplus::Color(220, 56, 189, 248), 1.1f);
+				ma17Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				graphics.DrawCurve(&ma17Pen, ma17Points.data(), static_cast<int>(ma17Points.size()), 0.25f);
+			}
+			if (ma60Points.size() >= 2)
+			{
+				Gdiplus::Pen ma60Pen(Gdiplus::Color(220, 192, 132, 252), 1.1f);
+				ma60Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				graphics.DrawCurve(&ma60Pen, ma60Points.data(), static_cast<int>(ma60Points.size()), 0.25f);
+			}
+		}
+
+		// (4) 分时均价线（1.3px 柔和暖金平滑曲线）
+		if (avgPoints.size() >= 2)
+		{
+			Gdiplus::Pen avgPen(Gdiplus::Color(240, 255, 179, 0), 1.3f);
+			avgPen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+			avgPen.SetStartCap(Gdiplus::LineCap::LineCapRound);
+			avgPen.SetEndCap(Gdiplus::LineCap::LineCapRound);
+			graphics.DrawCurve(&avgPen, avgPoints.data(), static_cast<int>(avgPoints.size()), 0.25f);
+		}
+
+		// (5) 分时价格走势线（1.8px 经典同花顺亮蓝平滑曲线）
+		if (pricePoints.size() >= 2)
+		{
+			Gdiplus::Pen pricePen(Gdiplus::Color(255, 33, 150, 243), 1.8f);
+			pricePen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+			pricePen.SetStartCap(Gdiplus::LineCap::LineCapRound);
+			pricePen.SetEndCap(Gdiplus::LineCap::LineCapRound);
+			graphics.DrawCurve(&pricePen, pricePoints.data(), static_cast<int>(pricePoints.size()), 0.25f);
+		}
+	}
+
+	// 6. 最高/最低价标签
+	if (!pricePoints.empty())
+	{
+		STOCK::Price hiPrice = 0, loPrice = (std::numeric_limits<STOCK::Price>::max)();
+		int hiIdx = -1, loIdx = -1;
+		for (int i = 0; i < totalPoints; i++)
+		{
+			STOCK::Price p = timelinePoint[i].price;
+			if (p > 0)
+			{
+				if (p > hiPrice) { hiPrice = p; hiIdx = i; }
+				if (p >= hiPrice) { hiPrice = p; hiIdx = i; }
+				if (p < loPrice) { loPrice = p; loIdx = i; }
+				if (p <= loPrice) { loPrice = p; loIdx = i; }
+			}
+		}
+
+		if (hiIdx >= 0 && hiPrice > 0 && hiIdx < static_cast<int>(pricePoints.size()))
+		{
+			int hiX = static_cast<int>(round(pricePoints[hiIdx].X));
+			int hiY = static_cast<int>(round(pricePoints[hiIdx].Y));
+			DrawPricePointLabel(memDC, hiX, hiY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
+				hiPrice, true, COLOR_RED_UP);
+		}
+
+		if (loIdx >= 0 && loPrice > 0 && loIdx != hiIdx && loIdx < static_cast<int>(pricePoints.size()))
+		{
+			int loX = static_cast<int>(round(pricePoints[loIdx].X));
+			int loY = static_cast<int>(round(pricePoints[loIdx].Y));
+			DrawPricePointLabel(memDC, loX, loY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
+				loPrice, false, COLOR_GREEN_DOWN);
 		}
 	}
 
