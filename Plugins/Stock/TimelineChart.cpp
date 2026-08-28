@@ -805,11 +805,11 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				{
 					if (!buySignals[i] && !sellSignals[i] && !forbidSignals[i])
 						continue;
-					if (i >= static_cast<int>(dataPoints.size()))
+					if (i >= static_cast<int>(pricePoints.size()))
 						continue;
 
-					int ptX = dataPoints[i].x;
-					int ptY = ctx.priceChartTop + ctx.priceChartHeight - dataPoints[i].y;
+					int ptX = static_cast<int>(round(pricePoints[i].X));
+					int ptY = static_cast<int>(round(pricePoints[i].Y));
 
 					if (buySignals[i])
 					{
