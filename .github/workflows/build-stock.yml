@@ -7,21 +7,13 @@ on:
     branches: [ "**" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build Stock Plugin (${{ matrix.platform }})
+    name: Build Stock Plugin (x64)
     runs-on: windows-2022
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: x64
-            output_dir: bin\x64\Release
-            pkg_name: Stock_x64
-          - platform: Win32
-            output_dir: bin\Release
-            pkg_name: Stock_x86
 
     steps:
       - name: Checkout Repository
@@ -32,43 +24,57 @@ jobs:
         with:
           vs-version: '[17.0, 18.0)'
 
-      - name: Build utilities (${{ matrix.platform }})
+      - name: Build utilities (x64)
         shell: cmd
         run: |
-          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/" > utilities_build.log 2>&1
+          msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" > utilities_build.log 2>&1
           if %ERRORLEVEL% NEQ 0 (
             type utilities_build.log
             exit /b 1
           )
 
-      - name: Build Stock (${{ matrix.platform }})
+      - name: Build Stock (x64)
         shell: cmd
         run: |
-          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:SolutionDir="${{ github.workspace }}/" > stock_build.log 2>&1
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" > stock_build.log 2>&1
           if %ERRORLEVEL% NEQ 0 (
             type stock_build.log
             exit /b 1
           )
 
-      - name: Package ${{ matrix.pkg_name }}
+      - name: Package Stock_x64
         shell: pwsh
         run: |
-          $dist = "dist\${{ matrix.pkg_name }}"
+          $dist = "dist\Stock_x64"
           New-Item -ItemType Directory -Force -Path $dist
           
           # 拷贝编译生成的 Stock.dll
-          if (Test-Path "${{ matrix.output_dir }}\Stock.dll") {
-              Copy-Item "${{ matrix.output_dir }}\Stock.dll" -Destination "$dist\" -Force
+          if (Test-Path "bin\x64\Release\Stock.dll") {
+              Copy-Item "bin\x64\Release\Stock.dll" -Destination "$dist\" -Force
           } else {
               Get-ChildItem -Path "bin" -Filter "Stock.dll" -Recurse | Copy-Item -Destination "$dist\" -Force
           }
           
           # 打包为 zip
-          Compress-Archive -Path "$dist\*" -DestinationPath "${{ matrix.pkg_name }}.zip" -Force
+          Compress-Archive -Path "$dist\*" -DestinationPath "Stock_x64.zip" -Force
 
-      - name: Upload ${{ matrix.pkg_name }} Artifact
+      - name: Upload Stock_x64 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.pkg_name }}
-          path: ${{ matrix.pkg_name }}.zip
+          name: Stock_x64
+          path: Stock_x64.zip
           retention-days: 30
+
+      - name: Update Latest Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-stock
+          name: Stock Plugin Latest Build (x64)
+          body: Auto-generated build from GitHub Actions for fast local sync.
+          files: |
+            Stock_x64.zip
+            dist/Stock_x64/Stock.dll
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
