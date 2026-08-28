@@ -46,7 +46,7 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	}
 
 	std::vector<STOCK::ChipPoint> points = chipData.points;
-	if (viewMode < UI_VIEW_MIN5_KLINE && stockInfo.circulatingAShares > 0 && !timelinePoint.empty())
+	if (viewMode < UI_VIEW_DAY_KLINE && stockInfo.circulatingAShares > 0 && !timelinePoint.empty())
 	{
 		const double CHIP_ATTRITION_N = 1.3;
 		const double MAX_EFFECT_TURN = 0.85;

@@ -132,8 +132,8 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 		else
 			maxAvgValueStr.Format(_T("%.2f"), maxAvgDiff);
 
-		// 计算趋势箭头：分时界面用1分钟趋势，5分钟界面用5分钟趋势
-		RegResult trend = (viewMode < UI_VIEW_MIN5_KLINE)
+		// 计算趋势箭头：分时界面用1分钟趋势，K线界面用5分钟趋势
+		RegResult trend = (viewMode < UI_VIEW_DAY_KLINE)
 			? g_data.Get1MinAvgTrend(stockId)
 			: g_data.Get5MinAvgTrend(stockId);
 		trendArrowStr = _T("|"); // 默认竖线

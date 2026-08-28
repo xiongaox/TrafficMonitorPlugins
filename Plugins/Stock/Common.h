@@ -12,9 +12,9 @@ enum UIViewMode
 	UI_VIEW_OVERVIEW = 0,   // 总览界面
 	UI_VIEW_AUCTION,		// 集合竞价界面
 	UI_VIEW_TIMELINE,		// 分时图界面	
-	UI_VIEW_MIN5_KLINE,		// 5分钟K线界面
-	UI_VIEW_MIN30_KLINE,	// 30分钟K线界面
 	UI_VIEW_DAY_KLINE,		// 日K线界面
+	UI_VIEW_WEEK_KLINE,		// 周K线界面
+	UI_VIEW_MONTH_KLINE,	// 月K线界面
 };
 
 using namespace::std;

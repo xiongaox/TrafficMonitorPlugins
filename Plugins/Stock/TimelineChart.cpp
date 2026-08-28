@@ -592,7 +592,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				auto sellReasons = std::vector<CString>(totalPoints);
 				auto noLabelSignals = std::vector<bool>(totalPoints, false);
 
-				if (hover.viewMode < UI_VIEW_MIN5_KLINE && ctx.fullTimeline && ctx.fullTimeline->size() >= 120)
+				if (hover.viewMode < UI_VIEW_DAY_KLINE && ctx.fullTimeline && ctx.fullTimeline->size() >= 120)
 				{
 					std::vector<STOCK::Bar> bars1m = CSignalAnalyzer::ConvertTimelineToBars(*ctx.fullTimeline);
 					auto ar = CSignalAnalyzer::AnalyzeSignalAtFromTimeline(bars1m, bars30, static_cast<int>(bars1m.size()) - 1);
@@ -656,41 +656,30 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 						}
 					}
 				}
-				else if (hover.viewMode >= UI_VIEW_MIN5_KLINE)
+				else if (hover.viewMode >= UI_VIEW_DAY_KLINE)
 				{
-					auto min5KLineObj = stockData->getMin5KLineData();
-					if (min5KLineObj && min5KLineObj->data.size() >= 60)
+					STOCK::KLineData* klineObj = nullptr;
+					if (hover.viewMode == UI_VIEW_DAY_KLINE)
+						klineObj = stockData->getKLineData();
+					else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
+						klineObj = stockData->getWeekKLineData();
+					else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
+						klineObj = stockData->getMonthKLineData();
+
+					if (klineObj && klineObj->data.size() >= 26)
 					{
-						std::string latestBarDate;
-						for (auto it5 = min5KLineObj->data.rbegin(); it5 != min5KLineObj->data.rend(); ++it5)
-						{
-							auto sp = it5->day.find(' ');
-							if (sp != std::string::npos)
-							{
-								latestBarDate = it5->day.substr(0, sp);
-								break;
-							}
-						}
+						std::vector<STOCK::Bar> barsK;
+						barsK.reserve(klineObj->data.size());
+						for (const auto& kp : klineObj->data) barsK.push_back(STOCK::Bar::FromKLinePoint(kp));
 
-						std::vector<STOCK::Bar> bars5;
-						bars5.reserve(min5KLineObj->data.size());
-						for (const auto& kp : min5KLineObj->data) bars5.push_back(STOCK::Bar::FromKLinePoint(kp));
-
-						auto ar = CSignalAnalyzer::AnalyzeSignalAt(bars5, bars30, static_cast<int>(bars5.size()) - 1);
+						auto ar = CSignalAnalyzer::AnalyzeSignalAt(barsK, bars30, static_cast<int>(barsK.size()) - 1);
 						auto& allSignals = ar.batchSignals;
 
 						std::vector<CSignalAnalyzer::SmartSignalPoint> signals;
 						for (const auto& sig : allSignals)
 						{
-							if (sig.barIndex < 0 || sig.barIndex >= static_cast<int>(min5KLineObj->data.size()))
+							if (sig.barIndex < 0 || sig.barIndex >= static_cast<int>(klineObj->data.size()))
 								continue;
-							if (!latestBarDate.empty())
-							{
-								const auto& bar5Time = min5KLineObj->data[sig.barIndex].day;
-								auto sp = bar5Time.find(' ');
-								if (sp != std::string::npos && bar5Time.substr(0, sp) != latestBarDate)
-									continue;
-							}
 							signals.push_back(sig);
 						}
 
@@ -726,19 +715,16 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 
 						for (const auto& sig : signals)
 						{
-							const auto& bar5Time = min5KLineObj->data[sig.barIndex].day;
+							const auto& barKTime = klineObj->data[sig.barIndex].day;
 							std::string timeStr;
-							auto spacePos = bar5Time.find(' ');
-							if (spacePos != std::string::npos && bar5Time.length() > spacePos + 5)
-								timeStr = bar5Time.substr(spacePos + 1, 5);
-							else if (bar5Time.length() >= 5 && bar5Time[2] == ':')
-								timeStr = bar5Time.substr(0, 5);
+							if (barKTime.length() >= 10)
+								timeStr = barKTime.substr(5, 5);
 							else
-								timeStr = bar5Time;
+								timeStr = barKTime;
 
 							auto it = timeIndexMap.find(timeStr);
-							if (it == timeIndexMap.end() && timeStr.length() >= 8)
-								it = timeIndexMap.find(timeStr.substr(0, 5));
+							if (it == timeIndexMap.end())
+								it = timeIndexMap.find(barKTime);
 							if (it != timeIndexMap.end())
 							{
 								int k = it->second;
@@ -916,15 +902,9 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	}
 
 	CString timeStr;
-	if (!item.fullTime.empty() && (hover.viewMode == UI_VIEW_MIN5_KLINE || hover.viewMode == UI_VIEW_MIN30_KLINE))
+	if (!item.fullTime.empty() && hover.viewMode >= UI_VIEW_DAY_KLINE)
 	{
-		timeStr = CString(item.fullTime.c_str());
-		if (timeStr.GetLength() >= 16)
-			timeStr = timeStr.Left(16);
-	}
-	else if (!item.fullTime.empty() && hover.viewMode == UI_VIEW_DAY_KLINE)
-	{
-		// 日K线模式：悬停高亮显示完整日期 yyyy-mm-dd
+		// K线模式：悬停高亮显示完整日期 yyyy-mm-dd
 		timeStr = CString(item.fullTime.c_str());
 	}
 	else
@@ -942,418 +922,6 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 	memDC.SetTextColor(COLOR_BLACK);
 	memDC.SetBkMode(TRANSPARENT);
 	memDC.TextOut(timeLabelX, timeLabelY, timeStr);
-}
-
-void CTimelineChart::DrawMin5KLinePriceChart(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover)
-{
-	const auto& timelinePoint = *ctx.timelinePoint;
-	if (timelinePoint.empty())
-		return;
-
-	const int totalPoints = static_cast<int>(timelinePoint.size());
-	const int xAxisPts = ctx.xAxisPoints > 0 ? ctx.xAxisPoints : totalPoints;
-
-	STOCK::Price maxPrice = ctx.maxPrice;
-	STOCK::Price minPrice = ctx.minPrice;
-	double unitY = ctx.unitY;
-	if (maxPrice <= 0 || minPrice < 0 || maxPrice <= minPrice || unitY <= 0)
-	{
-		STOCK::Price priceLimit = ctx.realtimeData.priceLimit;
-		maxPrice = ctx.realtimeData.prevClosePrice + priceLimit;
-		minPrice = ctx.realtimeData.prevClosePrice - priceLimit;
-		const int pricePaddingY = g_data.RDPI(10);
-		double paddingPrice = (maxPrice - minPrice) * pricePaddingY / ctx.priceChartHeight;
-		maxPrice += paddingPrice;
-		minPrice -= paddingPrice;
-		unitY = ctx.priceChartHeight / (maxPrice - minPrice);
-	}
-
-	const auto& klineData = *ctx.klineData;
-	int klineStartIdx = ctx.startIndex;
-	int klineEndIdx = klineStartIdx + totalPoints;
-	if (klineEndIdx > static_cast<int>(klineData.size()))
-		klineEndIdx = static_cast<int>(klineData.size());
-
-	if (klineStartIdx >= static_cast<int>(klineData.size()))
-		return;
-
-	float barTotalWidth = static_cast<float>(ctx.chartWidth) / xAxisPts;
-	int barWidth = max(1, static_cast<int>(barTotalWidth * 0.7));
-	int gap = static_cast<int>(barTotalWidth) - barWidth;
-	if (gap < 1) gap = 1;
-
-	auto priceToY = [&](STOCK::Price price) -> int {
-		return ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>((price - minPrice) * unitY);
-		};
-
-	// 最新一天K线背景高亮
-	{
-		if (!klineData.empty() && (hover.viewMode == UI_VIEW_MIN5_KLINE || hover.viewMode == UI_VIEW_MIN30_KLINE))
-		{
-			const auto& lastKp = klineData.back();
-			std::string lastDate;
-			auto spacePos = lastKp.day.find(' ');
-			if (spacePos != std::string::npos)
-				lastDate = lastKp.day.substr(0, spacePos);
-			else
-				lastDate = lastKp.day;
-
-			if (!lastDate.empty())
-			{
-				int firstIdx = -1, lastIdx = -1;
-				for (int i = 0; i < totalPoints && (klineStartIdx + i) < klineEndIdx; i++)
-				{
-					const auto& kp = klineData[klineStartIdx + i];
-					std::string kpDate;
-					auto sp = kp.day.find(' ');
-					if (sp != std::string::npos)
-						kpDate = kp.day.substr(0, sp);
-					else
-						kpDate = kp.day;
-					if (kpDate == lastDate)
-					{
-						if (firstIdx < 0) firstIdx = i;
-						lastIdx = i;
-					}
-				}
-
-				if (firstIdx >= 0 && lastIdx >= 0)
-				{
-					int xLeft = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * firstIdx);
-					int xRight = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * (lastIdx + 1));
-
-					CBrush highlightBrush(COLOR_LIGHT_BLUE);
-					memDC.FillRect(CRect(xLeft, ctx.priceChartTop, xRight, ctx.priceChartTop + ctx.priceChartHeight), &highlightBrush);
-					memDC.FillRect(CRect(xLeft, ctx.volumeChartTop, xRight, ctx.volumeChartTop + ctx.volumeChartHeight), &highlightBrush);
-					memDC.FillRect(CRect(xLeft, ctx.macdChartTop, xRight, ctx.macdChartTop + ctx.macdChartHeight), &highlightBrush);
-
-					DrawTimelineGridLines(memDC, ctx);
-				}
-			}
-		}
-	}
-
-	STOCK::Price prevClose = ctx.realtimeData.prevClosePrice;
-
-	for (int i = 0; i < totalPoints && (klineStartIdx + i) < klineEndIdx; i++)
-	{
-		const auto& kp = klineData[klineStartIdx + i];
-		if (kp.close <= 0) continue;
-
-		int centerX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(barTotalWidth / 2);
-		int leftX = centerX - barWidth / 2;
-
-		bool isUp = (kp.close >= kp.open);
-		COLORREF barColor = isUp ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-
-		int openY = priceToY(kp.open);
-		int closeY = priceToY(kp.close);
-		int highY = priceToY(kp.high);
-		int lowY = priceToY(kp.low);
-
-		openY = max(ctx.priceChartTop, min(openY, ctx.priceChartTop + ctx.priceChartHeight));
-		closeY = max(ctx.priceChartTop, min(closeY, ctx.priceChartTop + ctx.priceChartHeight));
-		highY = max(ctx.priceChartTop, min(highY, ctx.priceChartTop + ctx.priceChartHeight));
-		lowY = max(ctx.priceChartTop, min(lowY, ctx.priceChartTop + ctx.priceChartHeight));
-
-		CPen barPen(PS_SOLID, 1, barColor);
-		memDC.SelectObject(&barPen);
-		memDC.MoveTo(centerX, highY);
-		memDC.LineTo(centerX, lowY);
-
-		int bodyTop = min(openY, closeY);
-		int bodyBottom = max(openY, closeY);
-		int bodyHeight = bodyBottom - bodyTop;
-		if (bodyHeight < 1) bodyHeight = 1;
-
-		if (isUp)
-		{
-			CBrush brush(barColor);
-			CBrush* pOldBrush = memDC.SelectObject(&brush);
-			memDC.Rectangle(leftX, bodyTop, leftX + barWidth, bodyBottom + 1);
-			memDC.SelectObject(pOldBrush);
-		}
-		else
-		{
-			CBrush brush(barColor);
-			CBrush* pOldBrush = memDC.SelectObject(&brush);
-			memDC.Rectangle(leftX, bodyTop, leftX + barWidth, bodyBottom + 1);
-			memDC.SelectObject(pOldBrush);
-		}
-	}
-
-	if (hover.showMA)
-	{
-		// MA5/MA17/MA60均线配色
-		const COLORREF ma5Color = RGB(240, 117, 40);
-		const COLORREF ma17Color = RGB(21, 101, 192);
-		const COLORREF ma60Color = RGB(128, 40, 149);
-
-		auto drawMALine = [&](int fieldOffset, COLORREF color) {
-			CPen maPen(PS_SOLID, 1, color);
-			memDC.SelectObject(&maPen);
-			bool first = true;
-			for (int i = 0; i < totalPoints; i++)
-			{
-				const auto& item = timelinePoint[i];
-				STOCK::Price maVal = 0;
-				switch (fieldOffset)
-				{
-				case 5: maVal = item.ma5; break;
-				case 17: maVal = item.ma17; break;
-				case 60: maVal = item.ma60; break;
-				}
-				if (maVal <= 0) { first = true; continue; }
-				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) / 2);
-				double yVal = (maVal - minPrice) * unitY;
-				int py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(yVal);
-				if (first)
-				{
-					memDC.MoveTo(pointX, py);
-					first = false;
-				}
-				else
-				{
-					memDC.LineTo(pointX, py);
-				}
-			}
-			};
-
-		drawMALine(5, ma5Color);
-		drawMALine(17, ma17Color);
-		drawMALine(60, ma60Color);
-	}
-
-	if (hover.showBollBands)
-	{
-		const int N = 20;
-		const int K = 2;
-
-		const auto& fullData = ctx.fullTimeline ? *ctx.fullTimeline : timelinePoint;
-
-		std::vector<double> upperBand(totalPoints, 0);
-		std::vector<double> middleBand(totalPoints, 0);
-		std::vector<double> lowerBand(totalPoints, 0);
-
-		for (int i = 0; i < totalPoints; i++)
-		{
-			int globalIdx = ctx.startIndex + i;
-			if (globalIdx < N - 1)
-			{
-				upperBand[i] = middleBand[i] = lowerBand[i] = 0;
-				continue;
-			}
-			double sum = 0;
-			for (int j = globalIdx - N + 1; j <= globalIdx; j++)
-			{
-				sum += fullData[j].price;
-			}
-			double ma = sum / N;
-			double variance = 0;
-			for (int j = globalIdx - N + 1; j <= globalIdx; j++)
-			{
-				double diff = fullData[j].price - ma;
-				variance += diff * diff;
-			}
-			double stddev = std::sqrt(variance / N);
-			middleBand[i] = ma;
-			upperBand[i] = ma + K * stddev;
-			lowerBand[i] = ma - K * stddev;
-		}
-
-		auto bandPriceToY = [&](double price) -> int {
-			int py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round((price - minPrice) * unitY));
-			return max(ctx.priceChartTop, min(py, ctx.priceChartTop + ctx.priceChartHeight));
-			};
-
-		auto drawBandLine = [&](const std::vector<double>& band, COLORREF color) {
-			CPen bandPen(PS_DASH, 1, color);
-			memDC.SelectObject(&bandPen);
-			bool first = true;
-			for (int i = 0; i < totalPoints; i++)
-			{
-				if (band[i] <= 0) continue;
-				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) / 2);
-				int py = bandPriceToY(band[i]);
-				if (first)
-				{
-					memDC.MoveTo(pointX, py);
-					first = false;
-				}
-				else
-				{
-					memDC.LineTo(pointX, py);
-				}
-			}
-			};
-
-		drawBandLine(upperBand, COLOR_RED_UP);
-		drawBandLine(middleBand, RGB(0, 0, 230));
-		drawBandLine(lowerBand, COLOR_GREEN_DOWN);
-	}
-
-	// 最高/最低价标签
-	{
-		STOCK::Price hiPrice = 0, loPrice = (std::numeric_limits<STOCK::Price>::max)();
-		int hiIdx = -1, loIdx = -1;
-		for (int i = 0; i < totalPoints && (klineStartIdx + i) < klineEndIdx; i++)
-		{
-			const auto& kp = klineData[klineStartIdx + i];
-			if (kp.high > 0)
-			{
-				if (kp.high > hiPrice) { hiPrice = kp.high; hiIdx = i; }
-				if (kp.high >= hiPrice) { hiPrice = kp.high; hiIdx = i; }
-			}
-			if (kp.low > 0)
-			{
-				if (kp.low < loPrice) { loPrice = kp.low; loIdx = i; }
-				if (kp.low <= loPrice) { loPrice = kp.low; loIdx = i; }
-			}
-		}
-
-		if (hiIdx >= 0 && hiPrice > 0)
-		{
-			int hiX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * hiIdx) + static_cast<int>(barTotalWidth / 2);
-			int hiY = priceToY(hiPrice);
-			DrawPricePointLabel(memDC, hiX, hiY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
-				hiPrice, true, COLOR_RED_UP);
-		}
-
-		if (loIdx >= 0 && loPrice > 0 && loIdx != hiIdx)
-		{
-			int loX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * loIdx) + static_cast<int>(barTotalWidth / 2);
-			int loY = priceToY(loPrice);
-			DrawPricePointLabel(memDC, loX, loY, 0, ctx.priceChartTop, ctx.chartWidth, ctx.priceChartHeight,
-				loPrice, false, COLOR_GREEN_DOWN);
-		}
-	}
-
-	// 智能分析买卖点标记（仅5分钟K线模式）
-	if (hover.viewMode == UI_VIEW_MIN5_KLINE)
-	{
-		auto stockData = g_data.GetStockData(hover.stockId);
-		if (stockData)
-		{
-			auto min5KLineObj = stockData->getMin5KLineData();
-			auto min30KLineObj = stockData->getMin30KLineData();
-			if (min5KLineObj && min5KLineObj->data.size() >= 120 &&
-				min30KLineObj && min30KLineObj->data.size() >= 22)
-			{
-				std::vector<STOCK::Bar> bars5, bars30;
-				bars5.reserve(min5KLineObj->data.size());
-				for (const auto& kp : min5KLineObj->data) bars5.push_back(STOCK::Bar::FromKLinePoint(kp));
-				bars30.reserve(min30KLineObj->data.size());
-				for (const auto& kp : min30KLineObj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
-
-				auto ar = CSignalAnalyzer::AnalyzeSignalAt(bars5, bars30, static_cast<int>(bars5.size()) - 1);
-				auto& signals = ar.batchSignals;
-
-				std::set<int> kline5FilteredBarIndices;
-				{
-					bool lastDirIsBuy = false;
-					bool hasLastDir = false;
-					int lastBarIdx = -1;
-					for (const auto& sig : signals)
-					{
-						if (sig.isForbid) { hasLastDir = false; continue; }
-						int bi = sig.barIndex;
-						if (bi == lastBarIdx) continue;
-						if (hasLastDir && sig.isBuy == lastDirIsBuy)
-							kline5FilteredBarIndices.insert(bi);
-						else
-						{
-							lastDirIsBuy = sig.isBuy;
-							hasLastDir = true;
-						}
-						lastBarIdx = bi;
-					}
-				}
-
-				int oldBkMode = memDC.SetBkMode(TRANSPARENT);
-				auto drawSignalArrow = [&](int x, int fromY, int toY, COLORREF color) {
-					CPen pen(PS_SOLID, 1, color);
-					CPen* pOldP = memDC.SelectObject(&pen);
-					memDC.MoveTo(x, fromY);
-					memDC.LineTo(x, toY);
-
-					int dir = (toY >= fromY) ? 1 : -1;
-					int arrowLen = g_data.RDPI(4);
-					int arrowHalf = g_data.RDPI(3);
-					memDC.MoveTo(x, toY);
-					memDC.LineTo(x - arrowHalf, toY - dir * arrowLen);
-					memDC.MoveTo(x, toY);
-					memDC.LineTo(x + arrowHalf, toY - dir * arrowLen);
-					memDC.SelectObject(pOldP);
-					};
-
-				for (const auto& sig : signals)
-				{
-					int klineIdx = sig.barIndex;
-					if (klineIdx < klineStartIdx || klineIdx >= klineEndIdx)
-						continue;
-
-					int visibleIdx = klineIdx - klineStartIdx;
-					int barX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * visibleIdx) + static_cast<int>(barTotalWidth / 2);
-
-					if (sig.isForbid)
-					{
-						int barY = priceToY(klineData[klineIdx].close);
-						CPen pen(PS_SOLID, 2, COLOR_GRAY_TEXT);
-						CPen* pOldP = memDC.SelectObject(&pen);
-						int r = g_data.RDPI(3);
-						memDC.MoveTo(barX - r, barY - r); memDC.LineTo(barX + r, barY + r);
-						memDC.MoveTo(barX + r, barY - r); memDC.LineTo(barX - r, barY + r);
-						memDC.SelectObject(pOldP);
-						continue;
-					}
-
-					if (sig.isBuy)
-					{
-						int barY = priceToY(klineData[klineIdx].low) + g_data.RDPI(2);
-						CBrush brush(COLOR_GREEN_DOWN);
-						CPen pen(PS_SOLID, 1, COLOR_GREEN_DOWN);
-						CBrush* pOldB = memDC.SelectObject(&brush);
-						CPen* pOldP = memDC.SelectObject(&pen);
-						int r = g_data.RDPI(3);
-						int labelOff = g_data.RDPI(8);
-						memDC.Ellipse(barX - r, barY, barX + r, barY + 2 * r);
-						if (!kline5FilteredBarIndices.count(klineIdx))
-						{
-							memDC.SetTextColor(COLOR_GREEN_DOWN);
-							CSize sz = memDC.GetTextExtent(sig.reason);
-							int labelY = barY + 2 * r + labelOff;
-							memDC.TextOut(barX - sz.cx / 2, labelY, sig.reason);
-							drawSignalArrow(barX, labelY, barY + 2 * r, COLOR_GREEN_DOWN);
-						}
-						memDC.SelectObject(pOldB);
-						memDC.SelectObject(pOldP);
-					}
-					else
-					{
-						int barY = priceToY(klineData[klineIdx].high) - g_data.RDPI(2);
-						CBrush brush(COLOR_RED_UP);
-						CPen pen(PS_SOLID, 1, COLOR_RED_UP);
-						CBrush* pOldB = memDC.SelectObject(&brush);
-						CPen* pOldP = memDC.SelectObject(&pen);
-						int r = g_data.RDPI(3);
-						int labelOff = g_data.RDPI(8);
-						memDC.Ellipse(barX - r, barY - 2 * r, barX + r, barY);
-						if (!kline5FilteredBarIndices.count(klineIdx))
-						{
-							memDC.SetTextColor(COLOR_RED_UP);
-							CSize sz = memDC.GetTextExtent(sig.reason);
-							int labelY = barY - 2 * r - sz.cy - labelOff;
-							memDC.TextOut(barX - sz.cx / 2, labelY, sig.reason);
-							drawSignalArrow(barX, labelY + sz.cy, barY - 2 * r, COLOR_RED_UP);
-						}
-						memDC.SelectObject(pOldB);
-						memDC.SelectObject(pOldP);
-					}
-				}
-				memDC.SetBkMode(oldBkMode);
-			}
-		}
-	}
 }
 
 void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover)
@@ -1595,7 +1163,7 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 		memDC.SetTextColor(COLOR_WHITE);
 		memDC.DrawText(hover.timelinePriceTitleTip, priceTitleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 	}
-	else if (hover.viewMode == UI_VIEW_DAY_KLINE && ctx.klineData && !ctx.klineData->empty())
+	else if (hover.viewMode >= UI_VIEW_DAY_KLINE && ctx.klineData && !ctx.klineData->empty())
 	{
 		int xPos = g_data.RDPI(4);
 		int centerY = areaTop + titleH / 2;
@@ -1632,95 +1200,6 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 
 			drawKLineLabel(_T("开:"), kp.open, COLOR_TEXT_MUTED, (kp.open >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
 			drawKLineLabel(_T("收:"), kp.close, COLOR_TEXT_MUTED, (kp.close >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
-		}
-	}
-	else if ((hover.viewMode == UI_VIEW_MIN5_KLINE || hover.viewMode == UI_VIEW_MIN30_KLINE) && ctx.klineData && !ctx.klineData->empty())
-	{
-		// 5分钟/30分钟K线模式：标题栏与分时模式一致，显示现价/IOPV/均价
-		STOCK::Price prevClose = ctx.realtimeData.prevClosePrice;
-
-		bool isHovering = (hover.hoveredBarIndex >= 0 && hover.isHoveringVolume);
-		STOCK::Price dispAvgPrice = isHovering ? hover.hoveredData.averagePrice : timelinePoint.back().averagePrice;
-		if (dispAvgPrice <= 0)
-			dispAvgPrice = isHovering ? hover.hoverMa1 : ctx.ma1;
-
-		int xPos = g_data.RDPI(4);
-		int centerY = areaTop + titleH / 2;
-
-		auto drawLabelValue = [&](const CString& labelText, STOCK::Price value, COLORREF labelColor, COLORREF valueColor) {
-			CString valStr = CCommon::FormatFloat(value);
-			memDC.SetTextColor(labelColor);
-			CSize ls = memDC.GetTextExtent(labelText);
-			memDC.TextOut(xPos, centerY - ls.cy / 2, labelText);
-			xPos += ls.cx;
-			memDC.SetTextColor(valueColor);
-			CSize vs = memDC.GetTextExtent(valStr);
-			memDC.TextOut(xPos, centerY - vs.cy / 2, valStr);
-			xPos += vs.cx + g_data.RDPI(4);
-			};
-
-		auto cmpPrevClose = [prevClose](STOCK::Price p) -> COLORREF {
-			if (prevClose <= 0) return COLOR_WHITE;
-			if (p > prevClose) return COLOR_RED_UP;
-			if (p < prevClose) return COLOR_GREEN_DOWN;
-			return COLOR_WHITE;
-			};
-
-		// 左侧：现价
-		drawLabelValue(_T("现:"), ctx.realtimeData.currentPrice, COLOR_TEXT_MUTED, cmpPrevClose(ctx.realtimeData.currentPrice));
-
-		// 右侧：ETF显示净:xx 溢:+/-xx%，股票显示均:xx
-		if (ctx.realtimeData.IsETF())
-		{
-			COLORREF iopvColor = COLOR_WHITE;
-			if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
-				iopvColor = COLOR_RED_UP;
-			else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
-				iopvColor = COLOR_GREEN_DOWN;
-
-			CString iopvLabel = _T("净:");
-			CString iopvVal;
-			iopvVal.Format(_T("%.4f"), ctx.realtimeData.iopv);
-			CSize iopvLs = memDC.GetTextExtent(iopvLabel);
-			CSize iopvVs = memDC.GetTextExtent(iopvVal);
-
-			CString premLabel = _T(" 溢:");
-			CString premVal;
-			double premRate = ctx.realtimeData.iopvPremiumRate;
-			if (premRate >= 0)
-				premVal.Format(_T("+%.2f%%"), premRate);
-			else
-				premVal.Format(_T("%.2f%%"), premRate);
-			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_WHITE);
-			CSize premLs = memDC.GetTextExtent(premLabel);
-			CSize premVs = memDC.GetTextExtent(premVal);
-
-			int rightX = ctx.chartWidth - g_data.RDPI(4) - iopvLs.cx - iopvVs.cx - premLs.cx - premVs.cx;
-			memDC.SetTextColor(COLOR_TEXT_MUTED);
-			memDC.TextOut(rightX, centerY - iopvLs.cy / 2, iopvLabel);
-			rightX += iopvLs.cx;
-			memDC.SetTextColor(iopvColor);
-			memDC.TextOut(rightX, centerY - iopvVs.cy / 2, iopvVal);
-			rightX += iopvVs.cx;
-			memDC.SetTextColor(COLOR_TEXT_MUTED);
-			memDC.TextOut(rightX, centerY - premLs.cy / 2, premLabel);
-			rightX += premLs.cx;
-			memDC.SetTextColor(premColor);
-			memDC.TextOut(rightX, centerY - premVs.cy / 2, premVal);
-		}
-		else
-		{
-			CString avgLabel = _T("均:");
-			CString avgVal = CCommon::FormatFloat(dispAvgPrice);
-			COLORREF avgColor = cmpPrevClose(dispAvgPrice);
-			CSize avgLs = memDC.GetTextExtent(avgLabel);
-			CSize avgVs = memDC.GetTextExtent(avgVal);
-			int rightX = ctx.chartWidth - g_data.RDPI(4) - avgLs.cx - avgVs.cx;
-			memDC.SetTextColor(COLOR_TEXT_MUTED);
-			memDC.TextOut(rightX, centerY - avgLs.cy / 2, avgLabel);
-			rightX += avgLs.cx;
-			memDC.SetTextColor(avgColor);
-			memDC.TextOut(rightX, centerY - avgVs.cy / 2, avgVal);
 		}
 	}
 	else if (!timelinePoint.empty())
@@ -1853,7 +1332,7 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 		}
 	}
 
-	if (hover.viewMode >= UI_VIEW_MIN5_KLINE && !timelinePoint.empty())
+	if (hover.viewMode >= UI_VIEW_DAY_KLINE && !timelinePoint.empty())
 	{
 		bool isHovering = (hover.hoveredBarIndex >= 0 && hover.isHoveringVolume);
 		int displayIdx = isHovering ? hover.hoveredBarIndex : static_cast<int>(timelinePoint.size()) - 1;
@@ -1886,115 +1365,63 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			}
 			};
 
-		if (hover.viewMode == UI_VIEW_MIN5_KLINE)
+		// 日K线/周K线/月K线模式：计算信号颜色
+		auto stockData = g_data.GetStockData(hover.stockId);
+		if (stockData)
 		{
-			auto stockData = g_data.GetStockData(hover.stockId);
-			if (stockData)
+			std::vector<STOCK::Bar> bars;
+			STOCK::KLineData* klineObj = nullptr;
+			if (hover.viewMode == UI_VIEW_DAY_KLINE)
+				klineObj = stockData->getKLineData();
+			else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
+				klineObj = stockData->getWeekKLineData();
+			else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
+				klineObj = stockData->getMonthKLineData();
+
+			if (klineObj && klineObj->data.size() >= 26)
 			{
-				auto min5KLineObj = stockData->getMin5KLineData();
-				if (min5KLineObj && min5KLineObj->data.size() >= 26)
+				bars.reserve(klineObj->data.size());
+				for (const auto& kp : klineObj->data) bars.push_back(STOCK::Bar::FromKLinePoint(kp));
+			}
+
+			if (bars.size() >= 26)
+			{
+				int signalEndIndex = -1;
+				if (isHovering)
 				{
-					std::vector<STOCK::Bar> bars5;
-					bars5.reserve(min5KLineObj->data.size());
-					for (const auto& kp : min5KLineObj->data) bars5.push_back(STOCK::Bar::FromKLinePoint(kp));
-
-					int signalEndIndex = -1;
-					if (isHovering)
-					{
-						int hoverKlineIdx = ctx.startIndex + hover.hoveredBarIndex;
-						if (hoverKlineIdx >= 25 && hoverKlineIdx < static_cast<int>(bars5.size()))
-							signalEndIndex = hoverKlineIdx;
-					}
-
-					auto rtSig = CSignalAnalyzer::CalcRealtimeSignals(bars5, signalEndIndex);
-
-					static const COLORREF BUY_COLORS[] = {
-						RGB(40, 240, 40),
-						RGB(50, 180, 50),
-						RGB(20, 130, 40)
-					};
-					static const COLORREF SELL_COLORS[] = {
-						RGB(240, 40, 40),
-						RGB(180, 50, 50),
-						RGB(130, 20, 40)
-					};
-
-					// 超卖(买入信号=-1)→红色(要涨)，超买(卖出信号=1)→绿色(要跌)
-					if (rtSig.boll != 0) hover.bollSignalColor = rtSig.boll == -1 ? SELL_COLORS[rtSig.bollStr - 1] : BUY_COLORS[rtSig.bollStr - 1];
-					if (rtSig.macd != 0) hover.macdSignalColor = rtSig.macd == -1 ? SELL_COLORS[rtSig.macdStr - 1] : BUY_COLORS[rtSig.macdStr - 1];
-					if (rtSig.kdj != 0) hover.kdjSignalColor = rtSig.kdj == -1 ? SELL_COLORS[rtSig.kdjStr - 1] : BUY_COLORS[rtSig.kdjStr - 1];
-					if (rtSig.rsi != 0) hover.rsiSignalColor = rtSig.rsi == -1 ? SELL_COLORS[rtSig.rsiStr - 1] : BUY_COLORS[rtSig.rsiStr - 1];
-					if (rtSig.wr != 0) hover.wrSignalColor = rtSig.wr == -1 ? SELL_COLORS[rtSig.wrStr - 1] : BUY_COLORS[rtSig.wrStr - 1];
-					if (rtSig.ma != 0) hover.maSignalColor = rtSig.ma == -1 ? SELL_COLORS[rtSig.maStr - 1] : BUY_COLORS[rtSig.maStr - 1];
+					int hoverKlineIdx = ctx.startIndex + hover.hoveredBarIndex;
+					if (hoverKlineIdx >= 25 && hoverKlineIdx < static_cast<int>(bars.size()))
+						signalEndIndex = hoverKlineIdx;
 				}
+
+				auto rtSig = CSignalAnalyzer::CalcRealtimeSignals(bars, signalEndIndex);
+
+				static const COLORREF BUY_COLORS[] = { RGB(40, 240, 40), RGB(50, 180, 50), RGB(20, 130, 40) };
+				static const COLORREF SELL_COLORS[] = { RGB(240, 40, 40), RGB(180, 50, 50), RGB(130, 20, 40) };
+
+				if (rtSig.boll != 0) hover.bollSignalColor = rtSig.boll == -1 ? SELL_COLORS[rtSig.bollStr - 1] : BUY_COLORS[rtSig.bollStr - 1];
+				if (rtSig.macd != 0) hover.macdSignalColor = rtSig.macd == -1 ? SELL_COLORS[rtSig.macdStr - 1] : BUY_COLORS[rtSig.macdStr - 1];
+				if (rtSig.kdj != 0) hover.kdjSignalColor = rtSig.kdj == -1 ? SELL_COLORS[rtSig.kdjStr - 1] : BUY_COLORS[rtSig.kdjStr - 1];
+				if (rtSig.rsi != 0) hover.rsiSignalColor = rtSig.rsi == -1 ? SELL_COLORS[rtSig.rsiStr - 1] : BUY_COLORS[rtSig.rsiStr - 1];
+				if (rtSig.wr != 0) hover.wrSignalColor = rtSig.wr == -1 ? SELL_COLORS[rtSig.wrStr - 1] : BUY_COLORS[rtSig.wrStr - 1];
+				if (rtSig.ma != 0) hover.maSignalColor = rtSig.ma == -1 ? SELL_COLORS[rtSig.maStr - 1] : BUY_COLORS[rtSig.maStr - 1];
 			}
 		}
 
-		else
+		if (hover.showMA)
 		{
-			// 30分钟K线/日K线模式：计算信号颜色
-			auto stockData = g_data.GetStockData(hover.stockId);
-			if (stockData)
-			{
-				std::vector<STOCK::Bar> bars;
-				if (hover.viewMode == UI_VIEW_MIN30_KLINE)
-				{
-					auto min30KLineObj = stockData->getMin30KLineData();
-					if (min30KLineObj && min30KLineObj->data.size() >= 26)
-					{
-						bars.reserve(min30KLineObj->data.size());
-						for (const auto& kp : min30KLineObj->data) bars.push_back(STOCK::Bar::FromKLinePoint(kp));
-					}
-				}
-				else if (hover.viewMode == UI_VIEW_DAY_KLINE)
-				{
-					auto klineObj = stockData->getKLineData();
-					if (klineObj && klineObj->data.size() >= 26)
-					{
-						bars.reserve(klineObj->data.size());
-						for (const auto& kp : klineObj->data) bars.push_back(STOCK::Bar::FromKLinePoint(kp));
-					}
-				}
-
-				if (bars.size() >= 26)
-				{
-					int signalEndIndex = -1;
-					if (isHovering)
-					{
-						int hoverKlineIdx = ctx.startIndex + hover.hoveredBarIndex;
-						if (hoverKlineIdx >= 25 && hoverKlineIdx < static_cast<int>(bars.size()))
-							signalEndIndex = hoverKlineIdx;
-					}
-
-					auto rtSig = CSignalAnalyzer::CalcRealtimeSignals(bars, signalEndIndex);
-
-					static const COLORREF BUY_COLORS[] = { RGB(40, 240, 40), RGB(50, 180, 50), RGB(20, 130, 40) };
-					static const COLORREF SELL_COLORS[] = { RGB(240, 40, 40), RGB(180, 50, 50), RGB(130, 20, 40) };
-
-					if (rtSig.boll != 0) hover.bollSignalColor = rtSig.boll == -1 ? SELL_COLORS[rtSig.bollStr - 1] : BUY_COLORS[rtSig.bollStr - 1];
-					if (rtSig.macd != 0) hover.macdSignalColor = rtSig.macd == -1 ? SELL_COLORS[rtSig.macdStr - 1] : BUY_COLORS[rtSig.macdStr - 1];
-					if (rtSig.kdj != 0) hover.kdjSignalColor = rtSig.kdj == -1 ? SELL_COLORS[rtSig.kdjStr - 1] : BUY_COLORS[rtSig.kdjStr - 1];
-					if (rtSig.rsi != 0) hover.rsiSignalColor = rtSig.rsi == -1 ? SELL_COLORS[rtSig.rsiStr - 1] : BUY_COLORS[rtSig.rsiStr - 1];
-					if (rtSig.wr != 0) hover.wrSignalColor = rtSig.wr == -1 ? SELL_COLORS[rtSig.wrStr - 1] : BUY_COLORS[rtSig.wrStr - 1];
-					if (rtSig.ma != 0) hover.maSignalColor = rtSig.ma == -1 ? SELL_COLORS[rtSig.maStr - 1] : BUY_COLORS[rtSig.maStr - 1];
-				}
-			}
-
-			if (hover.showMA)
-			{
-				STOCK::Price dispMa5 = isHovering ? hover.hoverMa5 : ctx.ma5;
-				STOCK::Price dispMa17 = isHovering ? hover.hoverMa17 : ctx.ma17;
-				STOCK::Price dispMa60 = isHovering ? hover.hoverMa60 : ctx.ma60;
-				std::vector<std::pair<CString, COLORREF>> items;
-				// 30分钟/日K线MA均线配色
-				const COLORREF ma5TextColor = RGB(240, 117, 40);
-				const COLORREF ma17TextColor = RGB(21, 101, 192);
-				const COLORREF ma60TextColor = RGB(128, 40, 149);
-				if (dispMa5 > 0) items.push_back({ _T("MA5:") + formatPrice(dispMa5), ma5TextColor });
-				if (dispMa17 > 0) items.push_back({ _T("MA17:") + formatPrice(dispMa17), ma17TextColor });
-				if (dispMa60 > 0) items.push_back({ _T("MA60:") + formatPrice(dispMa60), ma60TextColor });
-				drawRightLabelValues(items);
-			}
+			STOCK::Price dispMa5 = isHovering ? hover.hoverMa5 : ctx.ma5;
+			STOCK::Price dispMa17 = isHovering ? hover.hoverMa17 : ctx.ma17;
+			STOCK::Price dispMa60 = isHovering ? hover.hoverMa60 : ctx.ma60;
+			std::vector<std::pair<CString, COLORREF>> items;
+			// 日/周/月K线MA均线配色
+			const COLORREF ma5TextColor = RGB(240, 117, 40);
+			const COLORREF ma17TextColor = RGB(21, 101, 192);
+			const COLORREF ma60TextColor = RGB(128, 40, 149);
+			if (dispMa5 > 0) items.push_back({ _T("MA5:") + formatPrice(dispMa5), ma5TextColor });
+			if (dispMa17 > 0) items.push_back({ _T("MA17:") + formatPrice(dispMa17), ma17TextColor });
+			if (dispMa60 > 0) items.push_back({ _T("MA60:") + formatPrice(dispMa60), ma60TextColor });
+			drawRightLabelValues(items);
 		}
 	}
 
@@ -2004,17 +1431,13 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 	tmpCtx.priceChartTop = areaTop + titleH;
 	tmpCtx.priceChartHeight = areaHeight - titleH;
 
-	if (hover.viewMode == UI_VIEW_DAY_KLINE)
+	if (hover.viewMode >= UI_VIEW_DAY_KLINE)
 	{
 		if (hover.showTrendView)
 			DrawTimelinePriceCurve(memDC, tmpCtx, hover);
 		else
 			DrawDayKLinePriceChart(memDC, tmpCtx, hover);
 	}
-	else if (hover.viewMode == UI_VIEW_MIN5_KLINE)
-		DrawMin5KLinePriceChart(memDC, tmpCtx, hover);
-	else if (hover.viewMode == UI_VIEW_MIN30_KLINE)
-		DrawMin5KLinePriceChart(memDC, tmpCtx, hover);
 	else
 		DrawTimelinePriceCurve(memDC, tmpCtx, hover);
 }

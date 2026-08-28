@@ -296,6 +296,20 @@ namespace STOCK
 		double CalculateAverageAmplitude(int days) const;
 	};
 
+	// 周K线历史数据（继承自KLineData，复用CalculateMA等方法）
+	class WeekKLineData : public KLineData
+	{
+	public:
+		Period GetPeriod() const override { return Period::WEEK; }
+	};
+
+	// 月K线历史数据（继承自KLineData，复用CalculateMA等方法）
+	class MonthKLineData : public KLineData
+	{
+	public:
+		Period GetPeriod() const override { return Period::MONTH; }
+	};
+
 	// 5分钟K线历史数据（继承自KLineData，复用CalculateMA等方法）
 	class Min5KLineData : public KLineData
 	{
@@ -635,6 +649,46 @@ namespace STOCK
 			return MakesureHistoricalData<KLineData>(Period::DAY).get();
 		}
 
+		void clearWeekKLineData()
+		{
+			auto klineData = MakesureHistoricalData<WeekKLineData>(Period::WEEK);
+			klineData->Clear();
+		}
+
+		void addWeekKLinePoint(const KLinePoint& point)
+		{
+			auto klineData = MakesureHistoricalData<WeekKLineData>(Period::WEEK);
+			klineData->data.push_back(point);
+		}
+
+		void addWeekKLineData(const CString& json_data);
+
+		// 获取周K线数据
+		STOCK::WeekKLineData* getWeekKLineData()
+		{
+			return MakesureHistoricalData<WeekKLineData>(Period::WEEK).get();
+		}
+
+		void clearMonthKLineData()
+		{
+			auto klineData = MakesureHistoricalData<MonthKLineData>(Period::MONTH);
+			klineData->Clear();
+		}
+
+		void addMonthKLinePoint(const KLinePoint& point)
+		{
+			auto klineData = MakesureHistoricalData<MonthKLineData>(Period::MONTH);
+			klineData->data.push_back(point);
+		}
+
+		void addMonthKLineData(const CString& json_data);
+
+		// 获取月K线数据
+		STOCK::MonthKLineData* getMonthKLineData()
+		{
+			return MakesureHistoricalData<MonthKLineData>(Period::MONTH).get();
+		}
+
 		void clearMin5KLineData()
 		{
 			auto klineData = MakesureHistoricalData<Min5KLineData>(Period::MIN5);
@@ -949,6 +1003,8 @@ namespace STOCK
 		void LoadRealtimeDataByJson(std::string data, const std::vector<std::wstring>& codes = {});
 		void LoadTimelineDataByJson(std::wstring stock_id, CString* data);
 		void LoadKLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadWeekKLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadMonthKLineDataByJson(std::wstring stock_id, CString* data);
 		void LoadMin5KLineDataByJson(std::wstring stock_id, CString* data);
 		void LoadMin30KLineDataByJson(std::wstring stock_id, CString* data);
 		void LoadInnerOuterData(std::string data);

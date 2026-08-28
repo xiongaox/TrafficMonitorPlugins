@@ -69,6 +69,10 @@ public:
 	void ApplyTimeline(const std::wstring& code, const std::string& resp, bool ok);
 	// 日K线
 	void ApplyDayKLine(const std::wstring& code, const std::string& resp, bool ok);
+	// 周K线
+	void ApplyWeekKLine(const std::wstring& code, const std::string& resp, bool ok);
+	// 月K线
+	void ApplyMonthKLine(const std::wstring& code, const std::string& resp, bool ok);
 	// 5分钟K线
 	void ApplyMin5KLine(const std::wstring& code, const std::string& resp, bool ok);
 	// 30分钟K线

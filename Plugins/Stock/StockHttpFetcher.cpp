@@ -174,15 +174,39 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 
 bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::string& outResp)
 {
-	std::wstring url{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
+	// 1. 优先使用腾讯前复权(QFQ)接口
+	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",day,,," + std::to_wstring(days) + L",qfq";
+	CString strHeaders = _T("Referer: https://finance.qq.com");
+	bool ok = CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
+	if (ok && outResp.find("\"data\"") != std::string::npos && outResp.find(CCommon::UnicodeToStr(code)) != std::string::npos)
+	{
+		return true;
+	}
+
+	// 2. 回退到新浪日K接口
+	std::wstring sinaUrl{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
 	std::vector<std::wstring> params;
 	params.push_back(L"symbol=" + code);
 	params.push_back(L"scale=240");
 	params.push_back(L"ma=no");
 	params.push_back(L"datalen=" + std::to_wstring(days));
-	url += CCommon::vectorJoinString(params, L"&");
+	sinaUrl += CCommon::vectorJoinString(params, L"&");
 
-	CString strHeaders = _T("Referer: http://finance.sina.com.cn");
+	CString sinaHeaders = _T("Referer: http://finance.sina.com.cn");
+	return CCommon::GetURL(sinaUrl, outResp, false, WEB_USERAGENT, sinaHeaders, sinaHeaders.GetLength());
+}
+
+bool CStockHttpFetcher::FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp)
+{
+	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",week,,," + std::to_wstring(weeks) + L",qfq";
+	CString strHeaders = _T("Referer: https://finance.qq.com");
+	return CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
+}
+
+bool CStockHttpFetcher::FetchMonthKLine(const std::wstring& code, int months, std::string& outResp)
+{
+	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",month,,," + std::to_wstring(months) + L",qfq";
+	CString strHeaders = _T("Referer: https://finance.qq.com");
 	return CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
 }
 

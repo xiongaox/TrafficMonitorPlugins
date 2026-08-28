@@ -1098,78 +1098,201 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 	}
 }
 
-void STOCK::StockData::addKLineData(const CString& json_data)
+static Price GetValPrice(yyjson_val* val)
 {
-	std::string _json_data = CCommon::UnicodeToStr(json_data);
-	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-	if (doc == nullptr) return;
-
-	yyjson_val* root = yyjson_doc_get_root(doc);
-	if (root == nullptr || !yyjson_is_arr(root))
+	if (val != nullptr)
 	{
-		yyjson_doc_free(doc);
-		return;
-	}
-
-	clearKLineData();
-
-	yyjson_val* item;
-	yyjson_arr_iter iter;
-	yyjson_arr_iter_init(root, &iter);
-	while ((item = yyjson_arr_iter_next(&iter)))
-	{
-		if (item != nullptr && yyjson_is_obj(item))
+		try
 		{
-			KLinePoint point;
-			point.day = utilities::JsonHelper::GetJsonString(item, "day");
-			point.open = GetJsonPrice(item, "open");
-			point.high = GetJsonPrice(item, "high");
-			point.low = GetJsonPrice(item, "low");
-			point.close = GetJsonPrice(item, "close");
-			point.volume = GetJsonVolume(item, "volume");
-			addKLinePoint(point);
+			if (yyjson_is_real(val))
+				return static_cast<Price>(yyjson_get_real(val));
+			else if (yyjson_is_sint(val))
+				return static_cast<Price>(yyjson_get_sint(val));
+			else if (yyjson_is_uint(val))
+				return static_cast<Price>(yyjson_get_uint(val));
+			else if (yyjson_is_str(val))
+				return static_cast<Price>(std::stod(yyjson_get_str(val)));
+		}
+		catch (...)
+		{
+			return 0.0F;
 		}
 	}
+	return 0.0F;
+}
+
+static Volume GetValVolume(yyjson_val* val)
+{
+	if (val != nullptr)
+	{
+		try
+		{
+			if (yyjson_is_int(val))
+				return static_cast<Volume>(yyjson_get_int(val));
+			else if (yyjson_is_real(val))
+				return static_cast<Volume>(yyjson_get_real(val));
+			else if (yyjson_is_str(val))
+				return static_cast<Volume>(std::stod(yyjson_get_str(val)));
+		}
+		catch (...)
+		{
+			return 0L;
+		}
+	}
+	return 0L;
+}
+
+static std::vector<STOCK::KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey)
+{
+	std::vector<STOCK::KLinePoint> points;
+	if (jsonData.empty()) return points;
+
+	yyjson_doc* doc = yyjson_read(jsonData.c_str(), jsonData.size(), 0);
+	if (doc == nullptr) return points;
+
+	yyjson_val* root = yyjson_doc_get_root(doc);
+	if (root == nullptr)
+	{
+		yyjson_doc_free(doc);
+		return points;
+	}
+
+	// 1. 腾讯前复权格式: { "code": 0, "data": { "sz159558": { "qfqday": [ ["2026-08-28","1.16","1.13","1.17","1.13","12278502"], ... ] } } }
+	if (yyjson_is_obj(root))
+	{
+		yyjson_val* dataVal = yyjson_obj_get(root, "data");
+		if (dataVal != nullptr && yyjson_is_obj(dataVal))
+		{
+			std::string stockCodeStr = CCommon::UnicodeToStr(stock_id);
+			yyjson_val* stockObj = yyjson_obj_get(dataVal, stockCodeStr.c_str());
+			if (stockObj == nullptr)
+			{
+				yyjson_obj_iter dataIter;
+				yyjson_obj_iter_init(dataVal, &dataIter);
+				yyjson_val* keyVal;
+				yyjson_val* valVal;
+				while ((keyVal = yyjson_obj_iter_next(&dataIter, &valVal)))
+				{
+					if (valVal != nullptr && yyjson_is_obj(valVal))
+					{
+						stockObj = valVal;
+						break;
+					}
+				}
+			}
+
+			if (stockObj != nullptr && yyjson_is_obj(stockObj))
+			{
+				std::string qfqKey = "qfq" + periodKey;
+				yyjson_val* klineArr = yyjson_obj_get(stockObj, qfqKey.c_str());
+				if (klineArr == nullptr || !yyjson_is_arr(klineArr) || yyjson_arr_size(klineArr) == 0)
+				{
+					klineArr = yyjson_obj_get(stockObj, periodKey.c_str());
+				}
+
+				if (klineArr != nullptr && yyjson_is_arr(klineArr))
+				{
+					yyjson_val* item;
+					yyjson_arr_iter arrIter;
+					yyjson_arr_iter_init(klineArr, &arrIter);
+					while ((item = yyjson_arr_iter_next(&arrIter)))
+					{
+						// 腾讯格式数组项: [0]=day, [1]=open, [2]=close, [3]=high, [4]=low, [5]=volume(手)
+						if (item != nullptr && yyjson_is_arr(item) && yyjson_arr_size(item) >= 6)
+						{
+							STOCK::KLinePoint point;
+							yyjson_val* v0 = yyjson_arr_get(item, 0);
+							yyjson_val* v1 = yyjson_arr_get(item, 1);
+							yyjson_val* v2 = yyjson_arr_get(item, 2);
+							yyjson_val* v3 = yyjson_arr_get(item, 3);
+							yyjson_val* v4 = yyjson_arr_get(item, 4);
+							yyjson_val* v5 = yyjson_arr_get(item, 5);
+
+							if (v0 && yyjson_is_str(v0))
+								point.day = yyjson_get_str(v0);
+							point.open = GetValPrice(v1);
+							point.close = GetValPrice(v2);
+							point.high = GetValPrice(v3);
+							point.low = GetValPrice(v4);
+							// 腾讯成交量单位为手，换算为股 (* 100)
+							point.volume = GetValVolume(v5) * 100;
+
+							points.push_back(point);
+						}
+					}
+				}
+			}
+		}
+	}
+	// 2. 新浪格式: [ {"day":"2026-08-28","open":"1.16","high":"1.17","low":"1.13","close":"1.13","volume":"1227850200"}, ... ]
+	else if (yyjson_is_arr(root))
+	{
+		yyjson_val* item;
+		yyjson_arr_iter iter;
+		yyjson_arr_iter_init(root, &iter);
+		while ((item = yyjson_arr_iter_next(&iter)))
+		{
+			if (item != nullptr && yyjson_is_obj(item))
+			{
+				STOCK::KLinePoint point;
+				point.day = utilities::JsonHelper::GetJsonString(item, "day");
+				point.open = GetJsonPrice(item, "open");
+				point.high = GetJsonPrice(item, "high");
+				point.low = GetJsonPrice(item, "low");
+				point.close = GetJsonPrice(item, "close");
+				point.volume = GetJsonVolume(item, "volume");
+				points.push_back(point);
+			}
+		}
+	}
+
 	yyjson_doc_free(doc);
+	return points;
+}
+
+void STOCK::StockData::addKLineData(const CString& json_data)
+{
+	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "day");
+	if (!newPoints.empty())
+	{
+		clearKLineData();
+		for (const auto& pt : newPoints)
+			addKLinePoint(pt);
+	}
+}
+
+void STOCK::StockData::addWeekKLineData(const CString& json_data)
+{
+	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "week");
+	if (!newPoints.empty())
+	{
+		clearWeekKLineData();
+		for (const auto& pt : newPoints)
+			addWeekKLinePoint(pt);
+	}
+}
+
+void STOCK::StockData::addMonthKLineData(const CString& json_data)
+{
+	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "month");
+	if (!newPoints.empty())
+	{
+		clearMonthKLineData();
+		for (const auto& pt : newPoints)
+			addMonthKLinePoint(pt);
+	}
 }
 
 void STOCK::StockMarket::LoadKLineDataByJson(std::wstring stock_id, CString* pData)
 {
 	auto data = g_data.GetStockData(stock_id);
-	if (pData)
+	if (pData && data)
 	{
-		// 先将新数据解析到临时向量，避免空响应覆盖已有缓存数据
-		std::vector<KLinePoint> newPoints;
-		{
-			std::string _json_data = CCommon::UnicodeToStr(*pData);
-			yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-			if (doc != nullptr)
-			{
-				yyjson_val* root = yyjson_doc_get_root(doc);
-				if (root != nullptr && yyjson_is_arr(root))
-				{
-					yyjson_val* item;
-					yyjson_arr_iter iter;
-					yyjson_arr_iter_init(root, &iter);
-					while ((item = yyjson_arr_iter_next(&iter)))
-					{
-						if (item != nullptr && yyjson_is_obj(item))
-						{
-							KLinePoint point;
-							point.day = utilities::JsonHelper::GetJsonString(item, "day");
-							point.open = GetJsonPrice(item, "open");
-							point.high = GetJsonPrice(item, "high");
-							point.low = GetJsonPrice(item, "low");
-							point.close = GetJsonPrice(item, "close");
-							point.volume = GetJsonVolume(item, "volume");
-							newPoints.push_back(point);
-						}
-					}
-				}
-				yyjson_doc_free(doc);
-			}
-		}
-		// 仅当新数据非空时才替换旧数据
+		std::string jsonStr = CCommon::UnicodeToStr(*pData);
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "day");
 		if (!newPoints.empty())
 		{
 			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
@@ -1178,7 +1301,42 @@ void STOCK::StockMarket::LoadKLineDataByJson(std::wstring stock_id, CString* pDa
 				data->addKLinePoint(pt);
 		}
 	}
-	// 网络异常时不清空已有数据
+	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadWeekKLineDataByJson(std::wstring stock_id, CString* pData)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (pData && data)
+	{
+		std::string jsonStr = CCommon::UnicodeToStr(*pData);
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "week");
+		if (!newPoints.empty())
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			data->clearWeekKLineData();
+			for (const auto& pt : newPoints)
+				data->addWeekKLinePoint(pt);
+		}
+	}
+	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadMonthKLineDataByJson(std::wstring stock_id, CString* pData)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (pData && data)
+	{
+		std::string jsonStr = CCommon::UnicodeToStr(*pData);
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "month");
+		if (!newPoints.empty())
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			data->clearMonthKLineData();
+			for (const auto& pt : newPoints)
+				data->addMonthKLinePoint(pt);
+		}
+	}
 	Stock::Instance().UpdateKLine();
 }
 

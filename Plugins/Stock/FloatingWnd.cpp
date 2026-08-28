@@ -89,13 +89,13 @@ enum {
 	IDC_CLOSE_BTN = 1005,
 	IDM_CLOSE_WINDOW = 1006,
 	IDC_MA_BTN = 1007,
-	IDC_MIN5_KLINE_BTN = 1008,
+	IDC_WEEK_KLINE_BTN = 1008,
 	IDC_BOLL_BTN = 1009,
 	IDC_ZOOM_OUT_BTN = 1010,
 	IDC_ZOOM_IN_BTN = 1011,
 	IDC_INDICATOR_MACD_BTN = 1012,
 	IDC_INDICATOR_KDJ_BTN = 1013,
-	IDC_MIN30_KLINE_BTN = 1014,
+	IDC_MONTH_KLINE_BTN = 1014,
 	IDC_INDICATOR_WR_BTN = 1015,
 	IDC_INDICATOR_RSI_BTN = 1016,
 	IDC_INDICATOR_MACD_SIGNAL_BTN = 1017,
@@ -125,12 +125,13 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
 	ON_MESSAGE(IDM_CLOSE_WINDOW, OnCloseWindow)
+	ON_BN_CLICKED(IDC_CALL_AUCTION_BTN, &CFloatingWnd::OnBnClickedCallAuctionBtn)
 	ON_BN_CLICKED(IDC_TIMELINE_BTN, &CFloatingWnd::OnBnClickedTimeLineBtn)
 	ON_BN_CLICKED(IDC_KLINE_BTN, &CFloatingWnd::OnBnClickedKLineBtn)
+	ON_BN_CLICKED(IDC_WEEK_KLINE_BTN, &CFloatingWnd::OnBnClickedWeekKLineBtn)
+	ON_BN_CLICKED(IDC_MONTH_KLINE_BTN, &CFloatingWnd::OnBnClickedMonthKLineBtn)
 	ON_BN_CLICKED(IDC_CLOSE_BTN, &CFloatingWnd::OnBnClickedCloseBtn)
 	ON_BN_CLICKED(IDC_MA_BTN, &CFloatingWnd::OnBnClickedMABtn)
-	ON_BN_CLICKED(IDC_MIN5_KLINE_BTN, &CFloatingWnd::OnBnClickedMin5KLineBtn)
-	ON_BN_CLICKED(IDC_MIN30_KLINE_BTN, &CFloatingWnd::OnBnClickedMin30KLineBtn)
 	ON_BN_CLICKED(IDC_BOLL_BTN, &CFloatingWnd::OnBnClickedBollBtn)
 	ON_BN_CLICKED(IDC_ZOOM_OUT_BTN, &CFloatingWnd::OnBnClickedZoomOutBtn)
 	ON_BN_CLICKED(IDC_ZOOM_IN_BTN, &CFloatingWnd::OnBnClickedZoomInBtn)
@@ -143,7 +144,6 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_BN_CLICKED(IDC_ORDER_BOOK_BTN, &CFloatingWnd::OnBnClickedOrderBookBtn)
 	ON_BN_CLICKED(IDC_EXPAND_BTN, &CFloatingWnd::OnBnClickedExpandBtn)
 	ON_BN_CLICKED(IDC_TOGGLE_STOCK_LIST_BTN, &CFloatingWnd::OnBnClickedToggleStockListBtn)
-	ON_BN_CLICKED(IDC_CALL_AUCTION_BTN, &CFloatingWnd::OnBnClickedCallAuctionBtn)
 END_MESSAGE_MAP()
 
 int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
@@ -155,21 +155,21 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	const int btnHeight = g_data.RDPI(22);
 	const int btnGap = 0;  // 按钮之间不留缝隙
 
-	// 左侧按钮：竞价、分时、5分、30分、日K（现代胶囊分段器，全自绘）
+	// 左侧按钮：竞价、分时、日K、周K、月K（现代胶囊分段器，全自绘）
 	CRect callAuctionRect(0, g_data.RDPI(2), btnWidth, g_data.RDPI(2) + btnHeight);
 	m_btnCallAuction.Create(_T("竞价"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, callAuctionRect, this, IDC_CALL_AUCTION_BTN);
 
 	CRect timelineRect(callAuctionRect.right + btnGap, g_data.RDPI(2), callAuctionRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
 	m_btnTimeLine.Create(_T("分时"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, timelineRect, this, IDC_TIMELINE_BTN);
 
-	CRect min5KLineRect(timelineRect.right + btnGap, g_data.RDPI(2), timelineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnMin5KLine.Create(_T("5分"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, min5KLineRect, this, IDC_MIN5_KLINE_BTN);
-
-	CRect min30KLineRect(min5KLineRect.right + btnGap, g_data.RDPI(2), min5KLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnMin30KLine.Create(_T("30分"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, min30KLineRect, this, IDC_MIN30_KLINE_BTN);
-
-	CRect klineRect(min30KLineRect.right + btnGap, g_data.RDPI(2), min30KLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
+	CRect klineRect(timelineRect.right + btnGap, g_data.RDPI(2), timelineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
 	m_btnKLine.Create(_T("日K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, klineRect, this, IDC_KLINE_BTN);
+
+	CRect weekKLineRect(klineRect.right + btnGap, g_data.RDPI(2), klineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
+	m_btnWeekKLine.Create(_T("周K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, weekKLineRect, this, IDC_WEEK_KLINE_BTN);
+
+	CRect monthKLineRect(weekKLineRect.right + btnGap, g_data.RDPI(2), weekKLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
+	m_btnMonthKLine.Create(_T("月K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, monthKLineRect, this, IDC_MONTH_KLINE_BTN);
 
 	// 右侧按钮：关闭、放大、自选折叠、筹码峰（全自绘）
 	const int closeBtnWidth = g_data.RDPI(22);
@@ -368,8 +368,8 @@ void CFloatingWnd::OnPaint()
 	int x = rect.left, y = rect.top, h = rect.Height(), w = rect.Width();
 
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
-	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_MIN5_KLINE，自动覆盖）
-	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_MIN5_KLINE;
+	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_DAY_KLINE，自动覆盖）
+	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 
 	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;  // 左侧股票列表面板宽度
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
@@ -414,17 +414,24 @@ void CFloatingWnd::OnPaint()
 		{
 			realtimeData = stockData->info;
 			chipData = stockData->chipDistribution;
-			if (m_viewMode == UI_VIEW_DAY_KLINE)
+			if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 			{
-				auto klineObj = stockData->getKLineData();
+				STOCK::KLineData* klineObj = nullptr;
+				if (m_viewMode == UI_VIEW_DAY_KLINE)
+					klineObj = stockData->getKLineData();
+				else if (m_viewMode == UI_VIEW_WEEK_KLINE)
+					klineObj = stockData->getWeekKLineData();
+				else if (m_viewMode == UI_VIEW_MONTH_KLINE)
+					klineObj = stockData->getMonthKLineData();
+
 				if (klineObj)
 				{
 					klineData = klineObj->data;
-					// 将日K线数据转换为TimelinePoint格式，复用分时绘制流程
+					// 将K线数据转换为TimelinePoint格式，复用走势图与指标绘制流程
 					for (const auto& kp : klineObj->data)
 					{
 						STOCK::TimelinePoint tp;
-						// 日K线 day 格式为 "YYYY-MM-DD"，tp.time 取 "MM-DD" 用于常规标签，tp.fullTime 存完整日期用于悬停高亮
+						// K线 day 格式为 "YYYY-MM-DD"，tp.time 取 "MM-DD" 用于常规标签，tp.fullTime 存完整日期用于悬停高亮
 						if (kp.day.length() >= 10)
 						{
 							tp.time = kp.day.substr(5, 5);  // "MM-DD"
@@ -433,68 +440,11 @@ void CFloatingWnd::OnPaint()
 						else
 						{
 							tp.time = kp.day;
+							tp.fullTime = kp.day;
 						}
 						tp.price = kp.close;
 						tp.openPrice = kp.open;
-						tp.averagePrice = kp.close;  // 日K线无分时均价，暂用收盘价
-						tp.volume = kp.volume;
-						tp.amount = static_cast<STOCK::Amount>(kp.volume) * kp.close;
-						timelinePoint.push_back(tp);
-					}
-				}
-			}
-			else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-			{
-				// 5分钟K线模式：获取5分钟K线数据，转换为TimelinePoint格式
-				auto min5KLineObj = stockData->getMin5KLineData();
-				if (min5KLineObj)
-				{
-					klineData = min5KLineObj->data;
-					// 将5分钟K线数据转换为TimelinePoint格式
-					for (const auto& kp : min5KLineObj->data)
-					{
-						STOCK::TimelinePoint tp;
-						// 从 "YYYY-MM-DD HH:MM" 格式中提取 "HH:MM"
-						auto spacePos = kp.day.find(' ');
-						if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-							tp.time = kp.day.substr(spacePos + 1, 5);
-						else if (kp.day.length() >= 5 && kp.day[2] == ':')
-							tp.time = kp.day.substr(0, 5);
-						else
-							tp.time = kp.day;
-						tp.fullTime = kp.day;
-						tp.price = kp.close;
-						tp.openPrice = kp.open;
-						tp.averagePrice = kp.close;  // 暂用收盘价
-						tp.volume = kp.volume;
-						tp.amount = static_cast<STOCK::Amount>(kp.volume) * kp.close;
-						timelinePoint.push_back(tp);
-					}
-				}
-			}
-			else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-			{
-				// 30分钟K线模式：获取30分钟K线数据，转换为TimelinePoint格式
-				auto min30KLineObj = stockData->getMin30KLineData();
-				if (min30KLineObj)
-				{
-					klineData = min30KLineObj->data;
-					// 将30分钟K线数据转换为TimelinePoint格式
-					for (const auto& kp : min30KLineObj->data)
-					{
-						STOCK::TimelinePoint tp;
-						// 从 "YYYY-MM-DD HH:MM" 格式中提取 "HH:MM"
-						auto spacePos = kp.day.find(' ');
-						if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-							tp.time = kp.day.substr(spacePos + 1, 5);
-						else if (kp.day.length() >= 5 && kp.day[2] == ':')
-							tp.time = kp.day.substr(0, 5);
-						else
-							tp.time = kp.day;
-						tp.fullTime = kp.day;
-						tp.price = kp.close;
-						tp.openPrice = kp.open;
-						tp.averagePrice = kp.close;  // 暂用收盘价
+						tp.averagePrice = kp.close;  // K线无分时均价，暂用收盘价
 						tp.volume = kp.volume;
 						tp.amount = static_cast<STOCK::Amount>(kp.volume) * kp.close;
 						timelinePoint.push_back(tp);
@@ -749,7 +699,7 @@ void CFloatingWnd::OnPaint()
 			ctx.fullTimeline = &timelinePoint;  // 完整分时数据，供布林带等指标回溯
 			ctx.startIndex = startIndex;
 			ctx.visibleCount = visibleCount;
-			ctx.xAxisPoints = (m_viewMode >= UI_VIEW_MIN5_KLINE) ? 0 : m_timelineVisibleCount;  // 仅分时模式固定X轴，K线模式动态
+			ctx.xAxisPoints = (m_viewMode >= UI_VIEW_DAY_KLINE) ? 0 : m_timelineVisibleCount;  // 仅分时模式固定X轴，K线模式动态
 			ctx.klineData = &klineData;
 
 			// 使用完整数据中已计算好的MA值
@@ -784,7 +734,7 @@ void CFloatingWnd::OnPaint()
 						visMax = (std::max)(visMax, tp.price);
 						visMin = (std::min)(visMin, tp.price);
 					}
-					if (m_viewMode < UI_VIEW_MIN5_KLINE && tp.averagePrice > 0)
+					if (m_viewMode < UI_VIEW_DAY_KLINE && tp.averagePrice > 0)
 					{
 						visMax = (std::max)(visMax, tp.averagePrice);
 						visMin = (std::min)(visMin, tp.averagePrice);
@@ -792,7 +742,7 @@ void CFloatingWnd::OnPaint()
 				}
 				// K线模式：Y轴范围需要包含K线柱的high/low
 				// 分别纳入high和low，避免low=0时丢失有效的high值，也避免low=0/close=0时visMin被设为0
-				if (m_viewMode >= UI_VIEW_MIN5_KLINE && ctx.klineData)
+				if (m_viewMode >= UI_VIEW_DAY_KLINE && ctx.klineData)
 				{
 					const auto& klineRef = *ctx.klineData;
 					for (int i = 0; i < visibleCount && (startIndex + i) < static_cast<int>(klineRef.size()); i++)
@@ -861,7 +811,7 @@ void CFloatingWnd::OnPaint()
 					}
 				}
 				// 开启基金净值曲线时，Y轴范围同时包含可见区间的IOPV值，避免净值曲线绘制到图表区外
-				if (m_showJZCurve && m_viewMode < UI_VIEW_MIN5_KLINE)
+				if (m_showJZCurve && m_viewMode < UI_VIEW_DAY_KLINE)
 				{
 					for (const auto& tp : subTimeline)
 					{
@@ -1302,7 +1252,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		CRect rect;
 		GetClientRect(&rect);
 		bool isIndex = (GetStockPriority(m_stock_id) < 200);
-		bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_MIN5_KLINE;
+		bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 		const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 		const int chartWidth = rect.Width() - orderBookWidth;
 		const int headerHeight = g_data.RDPI(26);
@@ -1320,9 +1270,16 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				auto stockData = g_data.GetStockData(m_stock_id);
 				if (stockData)
 				{
-					if (m_viewMode == UI_VIEW_DAY_KLINE)
+					if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 					{
-						auto klineObj = stockData->getKLineData();
+						STOCK::KLineData* klineObj = nullptr;
+						if (m_viewMode == UI_VIEW_DAY_KLINE)
+							klineObj = stockData->getKLineData();
+						else if (m_viewMode == UI_VIEW_WEEK_KLINE)
+							klineObj = stockData->getWeekKLineData();
+						else if (m_viewMode == UI_VIEW_MONTH_KLINE)
+							klineObj = stockData->getMonthKLineData();
+
 						if (klineObj)
 						{
 							for (const auto& kp : klineObj->data)
@@ -1330,51 +1287,6 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 								STOCK::TimelinePoint tp;
 								if (kp.day.length() >= 10)
 									tp.time = kp.day.substr(5, 5);
-								else
-									tp.time = kp.day;
-								tp.price = kp.close;
-								tp.openPrice = kp.open;
-								tp.volume = kp.volume;
-								timelinePoint.push_back(tp);
-							}
-						}
-					}
-					else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-					{
-						auto min5KLineObj = stockData->getMin5KLineData();
-						if (min5KLineObj)
-						{
-							for (const auto& kp : min5KLineObj->data)
-							{
-								STOCK::TimelinePoint tp;
-								auto spacePos = kp.day.find(' ');
-								if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-									tp.time = kp.day.substr(spacePos + 1, 5);
-								else if (kp.day.length() >= 5 && kp.day[2] == ':')
-									tp.time = kp.day.substr(0, 5);
-								else
-									tp.time = kp.day;
-								tp.fullTime = kp.day;
-								tp.price = kp.close;
-								tp.openPrice = kp.open;
-								tp.volume = kp.volume;
-								timelinePoint.push_back(tp);
-							}
-						}
-					}
-					else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-					{
-						auto min30KLineObj = stockData->getMin30KLineData();
-						if (min30KLineObj)
-						{
-							for (const auto& kp : min30KLineObj->data)
-							{
-								STOCK::TimelinePoint tp;
-								auto spacePos = kp.day.find(' ');
-								if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-									tp.time = kp.day.substr(spacePos + 1, 5);
-								else if (kp.day.length() >= 5 && kp.day[2] == ':')
-									tp.time = kp.day.substr(0, 5);
 								else
 									tp.time = kp.day;
 								tp.fullTime = kp.day;
@@ -1427,7 +1339,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		CRect dragRect;
 		GetClientRect(&dragRect);
 		bool isIdx = (GetStockPriority(m_stock_id) < 200);
-		bool isIdxKLine = isIdx && m_viewMode >= UI_VIEW_MIN5_KLINE;
+		bool isIdxKLine = isIdx && m_viewMode >= UI_VIEW_DAY_KLINE;
 		const int dragOrderBookWidth = isIdxKLine ? 0 : ORDER_BOOK_WIDTH;
 		const int dragChartWidth = dragRect.Width() - dragOrderBookWidth;
 		const int dragYAxisWidth = g_data.RDPI(50);
@@ -1530,10 +1442,16 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				auto stockData = g_data.GetStockData(m_stock_id);
 				if (stockData)
 				{
-					if (m_viewMode == UI_VIEW_DAY_KLINE)
+					if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 					{
-						// 日K线模式：使用日K线数据计算可见范围
-						auto klineObj = stockData->getKLineData();
+						STOCK::KLineData* klineObj = nullptr;
+						if (m_viewMode == UI_VIEW_DAY_KLINE)
+							klineObj = stockData->getKLineData();
+						else if (m_viewMode == UI_VIEW_WEEK_KLINE)
+							klineObj = stockData->getWeekKLineData();
+						else if (m_viewMode == UI_VIEW_MONTH_KLINE)
+							klineObj = stockData->getMonthKLineData();
+
 						if (klineObj)
 						{
 							for (const auto& kp : klineObj->data)
@@ -1541,53 +1459,6 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 								STOCK::TimelinePoint tp;
 								if (kp.day.length() >= 10)
 									tp.time = kp.day.substr(5, 5);  // "MM-DD"
-								else
-									tp.time = kp.day;
-								tp.price = kp.close;
-								tp.openPrice = kp.open;
-								tp.volume = kp.volume;
-								timelinePoint.push_back(tp);
-							}
-						}
-					}
-					else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-					{
-						// 5分钟K线模式：使用5分钟K线数据计算可见范围
-						auto min5KLineObj = stockData->getMin5KLineData();
-						if (min5KLineObj)
-						{
-							for (const auto& kp : min5KLineObj->data)
-							{
-								STOCK::TimelinePoint tp;
-								auto spacePos = kp.day.find(' ');
-								if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-									tp.time = kp.day.substr(spacePos + 1, 5);
-								else if (kp.day.length() >= 5 && kp.day[2] == ':')
-									tp.time = kp.day.substr(0, 5);
-								else
-									tp.time = kp.day;
-								tp.fullTime = kp.day;
-								tp.price = kp.close;
-								tp.openPrice = kp.open;
-								tp.volume = kp.volume;
-								timelinePoint.push_back(tp);
-							}
-						}
-					}
-					else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-					{
-						// 30分钟K线模式：使用30分钟K线数据计算可见范围
-						auto min30KLineObj = stockData->getMin30KLineData();
-						if (min30KLineObj)
-						{
-							for (const auto& kp : min30KLineObj->data)
-							{
-								STOCK::TimelinePoint tp;
-								auto spacePos = kp.day.find(' ');
-								if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-									tp.time = kp.day.substr(spacePos + 1, 5);
-								else if (kp.day.length() >= 5 && kp.day[2] == ':')
-									tp.time = kp.day.substr(0, 5);
 								else
 									tp.time = kp.day;
 								tp.fullTime = kp.day;
@@ -1646,7 +1517,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	CRect rect;
 	GetClientRect(&rect);
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
-	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_MIN5_KLINE;
+	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = rect.Width() - orderBookWidth;
 	const int yAxisWidth = g_data.RDPI(50);
@@ -1807,10 +1678,16 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			auto stockData = g_data.GetStockData(m_stock_id);
 			if (stockData)
 			{
-				if (m_viewMode == UI_VIEW_DAY_KLINE)
+				if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 				{
-					// 日K线模式：使用日K线数据
-					auto klineObj = stockData->getKLineData();
+					STOCK::KLineData* klineObj = nullptr;
+					if (m_viewMode == UI_VIEW_DAY_KLINE)
+						klineObj = stockData->getKLineData();
+					else if (m_viewMode == UI_VIEW_WEEK_KLINE)
+						klineObj = stockData->getWeekKLineData();
+					else if (m_viewMode == UI_VIEW_MONTH_KLINE)
+						klineObj = stockData->getMonthKLineData();
+
 					if (klineObj)
 					{
 						for (const auto& kp : klineObj->data)
@@ -1818,57 +1695,6 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 							STOCK::TimelinePoint tp;
 							if (kp.day.length() >= 10)
 								tp.time = kp.day.substr(5, 5);  // "MM-DD"
-							else
-								tp.time = kp.day;
-							tp.price = kp.close;
-							tp.openPrice = kp.open;
-							tp.averagePrice = kp.close;
-							tp.volume = kp.volume;
-							tp.amount = static_cast<STOCK::Amount>(kp.volume) * kp.close;
-							timelinePoint.push_back(tp);
-						}
-					}
-				}
-				else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-				{
-					// 5分钟K线模式：使用5分钟K线数据
-					auto min5KLineObj = stockData->getMin5KLineData();
-					if (min5KLineObj)
-					{
-						for (const auto& kp : min5KLineObj->data)
-						{
-							STOCK::TimelinePoint tp;
-							auto spacePos = kp.day.find(' ');
-							if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-								tp.time = kp.day.substr(spacePos + 1, 5);
-							else if (kp.day.length() >= 5 && kp.day[2] == ':')
-								tp.time = kp.day.substr(0, 5);
-							else
-								tp.time = kp.day;
-							tp.fullTime = kp.day;
-							tp.price = kp.close;
-							tp.openPrice = kp.open;
-							tp.averagePrice = kp.close;
-							tp.volume = kp.volume;
-							tp.amount = static_cast<STOCK::Amount>(kp.volume) * kp.close;
-							timelinePoint.push_back(tp);
-						}
-					}
-				}
-				else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-				{
-					// 30分钟K线模式：使用30分钟K线数据
-					auto min30KLineObj = stockData->getMin30KLineData();
-					if (min30KLineObj)
-					{
-						for (const auto& kp : min30KLineObj->data)
-						{
-							STOCK::TimelinePoint tp;
-							auto spacePos = kp.day.find(' ');
-							if (spacePos != std::string::npos && kp.day.length() > spacePos + 5)
-								tp.time = kp.day.substr(spacePos + 1, 5);
-							else if (kp.day.length() >= 5 && kp.day[2] == ':')
-								tp.time = kp.day.substr(0, 5);
 							else
 								tp.time = kp.day;
 							tp.fullTime = kp.day;
@@ -1914,7 +1740,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			int effectiveWidth = chartWidth - chartLeft;
 			// 按索引比例计算鼠标对应的可见数据索引
 			// 分时模式X轴基于m_timelineVisibleCount固定格数，K线模式基于实际数据点数
-			int xSlotCount = (m_viewMode >= UI_VIEW_MIN5_KLINE) ? visibleCount : m_timelineVisibleCount;
+			int xSlotCount = (m_viewMode >= UI_VIEW_DAY_KLINE) ? visibleCount : m_timelineVisibleCount;
 			int relIndex = static_cast<int>(adjX * static_cast<float>(xSlotCount) / effectiveWidth);
 			relIndex = max(0, min(relIndex, visibleCount - 1));
 
@@ -1954,11 +1780,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				// MACD固定显示，始终计算悬停提示（用完整数据确保EMA收敛）
 				{
 					int shortP = 12, longP = 26, signalP = 9;
-					if (m_viewMode == UI_VIEW_MIN5_KLINE)
-					{
-						shortP = 7; longP = 15; signalP = 5;
-					}
-					else if (m_viewMode == UI_VIEW_TIMELINE)
+					if (m_viewMode == UI_VIEW_TIMELINE)
 					{
 						shortP = 6; longP = 12; signalP = 4;
 					}
@@ -1982,13 +1804,9 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				}
 				if (m_timelineIndicator == TimelineIndicator::KDJ)
 				{
-					// 5分钟K线用8,3,3参数，分时(1分钟)用7,3,3参数，30分钟和日K用默认9,3,3
+					// 分时(1分钟)用7,3,3参数，日K/周K/月K用默认9,3,3
 					int kdjN = 9, kdjM1 = 3, kdjM2 = 3;
-					if (m_viewMode == UI_VIEW_MIN5_KLINE)
-					{
-						kdjN = 8; kdjM1 = 3; kdjM2 = 3;
-					}
-					else if (m_viewMode == UI_VIEW_TIMELINE)
+					if (m_viewMode == UI_VIEW_TIMELINE)
 					{
 						kdjN = 7; kdjM1 = 3; kdjM2 = 3;
 					}
@@ -2062,12 +1880,8 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 	CStockFetchThread::Instance().SetFocusStockId(m_stock_id);
 	m_timelineScrollOffset = -1;
 	// 切换股票时重置可见点数为当前模式的默认值，避免旧值导致新股票数据显示异常
-	if (m_viewMode == UI_VIEW_DAY_KLINE)
+	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
-	else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_5MIN;
-	else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_30MIN;
 	else
 	{
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1MIN;
@@ -2107,9 +1921,9 @@ void CFloatingWnd::UpdateModeButtons()
 	{
 		if (m_btnCallAuction.GetSafeHwnd()) m_btnCallAuction.Invalidate();
 		if (m_btnTimeLine.GetSafeHwnd()) m_btnTimeLine.Invalidate();
-		if (m_btnMin5KLine.GetSafeHwnd()) m_btnMin5KLine.Invalidate();
-		if (m_btnMin30KLine.GetSafeHwnd()) m_btnMin30KLine.Invalidate();
 		if (m_btnKLine.GetSafeHwnd()) m_btnKLine.Invalidate();
+		if (m_btnWeekKLine.GetSafeHwnd()) m_btnWeekKLine.Invalidate();
+		if (m_btnMonthKLine.GetSafeHwnd()) m_btnMonthKLine.Invalidate();
 
 		if (m_btnMA.GetSafeHwnd()) m_btnMA.Invalidate();
 		if (m_btnBoll.GetSafeHwnd()) m_btnBoll.Invalidate();
@@ -2149,16 +1963,16 @@ void CFloatingWnd::UpdatePeriodComboVisibility()
 	bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode;
 	SafeShowWindow(m_btnMA, showIndicatorBtns);
 
-	if (m_btnMin5KLine.GetSafeHwnd())
+	if (m_btnWeekKLine.GetSafeHwnd())
 	{
-		// 5分按钮作为主模式按钮之一，始终显示
-		m_btnMin5KLine.ShowWindow(SW_SHOW);
+		// 周K按钮作为主模式按钮之一，始终显示
+		m_btnWeekKLine.ShowWindow(SW_SHOW);
 	}
 
-	if (m_btnMin30KLine.GetSafeHwnd())
+	if (m_btnMonthKLine.GetSafeHwnd())
 	{
-		// 30分按钮作为主模式按钮之一，始终显示
-		m_btnMin30KLine.ShowWindow(SW_SHOW);
+		// 月K按钮作为主模式按钮之一，始终显示
+		m_btnMonthKLine.ShowWindow(SW_SHOW);
 	}
 
 	SafeShowWindow(m_btnBoll, showIndicatorBtns);
@@ -2168,7 +1982,7 @@ void CFloatingWnd::UpdatePeriodComboVisibility()
 
 BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
-	// 分时图模式/5分钟K线模式/日K线模式：滚轮缩放可见数据点数
+	// 分时图模式/K线模式：滚轮缩放可见数据点数
 	if (m_viewMode != UI_VIEW_OVERVIEW)
 	{
 		int minVisible;              // 最大放大倍率：与"+"按钮一致
@@ -2178,15 +1992,15 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 			minVisible = TIME_LINE_VISIBLE_COUNT_1DAY;
 			maxVisible = 750;        // 日K线：最多显示约3年
 		}
-		else if (m_viewMode == UI_VIEW_MIN5_KLINE)
+		else if (m_viewMode == UI_VIEW_WEEK_KLINE)
 		{
-			minVisible = TIME_LINE_VISIBLE_COUNT_5MIN;
-			maxVisible = 480;        // 5分K线
+			minVisible = TIME_LINE_VISIBLE_COUNT_1DAY;
+			maxVisible = 500;        // 周K线：最多显示约10年
 		}
-		else if (m_viewMode == UI_VIEW_MIN30_KLINE)
+		else if (m_viewMode == UI_VIEW_MONTH_KLINE)
 		{
-			minVisible = TIME_LINE_VISIBLE_COUNT_30MIN;
-			maxVisible = 480;        // 30分K线
+			minVisible = TIME_LINE_VISIBLE_COUNT_1DAY;
+			maxVisible = 300;        // 月K线：最多显示约25年
 		}
 		else
 		{
@@ -2206,17 +2020,17 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 					if (klineObj)
 						totalPoints = static_cast<int>(klineObj->data.size());
 				}
-				else if (m_viewMode == UI_VIEW_MIN5_KLINE)
+				else if (m_viewMode == UI_VIEW_WEEK_KLINE)
 				{
-					auto min5KLineObj = stockData->getMin5KLineData();
-					if (min5KLineObj)
-						totalPoints = static_cast<int>(min5KLineObj->data.size());
+					auto weekKLineObj = stockData->getWeekKLineData();
+					if (weekKLineObj)
+						totalPoints = static_cast<int>(weekKLineObj->data.size());
 				}
-				else if (m_viewMode == UI_VIEW_MIN30_KLINE)
+				else if (m_viewMode == UI_VIEW_MONTH_KLINE)
 				{
-					auto min30KLineObj = stockData->getMin30KLineData();
-					if (min30KLineObj)
-						totalPoints = static_cast<int>(min30KLineObj->data.size());
+					auto monthKLineObj = stockData->getMonthKLineData();
+					if (monthKLineObj)
+						totalPoints = static_cast<int>(monthKLineObj->data.size());
 				}
 				else
 				{
@@ -2506,9 +2320,9 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 
 	if (nID == IDC_CALL_AUCTION_BTN) { isActive = (m_viewMode == UI_VIEW_AUCTION); }
 	else if (nID == IDC_TIMELINE_BTN) { isActive = (m_viewMode == UI_VIEW_TIMELINE); }
-	else if (nID == IDC_MIN5_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MIN5_KLINE); }
-	else if (nID == IDC_MIN30_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MIN30_KLINE); }
 	else if (nID == IDC_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_DAY_KLINE); }
+	else if (nID == IDC_WEEK_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_WEEK_KLINE); }
+	else if (nID == IDC_MONTH_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MONTH_KLINE); }
 	else if (nID == IDC_CHIP_PEAK_BTN) { isActive = m_showChipPeak; }
 	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak; }
 	else if (nID == IDC_EXPAND_BTN) { isActive = m_expandedMode; }
@@ -2581,9 +2395,9 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	CString text;
 	if (nID == IDC_CALL_AUCTION_BTN) text = _T("竞价");
 	else if (nID == IDC_TIMELINE_BTN) text = _T("分时");
-	else if (nID == IDC_MIN5_KLINE_BTN) text = _T("5分");
-	else if (nID == IDC_MIN30_KLINE_BTN) text = _T("30分");
 	else if (nID == IDC_KLINE_BTN) text = _T("日K");
+	else if (nID == IDC_WEEK_KLINE_BTN) text = _T("周K");
+	else if (nID == IDC_MONTH_KLINE_BTN) text = _T("月K");
 	else if (nID == IDC_CLOSE_BTN) text = _T("✕");
 	else if (nID == IDC_EXPAND_BTN) text = m_expandedMode ? _T("△") : _T("□");
 	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) text = m_showStockList ? _T("|>") : _T("<|");
@@ -2702,31 +2516,33 @@ void CFloatingWnd::SetDayKLineModeDefaults()
 	ResetHoverState();
 }
 
-void CFloatingWnd::SetMin5KLineModeDefaults()
+void CFloatingWnd::SetWeekKLineModeDefaults()
 {
-	m_viewMode = UI_VIEW_MIN5_KLINE;
-	m_showBollBands = true;
+	m_viewMode = UI_VIEW_WEEK_KLINE;
+	m_showBollBands = false;
 	m_btnBoll.SetWindowText(_T("BL"));
-	m_showMA = false;
-	m_showJZCurve = false;
+	m_showTrendView = false;
 	m_showChipPeak = false;
+	m_showJZCurve = false;
+	m_showMA = true;
 	m_scrollOffset = 0;
 	m_timelineScrollOffset = -1;  // 自动滚动到末尾
-	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_5MIN;  // 初始化缩放，显示最新40个数据点
+	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;  // 周K线初始显示最新40根
 	ResetHoverState();
 }
 
-void CFloatingWnd::SetMin30KLineModeDefaults()
+void CFloatingWnd::SetMonthKLineModeDefaults()
 {
-	m_viewMode = UI_VIEW_MIN30_KLINE;
+	m_viewMode = UI_VIEW_MONTH_KLINE;
 	m_showBollBands = false;
 	m_btnBoll.SetWindowText(_T("BL"));
-	m_showMA = true;
+	m_showTrendView = false;
+	m_showChipPeak = false;
 	m_showJZCurve = false;
-	m_showChipPeak = false;  // 默认展示盘口，与5分钟视图保持一致
+	m_showMA = true;
 	m_scrollOffset = 0;
 	m_timelineScrollOffset = -1;  // 自动滚动到末尾
-	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_30MIN;  // 初始化缩放，显示最新16个数据点
+	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;  // 月K线初始显示最新40根
 	ResetHoverState();
 }
 
@@ -2743,16 +2559,16 @@ void CFloatingWnd::OnBnClickedMABtn()
 	Invalidate();
 }
 
-void CFloatingWnd::OnBnClickedMin5KLineBtn()
+void CFloatingWnd::OnBnClickedWeekKLineBtn()
 {
-	if (m_viewMode != UI_VIEW_MIN5_KLINE)
+	if (m_viewMode != UI_VIEW_WEEK_KLINE)
 	{
-		// 切换到5分钟K线模式
-		SetMin5KLineModeDefaults();
+		// 切换到周K线模式
+		SetWeekKLineModeDefaults();
 	}
 	else
 	{
-		// 退出5分钟K线模式，回到分时模式
+		// 退出周K线模式，回到分时模式
 		SetTimelineModeDefaults();
 	}
 	UpdateModeButtons();
@@ -2761,16 +2577,16 @@ void CFloatingWnd::OnBnClickedMin5KLineBtn()
 	Invalidate();
 }
 
-void CFloatingWnd::OnBnClickedMin30KLineBtn()
+void CFloatingWnd::OnBnClickedMonthKLineBtn()
 {
-	if (m_viewMode != UI_VIEW_MIN30_KLINE)
+	if (m_viewMode != UI_VIEW_MONTH_KLINE)
 	{
-		// 切换到30分钟K线模式
-		SetMin30KLineModeDefaults();
+		// 切换到月K线模式
+		SetMonthKLineModeDefaults();
 	}
 	else
 	{
-		// 退出30分钟K线模式，回到分时模式
+		// 退出月K线模式，回到分时模式
 		SetTimelineModeDefaults();
 	}
 	UpdateModeButtons();
@@ -2793,42 +2609,11 @@ void CFloatingWnd::OnBnClickedBollBtn()
 
 void CFloatingWnd::OnBnClickedZoomOutBtn()
 {
-	// 缩小：先放大到最大（与"+"按钮一致），然后移动到今天最开的位置（左边第一根线为9:30）
-	if (m_viewMode == UI_VIEW_DAY_KLINE)
+	// 缩小：先放大到最大（与"+"按钮一致），然后移动到最开始位置
+	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 	{
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
 		m_timelineScrollOffset = 0;
-	}
-	else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_30MIN;
-		m_timelineScrollOffset = 0;
-	}
-	else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_5MIN;
-		// 5分钟K线模式：找到当天第一根K线的索引作为scrollOffset
-		m_timelineScrollOffset = 0;
-		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-		auto stockData = g_data.GetStockData(m_stock_id);
-		if (stockData)
-		{
-			auto min5KLineObj = stockData->getMin5KLineData();
-			if (min5KLineObj && !min5KLineObj->data.empty())
-			{
-				// 5分钟K线day格式为"YYYY-MM-DD HH:MM"，取最后一根的日期作为当天
-				const auto& klineData = min5KLineObj->data;
-				std::string todayDate = klineData.back().day.substr(0, 10);  // "YYYY-MM-DD"
-				for (size_t i = 0; i < klineData.size(); i++)
-				{
-					if (klineData[i].day.compare(0, 10, todayDate) == 0)
-					{
-						m_timelineScrollOffset = static_cast<int>(i);
-						break;
-					}
-				}
-			}
-		}
 	}
 	else
 	{
@@ -2841,17 +2626,9 @@ void CFloatingWnd::OnBnClickedZoomOutBtn()
 void CFloatingWnd::OnBnClickedZoomInBtn()
 {
 	// 放大：显示最新40个数据点
-	if (m_viewMode == UI_VIEW_DAY_KLINE)
+	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
 	{
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
-	}
-	else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_30MIN;
-	}
-	else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_5MIN;
 	}
 	else
 	{

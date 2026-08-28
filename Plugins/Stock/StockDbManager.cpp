@@ -42,6 +42,10 @@ static const char* GetKLineCacheTable(STOCK::Period period)
 	{
 	case STOCK::Period::DAY:
 		return "kline_day_cache";
+	case STOCK::Period::WEEK:
+		return "kline_week_cache";
+	case STOCK::Period::MONTH:
+		return "kline_month_cache";
 	case STOCK::Period::MIN5:
 		return "kline_min5_cache";
 	case STOCK::Period::MIN30:
@@ -57,6 +61,10 @@ static std::wstring GetKLineCacheTableW(STOCK::Period period)
 	{
 	case STOCK::Period::DAY:
 		return L"kline_day_cache";
+	case STOCK::Period::WEEK:
+		return L"kline_week_cache";
+	case STOCK::Period::MONTH:
+		return L"kline_month_cache";
 	case STOCK::Period::MIN5:
 		return L"kline_min5_cache";
 	case STOCK::Period::MIN30:
@@ -202,6 +210,36 @@ bool CStockDbManager::Init(const std::wstring& config_path)
 		");";
 	errMsg = nullptr;
 	rc = sqlite3_exec(m_db, klineDaySql, nullptr, nullptr, &errMsg);
+	if (rc != SQLITE_OK) sqlite3_free(errMsg);
+
+	const char* klineWeekSql = "CREATE TABLE IF NOT EXISTS kline_week_cache ("
+		"stock_code TEXT NOT NULL,"
+		"day TEXT NOT NULL,"
+		"open REAL NOT NULL,"
+		"high REAL NOT NULL,"
+		"low REAL NOT NULL,"
+		"close REAL NOT NULL,"
+		"volume INTEGER NOT NULL,"
+		"updated_at INTEGER NOT NULL,"
+		"PRIMARY KEY(stock_code, day)"
+		");";
+	errMsg = nullptr;
+	rc = sqlite3_exec(m_db, klineWeekSql, nullptr, nullptr, &errMsg);
+	if (rc != SQLITE_OK) sqlite3_free(errMsg);
+
+	const char* klineMonthSql = "CREATE TABLE IF NOT EXISTS kline_month_cache ("
+		"stock_code TEXT NOT NULL,"
+		"day TEXT NOT NULL,"
+		"open REAL NOT NULL,"
+		"high REAL NOT NULL,"
+		"low REAL NOT NULL,"
+		"close REAL NOT NULL,"
+		"volume INTEGER NOT NULL,"
+		"updated_at INTEGER NOT NULL,"
+		"PRIMARY KEY(stock_code, day)"
+		");";
+	errMsg = nullptr;
+	rc = sqlite3_exec(m_db, klineMonthSql, nullptr, nullptr, &errMsg);
 	if (rc != SQLITE_OK) sqlite3_free(errMsg);
 
 	const char* klineMin5Sql = "CREATE TABLE IF NOT EXISTS kline_min5_cache ("

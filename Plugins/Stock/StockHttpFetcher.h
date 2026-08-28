@@ -28,8 +28,12 @@ public:
 
 	// 分时图（新浪），失败返回 false
 	bool FetchTimeline(const std::wstring& code, std::string& outResp);
-	// 日K线（新浪）
+	// 日K线（腾讯前复权，支持新浪回退）
 	bool FetchDayKLine(const std::wstring& code, int days, std::string& outResp);
+	// 周K线（腾讯前复权）
+	bool FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp);
+	// 月K线（腾讯前复权）
+	bool FetchMonthKLine(const std::wstring& code, int months, std::string& outResp);
 	// 5分钟K线（新浪）
 	bool FetchMin5KLine(const std::wstring& code, int datalen, std::string& outResp);
 	// 30分钟K线（新浪）

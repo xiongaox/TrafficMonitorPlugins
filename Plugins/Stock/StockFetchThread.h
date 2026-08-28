@@ -61,8 +61,12 @@ public:
 	void FetchCallAuction();
 	// 分时图（新浪）
 	void FetchTimeline(const std::wstring& code);
-	// 日K线（新浪）
+	// 日K线（腾讯前复权）
 	void FetchDayKLine(const std::wstring& code, int days = 750);
+	// 周K线（腾讯前复权）
+	void FetchWeekKLine(const std::wstring& code, int weeks = 750);
+	// 月K线（腾讯前复权）
+	void FetchMonthKLine(const std::wstring& code, int months = 750);
 	// 5分钟K线（新浪）
 	void FetchMin5KLine(const std::wstring& code, int datalen = 250);
 	// 30分钟K线（新浪）

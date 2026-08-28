@@ -136,6 +136,8 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	LoadStockBasicData();
 	LoadTimelineCache();
 	LoadKLineCache(STOCK::Period::DAY);
+	LoadKLineCache(STOCK::Period::WEEK);
+	LoadKLineCache(STOCK::Period::MONTH);
 	LoadKLineCache(STOCK::Period::MIN5);
 	LoadKLineCache(STOCK::Period::MIN30);
 	LoadFundNavCache();
@@ -235,6 +237,18 @@ void CDataManager::LoadKLineCache(STOCK::Period period)
 			stockData->clearKLineData();
 			for (const auto& point : points)
 				stockData->addKLinePoint(point);
+		}
+		else if (period == STOCK::Period::WEEK)
+		{
+			stockData->clearWeekKLineData();
+			for (const auto& point : points)
+				stockData->addWeekKLinePoint(point);
+		}
+		else if (period == STOCK::Period::MONTH)
+		{
+			stockData->clearMonthKLineData();
+			for (const auto& point : points)
+				stockData->addMonthKLinePoint(point);
 		}
 		else if (period == STOCK::Period::MIN5)
 		{
@@ -687,6 +701,38 @@ void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& re
 	auto klineData = stockData ? stockData->getKLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
 		SaveKLineCache(code, STOCK::Period::DAY, klineData->data);
+}
+
+void CDataManager::ApplyWeekKLine(const std::wstring& code, const std::string& resp, bool ok)
+{
+	if (!ok)
+	{
+		stockMarket.LoadWeekKLineDataByJson(code, NULL);
+		return;
+	}
+
+	CString strData(resp.c_str());
+	stockMarket.LoadWeekKLineDataByJson(code, &strData);
+	auto stockData = GetStockData(code);
+	auto klineData = stockData ? stockData->getWeekKLineData() : nullptr;
+	if (klineData && !klineData->data.empty())
+		SaveKLineCache(code, STOCK::Period::WEEK, klineData->data);
+}
+
+void CDataManager::ApplyMonthKLine(const std::wstring& code, const std::string& resp, bool ok)
+{
+	if (!ok)
+	{
+		stockMarket.LoadMonthKLineDataByJson(code, NULL);
+		return;
+	}
+
+	CString strData(resp.c_str());
+	stockMarket.LoadMonthKLineDataByJson(code, &strData);
+	auto stockData = GetStockData(code);
+	auto klineData = stockData ? stockData->getMonthKLineData() : nullptr;
+	if (klineData && !klineData->data.empty())
+		SaveKLineCache(code, STOCK::Period::MONTH, klineData->data);
 }
 
 void CDataManager::ApplyMin5KLine(const std::wstring& code, const std::string& resp, bool ok)

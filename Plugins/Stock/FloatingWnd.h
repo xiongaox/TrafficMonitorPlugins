@@ -56,9 +56,9 @@ protected:
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowTradeDialog(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnBnClickedTimeLineBtn();
-	afx_msg void OnBnClickedMin5KLineBtn();
-	afx_msg void OnBnClickedMin30KLineBtn();
 	afx_msg void OnBnClickedKLineBtn();
+	afx_msg void OnBnClickedWeekKLineBtn();
+	afx_msg void OnBnClickedMonthKLineBtn();
 	afx_msg void OnBnClickedCloseBtn();
 	afx_msg void OnBnClickedMABtn();
 	afx_msg void OnBnClickedBollBtn();
@@ -80,8 +80,8 @@ private:
 	void ResetHoverState();           // 重置所有悬停状态
 	void SetTimelineModeDefaults();   // 设置分时模式默认参数
 	void SetDayKLineModeDefaults();   // 设置日K模式默认参数
-	void SetMin5KLineModeDefaults();  // 设置5分钟K线模式默认参数
-	void SetMin30KLineModeDefaults(); // 设置30分钟K线模式默认参数
+	void SetWeekKLineModeDefaults();  // 设置周K模式默认参数
+	void SetMonthKLineModeDefaults(); // 设置月K模式默认参数
 	static void SafeSetWindowPos(CWnd& wnd, int x, int y, int cx, int cy);
 	static void SafeShowWindow(CWnd& wnd, bool show);
 	static void SafeSetButtonStyle(CButton& btn, UINT style);
@@ -114,8 +114,8 @@ private:
 	CTimelineChart m_timelineChart;
 	CButton m_btnTimeLine;
 	CButton m_btnKLine;
-	CButton m_btnMin5KLine;
-	CButton m_btnMin30KLine;
+	CButton m_btnWeekKLine;
+	CButton m_btnMonthKLine;
 	CButton m_btnMA;
 	CButton m_btnBoll;
 	CButton m_btnClose;

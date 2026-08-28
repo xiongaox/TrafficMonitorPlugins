@@ -354,10 +354,12 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 	if (changed)
 	{
 		m_cv.notify_one();
-		// 日K线数据每天只变化一次，切换股票时获取一次即可，无需定时轮询
+		// K线数据每天只变化一次，切换股票时获取一次即可，无需定时轮询
 		// 通过 PostTask 投递到工作线程执行，避免在主线程做网络请求
 		PostTask([stockId]() {
 			CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
+			CStockFetchThread::Instance().FetchWeekKLine(stockId, 750);
+			CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
 			});
 	}
 }
@@ -753,6 +755,20 @@ void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days)
 	g_data.ApplyDayKLine(code, resp, ok);
 }
 
+void CStockFetchThread::FetchWeekKLine(const std::wstring& code, int weeks)
+{
+	std::string resp;
+	bool ok = g_http_fetcher.FetchWeekKLine(code, weeks, resp);
+	g_data.ApplyWeekKLine(code, resp, ok);
+}
+
+void CStockFetchThread::FetchMonthKLine(const std::wstring& code, int months)
+{
+	std::string resp;
+	bool ok = g_http_fetcher.FetchMonthKLine(code, months, resp);
+	g_data.ApplyMonthKLine(code, resp, ok);
+}
+
 void CStockFetchThread::FetchMin5KLine(const std::wstring& code, int datalen)
 {
 	std::string resp;
@@ -842,6 +858,10 @@ void CStockFetchThread::FetchAllData()
 			return;
 		if (!g_data.HasKLineCache(code, STOCK::Period::DAY))
 			FetchDayKLine(code, 750);
+		if (!g_data.HasKLineCache(code, STOCK::Period::WEEK))
+			FetchWeekKLine(code, 750);
+		if (!g_data.HasKLineCache(code, STOCK::Period::MONTH))
+			FetchMonthKLine(code, 750);
 		if (!g_data.HasKLineCache(code, STOCK::Period::MIN5))
 			FetchMin5KLine(code, 250);
 		if (!g_data.HasKLineCache(code, STOCK::Period::MIN30))

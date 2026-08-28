@@ -58,7 +58,6 @@ public:
 	void DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover);
 
 	// K线模式价格图
-	void DrawMin5KLinePriceChart(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover);
 	void DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover);
 
 	// 价格区域（标题栏+走势图一体化）
