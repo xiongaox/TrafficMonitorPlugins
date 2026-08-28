@@ -28,29 +28,33 @@ void COrderBookPanel::Draw(CDC& memDC, int left, int right, int height, const ST
 	const std::vector<STOCK::KLinePoint>& klineData,
 	UIViewMode viewMode)
 {
-	const int MAX_LEVEL = STOCK::StockInfo::MAX_LEVEL;
-	// 布局：0=委比, 1=趋势, 2=最高/最低, 3-7=卖五~卖一, 8-12=买一~买五, 13-14=净比05/30, 15=净比99, 16=振幅, 17=换手率
-	// 净比00画在卖一(行7)和买一(行8)之间的间隙，不占独立行
-	const int totalRows = 18;
+	(void)viewMode;
+	// 现代极简14行呼吸感布局：
+	// 行0: 委比 + 胶囊进度条 + 百分比
+	// 行1-5: 卖五 ~ 卖一 (带挂单深度条与语义红)
+	// 行6: 中间行情行 (现价 与 今开)
+	// 行7-11: 买一 ~ 买五 (带挂单深度条与语义绿)
+	// 行12: 净比 05 与 99 统计
+	// 行13: 振幅与换手率
+	const int totalRows = 14;
 	const int headerHeight = g_data.RDPI(26) + g_data.RDPI(20);  // 主标题栏+管理股票栏高度
-	const int obTitleH = g_data.RDPI(16);       // 盘口标题栏高度，与走势图标题栏一致
-	const int topOffset = headerHeight + obTitleH;  // 内容从主标题栏+盘口标题栏下方开始
+	const int obTitleH = g_data.RDPI(16);       // 盘口标题栏高度
+	const int topOffset = headerHeight + obTitleH;
 	const int panelW = right - left;
-	// 绘制盘口标题栏背景（在主标题栏下方，#181B22）
+
+	// 绘制盘口标题栏背景 (#181B22)
 	memDC.FillSolidRect(left, headerHeight, panelW, obTitleH, COLOR_BG_HEADER);
-	const int rowHeight = (height - obTitleH) / totalRows;  // 每行基础高度
-	const int contentH = height - obTitleH;  // 内容区域总高度
-	const int rem = contentH % totalRows;    // 余数：前rem行多1px
-	const int textX = left + g_data.RDPI(5) + 3;
+	const int rowHeight = (height - obTitleH) / totalRows;
+	const int contentH = height - obTitleH;
+	const int rem = contentH % totalRows;
+	const int textX = left + g_data.RDPI(6);
 
 	// 填充内容区域深色背景 (#14161D)
 	memDC.FillSolidRect(left, topOffset, panelW, contentH, COLOR_BG_PANEL);
 	memDC.SetBkMode(TRANSPARENT);
 
-	// 初始化挂单量累加缓存
 	m_stockDataForAccum = g_data.GetStockData(stockInfo.code);
 
-	// 构建布局上下文
 	LayoutContext lc;
 	lc.left = left;
 	lc.right = right;
@@ -66,18 +70,14 @@ void COrderBookPanel::Draw(CDC& memDC, int left, int right, int height, const ST
 	lc.textX = textX;
 
 	DWORD tickCount = GetTickCount();
-	bool blinkOn = (tickCount / 500) % 2 == 0;  // 每500ms切换
+	bool blinkOn = (tickCount / 500) % 2 == 0;
 
-	// 依次绘制各区域
 	DrawWeiBi(memDC, lc, stockInfo);
-	DrawTrend(memDC, lc, stockInfo, viewMode);
 	DrawAskRows(memDC, lc, stockInfo, blinkOn);
-	DrawNetRatio00(memDC, lc, stockInfo);
+	DrawMidPriceRow(memDC, lc, stockInfo);
 	DrawBidRows(memDC, lc, stockInfo, blinkOn);
-	DrawNetRatioPeriods(memDC, lc, stockInfo);
-	DrawNetRatio99(memDC, lc, stockInfo);
-	DrawAmplitude(memDC, lc, stockInfo, klineData);
-	DrawTurnoverRate(memDC, lc, stockInfo);
+	DrawNetRatioRows(memDC, lc, stockInfo);
+	DrawStatsRow(memDC, lc, stockInfo, klineData);
 }
 
 // ============================================================================
@@ -100,252 +100,41 @@ void COrderBookPanel::DrawWeiBi(CDC& memDC, const LayoutContext& lc, const STOCK
 		wbRatio = (double)(bidTotal - askTotal) / (bidTotal + askTotal) * 100;
 	}
 
-	CString wbLabel = _T("委  比:");
-	int wbBarY = lc.RowY(0);
-	int wbBarH = lc.RowH(0);
-	memDC.SetTextColor(wbRatio > 0 ? COLOR_RED_UP : (wbRatio < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK));
-	memDC.TextOut(lc.textX, wbBarY + max(0, (wbBarH - memDC.GetTextExtent(wbLabel).cy) / 2), wbLabel);
-	int wbBarX = lc.textX + memDC.GetTextExtent(wbLabel).cx + g_data.RDPI(4);
-	int wbBarW = lc.right - wbBarX - g_data.RDPI(4);
-	DrawRatioBar(memDC, wbBarX, wbBarY, wbBarW, wbBarH, wbRatio);
+	int rowY = lc.RowY(0);
+	int rowH = lc.RowH(0);
+	int textY = rowY + max(0, (rowH - memDC.GetTextExtent(_T("Ay")).cy) / 2);
+
+	// 1. 左侧：委比标签
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(lc.textX, textY, _T("委比"));
+	int labelW = memDC.GetTextExtent(_T("委比 ")).cx;
+
+	// 2. 右侧：百分比文本
 	CString wbTxt;
-	wbTxt.Format(_T("%.2f"), std::abs(wbRatio));
-	DrawNetRatioBarText(memDC, wbBarX, wbBarY, wbBarW, wbBarH, wbTxt, _T(""));
-}
+	if (wbRatio > 0) wbTxt.Format(_T("+%.2f%%"), wbRatio);
+	else if (wbRatio < 0) wbTxt.Format(_T("%.2f%%"), wbRatio);
+	else wbTxt = _T("0.00%");
+	CSize valSize = memDC.GetTextExtent(wbTxt);
+	int valX = lc.right - valSize.cx - g_data.RDPI(6);
+	memDC.SetTextColor(wbRatio > 0 ? COLOR_RED_UP : (wbRatio < 0 ? COLOR_GREEN_DOWN : COLOR_TEXT_MUTED));
+	memDC.TextOut(valX, textY, wbTxt);
 
-// ============================================================================
-// 绘制趋势判定（行1）
-// ============================================================================
-void COrderBookPanel::DrawTrend(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo,
-	UIViewMode viewMode)
-{
-	auto stockDataForTrend = g_data.GetStockData(stockInfo.code);
-
-	// 分别计算三个周期的趋势方向
-	STOCK::TrendDir dir30 = STOCK::TrendDir::DIR_SIDE;
-	STOCK::TrendDir dir5 = STOCK::TrendDir::DIR_SIDE;
-	STOCK::TrendDir dirCur = STOCK::TrendDir::DIR_SIDE;
-	bool curIsShortPullback = false;
-	bool curIsShortRebound = false;
-	STOCK::SideTag curSideTag = STOCK::SideTag::SIDE_MID;
-	bool valid30 = false, valid5 = false, validCur = false;
-
-	if (stockDataForTrend)
+	// 3. 中间：胶囊进度条
+	int barX = lc.textX + labelW + g_data.RDPI(2);
+	int barW = valX - barX - g_data.RDPI(4);
+	if (barW > g_data.RDPI(10))
 	{
-		// 30分钟趋势
-		auto* min30Obj = stockDataForTrend->getMin30KLineData();
-		if (min30Obj && min30Obj->data.size() >= 25)
-		{
-			std::vector<STOCK::Bar> bars30;
-			bars30.reserve(min30Obj->data.size());
-			for (const auto& kp : min30Obj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
-			if (CSignalAnalyzer::Calc30UpStruct(bars30))
-				dir30 = STOCK::TrendDir::DIR_UP;
-			else if (CSignalAnalyzer::Calc30DownStruct(bars30))
-				dir30 = STOCK::TrendDir::DIR_DOWN;
-			else
-				dir30 = STOCK::TrendDir::DIR_SIDE;
-			valid30 = true;
-		}
-
-		// 5分钟趋势
-		auto* min5Obj = stockDataForTrend->getMin5KLineData();
-		if (min5Obj && min5Obj->data.size() >= 20)
-		{
-			std::vector<STOCK::Bar> bars5;
-			bars5.reserve(min5Obj->data.size());
-			for (const auto& kp : min5Obj->data) bars5.push_back(STOCK::Bar::FromKLinePoint(kp));
-			if (CSignalAnalyzer::Calc5MinUp(bars5))
-				dir5 = STOCK::TrendDir::DIR_UP;
-			else if (CSignalAnalyzer::Calc5MinDown(bars5))
-				dir5 = STOCK::TrendDir::DIR_DOWN;
-			else
-				dir5 = STOCK::TrendDir::DIR_SIDE;
-			valid5 = true;
-		}
-
-		// 当前视图趋势
-		if (viewMode == UI_VIEW_MIN30_KLINE)
-		{
-			if (valid30)
-			{
-				dirCur = dir30;
-				std::vector<STOCK::Bar> bars30;
-				bars30.reserve(min30Obj->data.size());
-				for (const auto& kp : min30Obj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
-				STOCK::TrendState30m state30 = CSignalAnalyzer::Get30mTrendState(bars30).state;
-				if (dirCur == STOCK::TrendDir::DIR_SIDE)
-				{
-					if (state30 == STOCK::TrendState30m::STATE_STRONG)
-						curSideTag = STOCK::SideTag::SIDE_LONG_POINT;
-					else if (state30 == STOCK::TrendState30m::STATE_WEAK || state30 == STOCK::TrendState30m::STATE_WEAK_SHAKE)
-						curSideTag = STOCK::SideTag::SIDE_SHORT_POINT;
-				}
-				validCur = true;
-			}
-		}
-		else if (viewMode == UI_VIEW_MIN5_KLINE)
-		{
-			if (valid5)
-			{
-				dirCur = dir5;
-				validCur = true;
-			}
-		}
-		else if (viewMode == UI_VIEW_TIMELINE)
-		{
-			auto* tlObj = stockDataForTrend->getTimelineData();
-			if (tlObj && tlObj->data.size() >= 10)
-			{
-				const auto& pts = tlObj->data;
-				const auto& last = pts.back();
-				double curPrice = last.price;
-				double avgPrice = last.averagePrice;
-				size_t n = pts.size();
-				size_t half = n / 2;
-				double firstHalfAvg = 0, secondHalfAvg = 0;
-				size_t firstCnt = 0, secondCnt = 0;
-				for (size_t i = 0; i < half && i < n; ++i) { firstHalfAvg += pts[i].price; ++firstCnt; }
-				for (size_t i = half; i < n; ++i) { secondHalfAvg += pts[i].price; ++secondCnt; }
-				if (firstCnt > 0) firstHalfAvg /= firstCnt;
-				if (secondCnt > 0) secondHalfAvg /= secondCnt;
-				bool priceUpTrend = (secondHalfAvg > firstHalfAvg) && (curPrice >= avgPrice);
-				bool priceDownTrend = (secondHalfAvg < firstHalfAvg) && (curPrice <= avgPrice);
-				if (priceUpTrend)
-					dirCur = STOCK::TrendDir::DIR_UP;
-				else if (priceDownTrend)
-					dirCur = STOCK::TrendDir::DIR_DOWN;
-				else
-					dirCur = STOCK::TrendDir::DIR_SIDE;
-				validCur = true;
-			}
-		}
-		else  // CHART_VIEW_DAY_KLINE
-		{
-			// 日K视图：双周期综合判定
-			if (valid5 && valid30)
-			{
-				std::vector<STOCK::Bar> bars5, bars30;
-				bars5.reserve(min5Obj->data.size());
-				for (const auto& kp : min5Obj->data) bars5.push_back(STOCK::Bar::FromKLinePoint(kp));
-				bars30.reserve(min30Obj->data.size());
-				for (const auto& kp : min30Obj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
-				STOCK::Volume outerVolTrend = stockInfo.outerVolume;
-				STOCK::Volume innerVolTrend = stockInfo.innerVolume;
-				STOCK::TrendResult trendResult = CSignalAnalyzer::CalcTrend(bars5, bars30, outerVolTrend, innerVolTrend);
-				dirCur = trendResult.FinalTrend;
-				curIsShortPullback = trendResult.IsShortPullback;
-				curIsShortRebound = trendResult.IsShortRebound;
-				curSideTag = trendResult.SideTagValue;
-				validCur = true;
-			}
-		}
-	}
-
-	// 构建分段文本：趋势:上涨(30) 震荡(5) 低吸
-	struct TextSeg { CString text; COLORREF color; };
-	std::vector<TextSeg> segs;
-
-	// 30分钟段
-	if (!valid30)
-		segs.push_back({ _T("30:--"), COLOR_GRAY_TEXT });
-	else if (dir30 == STOCK::TrendDir::DIR_UP)
-		segs.push_back({ _T("30:上涨"), COLOR_RED_UP });
-	else if (dir30 == STOCK::TrendDir::DIR_DOWN)
-		segs.push_back({ _T("30:下跌"), COLOR_GREEN_DOWN });
-	else
-		segs.push_back({ _T("30:震荡"), COLOR_GRAY_TEXT });
-	segs.push_back({ _T(" "), COLOR_GRAY_TEXT });
-
-	// 5分钟段
-	if (!valid5)
-		segs.push_back({ _T("5:--"), COLOR_GRAY_TEXT });
-	else if (dir5 == STOCK::TrendDir::DIR_UP)
-		segs.push_back({ _T("5:上涨"), COLOR_RED_UP });
-	else if (dir5 == STOCK::TrendDir::DIR_DOWN)
-		segs.push_back({ _T("5:下跌"), COLOR_GREEN_DOWN });
-	else
-		segs.push_back({ _T("5:震荡"), COLOR_GRAY_TEXT });
-	segs.push_back({ _T(" "), COLOR_GRAY_TEXT });
-
-	// 当前视图段
-	if (!validCur)
-	{
-		segs.push_back({ _T("--"), COLOR_GRAY_TEXT });
-	}
-	else if (dirCur == STOCK::TrendDir::DIR_UP)
-	{
-		CString s = _T("上涨");
-		if (curIsShortPullback) s += _T("(回调)");
-		segs.push_back({ s, COLOR_RED_UP });
-	}
-	else if (dirCur == STOCK::TrendDir::DIR_DOWN)
-	{
-		CString s = _T("下跌");
-		if (curIsShortRebound) s += _T("(反弹)");
-		segs.push_back({ s, COLOR_GREEN_DOWN });
-	}
-	else
-	{
-		CString s = _T("震荡");
-		if (curSideTag == STOCK::SideTag::SIDE_LONG_POINT)
-			s += _T("(低吸)");
-		else if (curSideTag == STOCK::SideTag::SIDE_SHORT_POINT)
-			s += _T("(高抛)");
-		segs.push_back({ s, COLOR_GRAY_TEXT });
-	}
-
-	// 分段着色绘制
-	int drawX = lc.textX;
-	int drawY = lc.RowY(1) + max(0, (lc.RowH(1) - memDC.GetTextExtent(_T("Ay")).cy) / 2);
-	for (const auto& seg : segs)
-	{
-		memDC.SetTextColor(seg.color);
-		memDC.TextOut(drawX, drawY, seg.text);
-		drawX += memDC.GetTextExtent(seg.text).cx;
+		int barH = max(g_data.RDPI(4), rowH / 4);
+		int barY = rowY + (rowH - barH) / 2;
+		DrawRatioBar(memDC, barX, barY, barW, barH, wbRatio);
 	}
 }
 
 // ============================================================================
-// 绘制最高/最低合并行（行2）+ 卖盘行（卖五~卖一，行3-7）
+// 绘制卖盘行（卖五~卖一，行1-5）
 // ============================================================================
 void COrderBookPanel::DrawAskRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo, bool blinkOn)
 {
-	// 行2：最高/最低合并行
-	{
-		int rowY = lc.RowY(2);
-		int rowH = lc.RowH(2);
-
-		// 使用小字体
-		CFont* oldFont = memDC.GetCurrentFont();
-		LOGFONT lf;
-		oldFont->GetLogFont(&lf);
-		lf.lfHeight = lf.lfHeight * 7 / 8;
-		CFont smallFont;
-		smallFont.CreateFontIndirect(&lf);
-		memDC.SelectObject(&smallFont);
-
-		CString highPart, lowPart;
-		double highDiff = stockInfo.highPrice - stockInfo.currentPrice;
-		double lowDiff = stockInfo.lowPrice - stockInfo.currentPrice;
-		CString highSign = highDiff >= 0 ? _T("+") : _T("");
-		CString lowSign = lowDiff >= 0 ? _T("+") : _T("");
-		highPart.Format(_T("H:%s %s%s"), CCommon::FormatFloat(stockInfo.highPrice), highSign.GetString(), CCommon::FormatFloat(highDiff));
-		lowPart.Format(_T("L:%s %s%s"), CCommon::FormatFloat(stockInfo.lowPrice), lowSign.GetString(), CCommon::FormatFloat(lowDiff));
-
-		memDC.FillSolidRect(lc.left, rowY, lc.panelW, rowH, RGB(220, 235, 250));
-		int textY = rowY + max(0, (rowH - memDC.GetTextExtent(highPart).cy) / 2);
-		memDC.SetTextColor(RGB(128, 0, 128));
-		memDC.TextOut(lc.textX, textY, highPart);
-		int lowW = memDC.GetTextExtent(lowPart).cx;
-		int lowX = lc.left + lc.panelW - lowW;
-		memDC.SetTextColor(RGB(0, 100, 0));
-		memDC.TextOut(lowX, textY, lowPart);
-
-		memDC.SelectObject(oldFont);
-	}
-
-	// 行3-7：卖五~卖一
 	std::vector<OrderBookRow> priceRows;
 	priceRows.reserve(5);
 
@@ -356,67 +145,55 @@ void COrderBookPanel::DrawAskRows(CDC& memDC, const LayoutContext& lc, const STO
 		priceRows.push_back(BuildAskRow(stockInfo, idx, delta));
 	}
 
-	DrawPriceRows(memDC, lc, priceRows, 3, blinkOn);
+	DrawPriceRows(memDC, lc, priceRows, 1, blinkOn);
 }
 
 // ============================================================================
-// 绘制净比00 - 卖一与买一之间的分隔线（1分钟加权平均净比）
+// 绘制中间行情行：现价与今开（行6）
 // ============================================================================
-void COrderBookPanel::DrawNetRatio00(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
+void COrderBookPanel::DrawMidPriceRow(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
 {
-	auto stockDataPtr00 = g_data.GetStockData(stockInfo.code);
-	if (!stockDataPtr00)
-		return;
+	int y = lc.RowY(6);
+	int h = lc.RowH(6);
+	int totalW = lc.right - lc.left;
 
-	// 从secVolumePool取1分钟加权平均净比
-	STOCK::Volume diff = 0;
-	double ratio = 0;
-	if (!stockDataPtr00->GetSecNetDiff(1, diff, ratio))
-		return;
+	// 行背景与上下细微边框
+	memDC.FillSolidRect(lc.left, y, totalW, h, COLOR_BG_HEADER);
+	memDC.FillSolidRect(lc.left, y, totalW, 1, COLOR_DARK_GRAY_BORDER);
+	memDC.FillSolidRect(lc.left, y + h - 1, totalW, 1, COLOR_DARK_GRAY_BORDER);
 
-	int barX = lc.textX;
-	int barW = lc.right - barX - g_data.RDPI(4);
-	if (barW <= 0)
-		return;
+	int textY = y + max(0, (h - memDC.GetTextExtent(_T("Ay")).cy) / 2);
 
-	// 画在卖一(行7)和买一(行8)之间的间隙
-	int barY = lc.RowY(8) - 2;
-	int midX = barX + barW / 2;
-	int halfW = barW / 2;
-	int fillW = static_cast<int>(std::sqrt(std::abs(ratio) / 100.0) * halfW);
-	fillW = min(fillW, halfW);
-	int dominantW = min(barW, halfW + fillW);
+	// 现价
+	CString curPriceStr = stockInfo.IsETF() ? CCommon::FormatETFPrice(stockInfo.currentPrice) : CCommon::FormatFloat(stockInfo.currentPrice);
+	COLORREF curColor = (stockInfo.currentPrice >= stockInfo.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(lc.textX, textY, _T("现价: "));
+	int curX = lc.textX + memDC.GetTextExtent(_T("现价: ")).cx;
+	memDC.SetTextColor(curColor);
+	memDC.TextOut(curX, textY, curPriceStr);
 
-	COLORREF redColor = NET_RATIO_RED_COLORS[GetNetRatioColorIndex(ratio)];
-	COLORREF greenColor = NET_RATIO_GREEN_COLORS[GetNetRatioColorIndex(ratio)];
-
-	if (ratio > 0)
-	{
-		memDC.FillSolidRect(barX, barY, dominantW, 2, redColor);
-		memDC.FillSolidRect(barX + dominantW, barY, barW - dominantW, 2, greenColor);
-	}
-	else if (ratio < 0)
-	{
-		memDC.FillSolidRect(barX, barY, dominantW, 2, greenColor);
-		memDC.FillSolidRect(barX + dominantW, barY, barW - dominantW, 2, redColor);
-	}
-	else
-	{
-		memDC.FillSolidRect(barX, barY, barW, 2, RGB(28, 32, 42));
-	}
-	// 中间中灰竖线
-	memDC.FillSolidRect(midX - 1, barY, 2, 2, COLOR_DARK_GRAY_BORDER);
+	// 今开
+	CString openPriceStr = stockInfo.IsETF() ? CCommon::FormatETFPrice(stockInfo.openPrice) : CCommon::FormatFloat(stockInfo.openPrice);
+	COLORREF openColor = (stockInfo.openPrice >= stockInfo.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+	CString openLabel = _T("今开: ");
+	CSize openValSize = memDC.GetTextExtent(openPriceStr);
+	CSize openLblSize = memDC.GetTextExtent(openLabel);
+	int openX = lc.right - openValSize.cx - openLblSize.cx - g_data.RDPI(6);
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(openX, textY, openLabel);
+	memDC.SetTextColor(openColor);
+	memDC.TextOut(openX + openLblSize.cx, textY, openPriceStr);
 }
 
 // ============================================================================
-// 绘制买盘行（买一~买五，行8-12）
+// 绘制买盘行（买一~买五，行7-11）
 // ============================================================================
 void COrderBookPanel::DrawBidRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo, bool blinkOn)
 {
 	std::vector<OrderBookRow> bottomRows;
-	bottomRows.reserve(5);  // 买一~买五
+	bottomRows.reserve(5);
 
-	// 买一~买五
 	for (int i = 0; i < 5; i++)
 	{
 		STOCK::Price price = stockInfo.bidLevels[i].price;
@@ -424,138 +201,19 @@ void COrderBookPanel::DrawBidRows(CDC& memDC, const LayoutContext& lc, const STO
 		bottomRows.push_back(BuildBidRow(stockInfo, i, delta));
 	}
 
-	DrawPriceRows(memDC, lc, bottomRows, 8, blinkOn);
+	DrawPriceRows(memDC, lc, bottomRows, 7, blinkOn);
 }
 
 // ============================================================================
-// 绘制净比05/30（行13-14）
+// 绘制净比汇总（行12）
 // ============================================================================
-void COrderBookPanel::DrawNetRatioPeriods(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
+void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
 {
-	auto stockId = stockInfo.code;
+	int y = lc.RowY(12);
+	int h = lc.RowH(12);
+	int textY = y + max(0, (h - memDC.GetTextExtent(_T("Ay")).cy) / 2);
+
 	auto stockDataPtr = g_data.GetStockData(stockInfo.code);
-	const int netPeriods[] = { 5, 30 };
-
-	for (int i = 0; i < 2; i++)
-	{
-		int periodBarY = lc.RowY(13 + i);
-		int periodBarH = lc.rowHeight;
-		CString periodLabel;
-		periodLabel.Format(_T("净比%02d:"), netPeriods[i]);
-		COLORREF periodLabelColor = COLOR_BLACK;
-		STOCK::Volume diff = 0;
-		double ratio = 0;
-		bool hasData = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(netPeriods[i], diff, ratio);
-		if (hasData)
-			periodLabelColor = ratio > 0 ? COLOR_RED_UP : (ratio < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK);
-		memDC.SetTextColor(periodLabelColor);
-		memDC.TextOut(lc.textX, periodBarY + max(0, (periodBarH - memDC.GetTextExtent(periodLabel).cy) / 2), periodLabel);
-
-		int periodBarX = lc.textX + memDC.GetTextExtent(periodLabel).cx + g_data.RDPI(4);
-		int periodBarW = lc.right - periodBarX - g_data.RDPI(4);
-		if (periodBarW <= 0)
-			continue;
-
-		DrawRatioBar(memDC, periodBarX, periodBarY, periodBarW, periodBarH, ratio);
-
-		CString periodTxt;
-		CString periodDiffTxt;
-		if (hasData)
-		{
-			CString diffStr = CCommon::FormatVolumeInt(std::abs(diff) / 100.0);
-			CString ratioTrend;
-
-			// 计算趋势箭头
-			auto stockPeriodRatioIt = m_lastPeriodRatioMap.find(stockId);
-			if (stockPeriodRatioIt != m_lastPeriodRatioMap.end())
-			{
-				auto lastRatioIt = stockPeriodRatioIt->second.find(netPeriods[i]);
-				if (lastRatioIt != stockPeriodRatioIt->second.end())
-				{
-					double absRatio = std::abs(ratio);
-					double lastAbsRatio = std::abs(lastRatioIt->second);
-					if (absRatio > lastAbsRatio)
-					{
-						ratioTrend = _T("↑");
-						m_lastPeriodRatioMap[stockId][netPeriods[i]] = ratio;
-						m_lastPeriodRatioTrendMap[stockId][netPeriods[i]] = ratioTrend;
-					}
-					else if (absRatio < lastAbsRatio)
-					{
-						ratioTrend = _T("↓");
-						m_lastPeriodRatioMap[stockId][netPeriods[i]] = ratio;
-						m_lastPeriodRatioTrendMap[stockId][netPeriods[i]] = ratioTrend;
-					}
-					else
-					{
-						auto stockPeriodTrendIt = m_lastPeriodRatioTrendMap.find(stockId);
-						if (stockPeriodTrendIt != m_lastPeriodRatioTrendMap.end())
-						{
-							auto lastTrendIt = stockPeriodTrendIt->second.find(netPeriods[i]);
-							if (lastTrendIt != stockPeriodTrendIt->second.end())
-								ratioTrend = lastTrendIt->second;
-						}
-					}
-				}
-				else
-				{
-					STOCK::Volume previousDiff = 0;
-					double previousRatio = 0;
-					if (stockDataPtr->GetPreviousInnerOuterNetDiff(netPeriods[i], previousDiff, previousRatio))
-					{
-						ratioTrend = CalcNetRatioTrend(ratio, previousRatio);
-						// 存储到period专用map
-						if (!ratioTrend.IsEmpty())
-							m_lastPeriodRatioTrendMap[stockId][netPeriods[i]] = ratioTrend;
-					}
-					m_lastPeriodRatioMap[stockId][netPeriods[i]] = ratio;
-				}
-			}
-			else
-			{
-				STOCK::Volume previousDiff = 0;
-				double previousRatio = 0;
-				if (stockDataPtr->GetPreviousInnerOuterNetDiff(netPeriods[i], previousDiff, previousRatio))
-				{
-					ratioTrend = CalcNetRatioTrend(ratio, previousRatio);
-					if (!ratioTrend.IsEmpty())
-						m_lastPeriodRatioTrendMap[stockId][netPeriods[i]] = ratioTrend;
-				}
-				m_lastPeriodRatioMap[stockId][netPeriods[i]] = ratio;
-			}
-
-			CString diffSign = diff >= 0 ? _T("+") : _T("-");
-			periodTxt.Format(_T("%.2f%s"), std::abs(ratio), ratioTrend.GetString());
-			periodDiffTxt.Format(_T("%s%s"), diffSign.GetString(), diffStr.GetString());
-		}
-		else
-		{
-			periodTxt = _T("--");
-			periodDiffTxt = _T("--");
-		}
-
-		DrawNetRatioBarText(memDC, periodBarX, periodBarY, periodBarW, periodBarH, periodTxt, periodDiffTxt);
-	}
-}
-
-// ============================================================================
-// 绘制净比99（行15）
-// ============================================================================
-void COrderBookPanel::DrawNetRatio99(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo)
-{
-	auto stockId = stockInfo.code;
-	STOCK::Volume innerVol = stockInfo.innerVolume / 100;
-	STOCK::Volume outerVol = stockInfo.outerVolume / 100;
-	auto stockDataPtr = g_data.GetStockData(stockId);
-
-	STOCK::Volume netDiff = outerVol - innerVol;
-	STOCK::Volume totalInnerOuter = outerVol + innerVol;
-	double netRatio = totalInnerOuter > 0 ? static_cast<double>(netDiff) / totalInnerOuter * 100 : 0;
-	double absNetRatio = std::abs(netRatio);
-
-	// 计算趋势箭头
-	CString netRatioTrend;
-	auto lastNetRatioIt = m_lastNetRatioMap.find(stockId);
 	if (lastNetRatioIt != m_lastNetRatioMap.end())
 	{
 		double lastAbsNetRatio = std::abs(lastNetRatioIt->second);
@@ -824,54 +482,24 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildAskRow(const STOCK::StockInf
 {
 	STOCK::Price price = stockInfo.askLevels[idx].price;
 	STOCK::Volume volume = stockInfo.askLevels[idx].volume / 100;
-	CString volumeStr;
-	volumeStr.Format(_T("%lld"), static_cast<long long>(volume));
+	CString volumeStr = CCommon::FormatVolumeInt(volume);
 	CString priceStr = stockInfo.IsETF() ? CCommon::FormatETFPrice(price) : CCommon::FormatFloat(price);
-	CString askTxt;
-	askTxt.Format(_T("S%d:%s"), idx + 1, priceStr);
-	CString askSuffix;
-	askSuffix.Format(_T(" %s"), volumeStr.GetString());
-	CString deltaStr;
-	if (delta != 0)
-	{
-		CString deltaVal;
-		deltaVal.Format(_T("%lld"), static_cast<long long>(std::abs(delta)));
-		deltaStr.Format(_T("%s%s"), delta > 0 ? _T("+") : _T("-"), deltaVal.GetString());
-	}
-
-	// 累计成交量
-	STOCK::Volume cumVol = GetOrderBookCumVol(price);
-	CString cumVolStr;
-	if (cumVol > 0)
-		cumVolStr.Format(_T(" %lld"), static_cast<long long>(cumVol));
 
 	OrderBookRow row;
+	row.level = idx + 1;
 	row.price = price;
 	row.volume = volume;
 	row.isAsk = true;
-	row.text = askTxt;
-	row.smallSuffix = askSuffix;
-	row.rightAlignSuffix = deltaStr;
-	row.rightAlignSuffixColor = delta > 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-	row.cumVolSuffix = cumVolStr;
-	row.cumVolSuffixColor = RGB(168, 85, 247);
-	row.drawSmallSuffix = true;
-	row.textColor = (stockInfo.highPrice > 0 && price > 0 && price == stockInfo.highPrice) ? RGB(168, 85, 247) : COLOR_RED_UP;
+	row.priceStr = priceStr;
+	row.volumeStr = volumeStr;
+	row.textColor = COLOR_RED_UP;
 	row.bold = (stockInfo.highPrice > 0 && price > 0 && price == stockInfo.highPrice);
-	// 卖一背景色（仅当前价格=卖一时显示）
-	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
-	{
-		row.fillBackground = true;
-		row.backgroundColor = COLOR_DEPTH_SELL_HL;
-		// 挂单量≤1万时闪烁
-		if (volume <= 10000)
-			row.blink = true;
-	}
-	else
-	{
-		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = COLOR_DEPTH_SELL_HL;
-	}
+	// 卖一当前价高亮
+	row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
+	row.backgroundColor = COLOR_DEPTH_SELL_HL;
+	if (idx == 0 && row.fillBackground && volume <= 10000)
+		row.blink = true;
+
 	return row;
 }
 
@@ -879,54 +507,24 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildBidRow(const STOCK::StockInf
 {
 	STOCK::Price price = stockInfo.bidLevels[idx].price;
 	STOCK::Volume volume = stockInfo.bidLevels[idx].volume / 100;
-	CString volumeStr;
-	volumeStr.Format(_T("%lld"), static_cast<long long>(volume));
+	CString volumeStr = CCommon::FormatVolumeInt(volume);
 	CString priceStr = stockInfo.IsETF() ? CCommon::FormatETFPrice(price) : CCommon::FormatFloat(price);
-	CString bidTxt;
-	bidTxt.Format(_T("B%d:%s"), idx + 1, priceStr);
-	CString bidSuffix;
-	bidSuffix.Format(_T(" %s"), volumeStr.GetString());
-	CString deltaStr;
-	if (delta != 0)
-	{
-		CString deltaVal;
-		deltaVal.Format(_T("%lld"), static_cast<long long>(std::abs(delta)));
-		deltaStr.Format(_T("%s%s"), delta > 0 ? _T("+") : _T("-"), deltaVal.GetString());
-	}
-
-	// 累计成交量
-	STOCK::Volume cumVol = GetOrderBookCumVol(price);
-	CString cumVolStr;
-	if (cumVol > 0)
-		cumVolStr.Format(_T(" %lld"), static_cast<long long>(cumVol));
 
 	OrderBookRow row;
+	row.level = idx + 1;
 	row.price = price;
 	row.volume = volume;
 	row.isAsk = false;
-	row.text = bidTxt;
-	row.smallSuffix = bidSuffix;
-	row.rightAlignSuffix = deltaStr;
-	row.rightAlignSuffixColor = delta > 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-	row.cumVolSuffix = cumVolStr;
-	row.cumVolSuffixColor = RGB(14, 165, 233);
-	row.drawSmallSuffix = true;
-	row.textColor = (stockInfo.lowPrice > 0 && price > 0 && price == stockInfo.lowPrice) ? RGB(14, 165, 233) : COLOR_GREEN_DOWN;
+	row.priceStr = priceStr;
+	row.volumeStr = volumeStr;
+	row.textColor = COLOR_GREEN_DOWN;
 	row.bold = (stockInfo.lowPrice > 0 && price > 0 && price == stockInfo.lowPrice);
-	// 买一背景色（仅当前价格=买一时显示）
-	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
-	{
-		row.fillBackground = true;
-		row.backgroundColor = COLOR_DEPTH_BUY_HL;
-		// 挂单量≤1万时闪烁
-		if (volume <= 10000)
-			row.blink = true;
-	}
-	else
-	{
-		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = COLOR_DEPTH_BUY_HL;
-	}
+	// 买一当前价高亮
+	row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
+	row.backgroundColor = COLOR_DEPTH_BUY_HL;
+	if (idx == 0 && row.fillBackground && volume <= 10000)
+		row.blink = true;
+
 	return row;
 }
 
@@ -946,13 +544,13 @@ void COrderBookPanel::DrawPriceRows(CDC& memDC, const LayoutContext& lc, const s
 		int y = lc.RowY(startRow + i);
 		int h = lc.RowH(startRow + i);
 
-		// 绘制基础行背景 (暗黑面板底色)
+		// 1. 绘制基础行背景 (暗黑面板底色)
 		memDC.FillSolidRect(lc.left, y, totalW, h, COLOR_BG_PANEL);
 
-		// 绘制挂单量深度条（Depth Bar 从右往左按挂单量比例绘制）
+		// 2. 绘制挂单量深度条（Depth Bar 从右往左按挂单量比例绘制）
 		if (rows[i].volume > 0 && maxVol > 0)
 		{
-			int depthW = static_cast<int>((double)rows[i].volume / maxVol * (totalW * 0.65));
+			int depthW = static_cast<int>((double)rows[i].volume / maxVol * (totalW * 0.60));
 			depthW = max(g_data.RDPI(2), min(totalW, depthW));
 			COLORREF depthColor = rows[i].isAsk ? COLOR_DEPTH_SELL_BG : COLOR_DEPTH_BUY_BG;
 			memDC.FillSolidRect(lc.right - depthW, y + 1, depthW, h - 2, depthColor);
@@ -960,12 +558,27 @@ void COrderBookPanel::DrawPriceRows(CDC& memDC, const LayoutContext& lc, const s
 
 		if (rows[i].fillBackground)
 		{
-			if (rows[i].blink && !blinkOn)
-				memDC.FillSolidRect(lc.left, y, totalW, h, COLOR_BG_PANEL);  // 闪烁关闭时用背景色
-			else
+			if (!(rows[i].blink && !blinkOn))
 				memDC.FillSolidRect(lc.left, y, totalW, h, rows[i].backgroundColor);
 		}
-		int textVCenter = max(0, (h - memDC.GetTextExtent(rows[i].text).cy) / 2);
-		DrawOrderBookRowText(memDC, rows[i], lc.textX, y + textVCenter, lc.right - lc.textX, rows[i].blink && !blinkOn);
+
+		int textY = y + max(0, (h - memDC.GetTextExtent(_T("Ay")).cy) / 2);
+
+		// 3. 绘制三列布局：档位 | 价格 | 挂单量
+		// 列1：档位标签（卖5 / 买1）
+		CString labelTxt = rows[i].isAsk ? (CString(_T("卖")) + std::to_wstring(rows[i].level).c_str()) : (CString(_T("买")) + std::to_wstring(rows[i].level).c_str());
+		memDC.SetTextColor(COLOR_TEXT_DIM);
+		memDC.TextOut(lc.textX, textY, labelTxt);
+
+		// 列2：价格
+		int priceX = lc.textX + g_data.RDPI(28);
+		memDC.SetTextColor(rows[i].textColor);
+		memDC.TextOut(priceX, textY, rows[i].priceStr);
+
+		// 列3：挂单量（右对齐）
+		CSize volSize = memDC.GetTextExtent(rows[i].volumeStr);
+		int volX = lc.right - volSize.cx - g_data.RDPI(6);
+		memDC.SetTextColor(COLOR_TEXT_MUTED);
+		memDC.TextOut(volX, textY, rows[i].volumeStr);
 	}
 }

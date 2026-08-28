@@ -103,82 +103,9 @@ void CTimelineChart::DrawTimelineBackgroundHighlights(CDC& memDC, const Timeline
 
 void CTimelineChart::DrawTimelineBackgroundHighlightsForArea(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight, UIViewMode viewMode)
 {
-	// 仅分时模式（1分钟数据）绘制5分钟交替高亮，5分钟/30分钟/日K线模式不绘制
-	if (viewMode != UI_VIEW_TIMELINE)
-		return;
-
-	if (!ctx.timelinePoint || ctx.timelinePoint->empty())
-		return;
-
-	const auto& timelinePoint = *ctx.timelinePoint;
-	const int totalPts = static_cast<int>(timelinePoint.size());
-	const int xAxisPts = ctx.xAxisPoints > 0 ? ctx.xAxisPoints : totalPts;
-
-	CBrush blueBrush(COLOR_LIGHT_BLUE);
-
-	// 从9:30开盘起，每5分钟交替高亮：9:30-9:35高亮，9:35-9:40不高亮，9:40-9:45高亮...
-	// A股交易时间：9:30-11:30(0~119分钟), 13:00-15:00(120~239分钟)
-	for (int i = 0; i < totalPts; i++)
-	{
-		// 解析时间字符串 "HH:MM" 计算交易分钟序号
-		const std::string& timeStr = timelinePoint[i].time;
-		int hour = 0, minute = 0;
-		if (timeStr.length() >= 5 && timeStr[2] == ':')
-		{
-			hour = (timeStr[0] - '0') * 10 + (timeStr[1] - '0');
-			minute = (timeStr[3] - '0') * 10 + (timeStr[4] - '0');
-		}
-		else
-			continue;
-
-		int totalMinutes = hour * 60 + minute;
-		// 计算从9:30开始的交易分钟序号
-		int tradingMin = -1;
-		if (totalMinutes >= 9 * 60 + 30 && totalMinutes <= 11 * 60 + 30)
-			tradingMin = totalMinutes - (9 * 60 + 30);
-		else if (totalMinutes >= 13 * 60 && totalMinutes <= 15 * 60)
-			tradingMin = 120 + (totalMinutes - 13 * 60);
-
-		if (tradingMin < 0)
-			continue;
-
-		// 每10分钟一个周期，前5分钟高亮，后5分钟不高亮
-		int cyclePos = tradingMin % 10;
-		if (cyclePos >= 5)
-			continue;
-
-		// 找到连续高亮区间的起点和终点
-		int startIdx = i;
-		while (i + 1 < totalPts)
-		{
-			const std::string& nextTimeStr = timelinePoint[i + 1].time;
-			int nextHour = 0, nextMinute = 0;
-			if (nextTimeStr.length() >= 5 && nextTimeStr[2] == ':')
-			{
-				nextHour = (nextTimeStr[0] - '0') * 10 + (nextTimeStr[1] - '0');
-				nextMinute = (nextTimeStr[3] - '0') * 10 + (nextTimeStr[4] - '0');
-			}
-			else
-				break;
-
-			int nextTotalMin = nextHour * 60 + nextMinute;
-			int nextTradingMin = -1;
-			if (nextTotalMin >= 9 * 60 + 30 && nextTotalMin <= 11 * 60 + 30)
-				nextTradingMin = nextTotalMin - (9 * 60 + 30);
-			else if (nextTotalMin >= 13 * 60 && nextTotalMin <= 15 * 60)
-				nextTradingMin = 120 + (nextTotalMin - 13 * 60);
-
-			if (nextTradingMin < 0 || nextTradingMin % 10 >= 5)
-				break;
-			i++;
-		}
-		int endIdx = i;
-
-		int xLeft = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * startIdx);
-		int xRight = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * (endIdx + 1));
-
-		memDC.FillRect(CRect(xLeft, chartTop, xRight, chartTop + chartHeight), &blueBrush);
-	}
+	(void)memDC; (void)ctx; (void)chartTop; (void)chartHeight; (void)viewMode;
+	// 现代暗黑专业主题保持纯净统一背景
+	return;
 }
 
 void CTimelineChart::DrawTimelineGridLines(CDC& memDC, const TimelineDrawContext& ctx)
@@ -881,15 +808,6 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 						CBrush* pOldB = memDC.SelectObject(&brush);
 						CPen* pOldP = memDC.SelectObject(&pen);
 						memDC.Ellipse(ptX - dotR, ptY - dotR, ptX + dotR, ptY + dotR);
-						if (!noLabelSignals[i])
-						{
-							memDC.SetTextColor(COLOR_GREEN_DOWN);
-							CString label = buyReasons[i].IsEmpty() ? _T("B") : buyReasons[i];
-							CSize sz = memDC.GetTextExtent(label);
-							int labelY = ptY + dotR + labelOff;
-							memDC.TextOut(ptX - sz.cx / 2, labelY, label);
-							drawSignalArrow(ptX, labelY, ptY + dotR, COLOR_GREEN_DOWN);
-						}
 						memDC.SelectObject(pOldB);
 						memDC.SelectObject(pOldP);
 					}
@@ -900,15 +818,6 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 						CBrush* pOldB = memDC.SelectObject(&brush);
 						CPen* pOldP = memDC.SelectObject(&pen);
 						memDC.Ellipse(ptX - dotR, ptY - dotR, ptX + dotR, ptY + dotR);
-						if (!noLabelSignals[i])
-						{
-							memDC.SetTextColor(COLOR_RED_UP);
-							CString label = sellReasons[i].IsEmpty() ? _T("S") : sellReasons[i];
-							CSize sz = memDC.GetTextExtent(label);
-							int labelY = ptY - dotR - labelOff - sz.cy;
-							memDC.TextOut(ptX - sz.cx / 2, labelY, label);
-							drawSignalArrow(ptX, labelY + sz.cy, ptY - dotR, COLOR_RED_UP);
-						}
 						memDC.SelectObject(pOldB);
 						memDC.SelectObject(pOldP);
 					}

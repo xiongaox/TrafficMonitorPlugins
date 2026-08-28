@@ -204,27 +204,27 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_btnMA.Create(_T("MA"), WS_CHILD | BS_OWNERDRAW, maBtnRect, this, IDC_MA_BTN);
 	m_btnMA.ShowWindow(SW_HIDE);
 
-	// 缩放按钮（分时模式专用，初始隐藏，在量柱图标题栏右侧定位）
-	const int zoomBtnWidth = g_data.RDPI(28);
+	// 缩放按钮（分时模式专用，初始隐藏，在副图标题栏右侧定位）
+	const int zoomBtnWidth = g_data.RDPI(24);
 	const int zoomBtnHeight = g_data.RDPI(16);
 	CRect zoomOutRect(0, 0, zoomBtnWidth, zoomBtnHeight);
 	CRect zoomInRect(0, 0, zoomBtnWidth, zoomBtnHeight);
-	m_btnZoomOut.Create(_T("<"), WS_CHILD | BS_PUSHBUTTON | BS_FLAT, zoomOutRect, this, IDC_ZOOM_OUT_BTN);
-	m_btnZoomIn.Create(_T(">"), WS_CHILD | BS_PUSHBUTTON | BS_FLAT, zoomInRect, this, IDC_ZOOM_IN_BTN);
+	m_btnZoomOut.Create(_T("<"), WS_CHILD | BS_OWNERDRAW, zoomOutRect, this, IDC_ZOOM_OUT_BTN);
+	m_btnZoomIn.Create(_T(">"), WS_CHILD | BS_OWNERDRAW, zoomInRect, this, IDC_ZOOM_IN_BTN);
 	m_btnZoomOut.ShowWindow(SW_HIDE);
 	m_btnZoomIn.ShowWindow(SW_HIDE);
 
-	// MACD/KDJ指标切换按钮（初始隐藏，在OnPaint中定位）
+	// 副图指标切换胶囊按钮（初始隐藏，在OnPaint中定位）
+	m_btnIndicatorCJL.Create(_T("VOL"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_MACD_BTN);
 	m_btnIndicatorMACD.Create(_T("MACD"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_MACD_SIGNAL_BTN);
 	m_btnIndicatorKDJ.Create(_T("KDJ"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_KDJ_BTN);
-	m_btnIndicatorWR.Create(_T("W&&R"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_WR_BTN);
 	m_btnIndicatorRSI.Create(_T("RSI"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_RSI_BTN);
-	m_btnIndicatorCJL.Create(_T("CJL"), WS_CHILD | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_INDICATOR_MACD_BTN);
+	m_btnIndicatorWR.Create(_T("W&&R"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_WR_BTN);
 	m_btnIndicatorCJL.ShowWindow(SW_HIDE);
 	m_btnIndicatorMACD.ShowWindow(SW_HIDE);
 	m_btnIndicatorKDJ.ShowWindow(SW_HIDE);
-	m_btnIndicatorWR.ShowWindow(SW_HIDE);
 	m_btnIndicatorRSI.ShowWindow(SW_HIDE);
+	m_btnIndicatorWR.ShowWindow(SW_HIDE);
 
 	// 初始分时模式下，基金默认显示净值曲线
 	m_showJZCurve = CCommon::IsFundCode(m_stock_id);
@@ -370,7 +370,7 @@ void CFloatingWnd::OnPaint()
 	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_MIN5_KLINE，自动覆盖）
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_MIN5_KLINE;
 
-	const int stockListWidth = m_showStockList ? g_data.RDPI(65) : 0;  // 左侧股票列表面板宽度
+	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;  // 左侧股票列表面板宽度
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = w - orderBookWidth;
 	// 左侧Y轴坐标区域宽度（所有图表统一预留）
@@ -382,23 +382,22 @@ void CFloatingWnd::OnPaint()
 	const int relatedBarHeight = singleBarHeight;  // 关联股票栏高度（1行，位于标题栏下方）
 	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（1行）
 
-	// 统一布局：标题栏 + 关联股票栏 + 走势图(2/5) + 成交量(1/5) + MACD(1/5) + KDJ(1/5) + 时间标签 + 底部系统状态栏
+	// 统一现代双层布局：标题栏 + 关联股票栏 + 主走势图(约62%) + 单一副图(约38%) + 时间标签 + 底部系统状态栏
 	int chartArea = h - headerHeight - relatedBarHeight - xAxisLabelHeight - indexBarHeight;
-	int priceChartHeight, macdChartHeight, kdjChartHeight, volumeChartHeight;
+	int priceChartHeight, subChartHeight;
 	if (m_expandedMode)
 	{
-		priceChartHeight = chartArea * 3 / 5;
-		macdChartHeight = chartArea / 5;
-		kdjChartHeight = chartArea / 5;
-		volumeChartHeight = 0;  // 放大模式不显示独立成交量图
+		priceChartHeight = chartArea;
+		subChartHeight = 0;
 	}
 	else
 	{
-		priceChartHeight = chartArea * 2 / 5;   // 2/5
-		macdChartHeight = chartArea / 5;        // 1/5
-		kdjChartHeight = chartArea / 5;         // 1/5
-		volumeChartHeight = chartArea / 5;      // 1/5
+		priceChartHeight = chartArea * 62 / 100;
+		subChartHeight = chartArea - priceChartHeight;
 	}
+	int macdChartHeight = subChartHeight;
+	int kdjChartHeight = subChartHeight;
+	int volumeChartHeight = subChartHeight;
 
 	const int priceChartTop = headerHeight + relatedBarHeight;
 
@@ -941,36 +940,30 @@ void CFloatingWnd::OnPaint()
 			m_timelineChart.DrawTimelineGridAndLines(memDC, ctx, tlHover);
 			// 走势图区域（标题栏+图表内容）
 			m_timelineChart.DrawPriceChartArea(memDC, ctx, origPriceTop, priceChartHeight, tlHover);
-			// 成交量图区域（紧贴走势图下方，标题栏+图表内容+网格）
-			if (volumeChartHeight > 0)
+
+			// 现代双层架构：单一副图区域（成交量 / MACD / KDJ / RSI / WR）
+			if (subChartHeight > 0 && !m_expandedMode)
 			{
-				CIndicatorChart::HoverState volHover;
-				volHover.isHoveringVolume = m_isHoveringVolume;
-				volHover.hoveredBarIndex = m_hoveredBarIndex;
-				volHover.viewMode = m_viewMode;
-				volHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
-				m_indicatorChart.DrawVolumeChartArea(memDC, ctx, origVolTop, volumeChartHeight, false, volHover);
-			}
-			// MACD图区域（标题栏+图表内容+网格）
-			{
-				CIndicatorChart::HoverState macdHover;
-				macdHover.viewMode = m_viewMode;
-				macdHover.timelineMacdTitleTip = m_timelineMacdTitleTip;
-				macdHover.hoveredBarIndex = m_hoveredBarIndex;
-				m_indicatorChart.DrawMacdChartArea(memDC, ctx, origIndicatorTop, macdChartHeight, m_timelineMacdTitleTip, macdHover);
-			}
-			// KDJ/指标切换区域（标题栏+图表内容+网格）
-			{
-				CIndicatorChart::HoverState indicatorHover;
-				indicatorHover.isHoveringVolume = m_isHoveringVolume;
-				indicatorHover.hoveredBarIndex = m_hoveredBarIndex;
-				indicatorHover.viewMode = m_viewMode;
-				indicatorHover.timelineKdjTitleTip = m_timelineKdjTitleTip;
-				indicatorHover.timelineWrTitleTip = m_timelineWrTitleTip;
-				indicatorHover.timelineRsiTitleTip = m_timelineRsiTitleTip;
-				indicatorHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
+				int subChartTop = origPriceTop + priceChartHeight;
 				auto indicatorType = static_cast<CIndicatorChart::TimelineIndicator>(m_timelineIndicator);
-				m_indicatorChart.DrawIndicatorChartArea(memDC, ctx, origKdjTop, kdjChartHeight, true, indicatorType, indicatorHover);
+				CIndicatorChart::HoverState subHover;
+				subHover.isHoveringVolume = m_isHoveringVolume;
+				subHover.hoveredBarIndex = m_hoveredBarIndex;
+				subHover.viewMode = m_viewMode;
+				subHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
+				subHover.timelineMacdTitleTip = m_timelineMacdTitleTip;
+				subHover.timelineKdjTitleTip = m_timelineKdjTitleTip;
+				subHover.timelineWrTitleTip = m_timelineWrTitleTip;
+				subHover.timelineRsiTitleTip = m_timelineRsiTitleTip;
+
+				if (indicatorType == CIndicatorChart::TimelineIndicator::MACD)
+				{
+					m_indicatorChart.DrawMacdChartArea(memDC, ctx, subChartTop, subChartHeight, m_timelineMacdTitleTip, subHover);
+				}
+				else
+				{
+					m_indicatorChart.DrawIndicatorChartArea(memDC, ctx, subChartTop, subChartHeight, true, indicatorType, subHover);
+				}
 			}
 			m_timelineChart.DrawTimelineHoverOverlay(memDC, ctx, tlHover);
 
@@ -979,69 +972,59 @@ void CFloatingWnd::OnPaint()
 			// 应用信号颜色到按钮背景
 			ApplySignalColors(tlHover.bollSignalColor, tlHover.macdSignalColor, tlHover.kdjSignalColor, tlHover.wrSignalColor, tlHover.rsiSignalColor, tlHover.maSignalColor);
 
-			// 定位缩放按钮（MACD图标题栏最右侧，原始坐标系）
+			// 定位副图指标水平胶囊切换器 [VOL] [MACD] [KDJ] [RSI] [W&R]
+			if (subChartHeight > 0 && !m_expandedMode)
 			{
-				int zoomBtnW = g_data.RDPI(28);
-				int zoomBtnH = g_data.RDPI(16);
-				int zoomGap = g_data.RDPI(2);
-				int rightEdge = chartWidth;
-				int btnTop = origIndicatorTop + (titleH - zoomBtnH) / 2;
-				SafeSetWindowPos(m_btnZoomIn, rightEdge - zoomBtnW - zoomGap, btnTop, zoomBtnW, zoomBtnH);
-				SafeSetWindowPos(m_btnZoomOut, rightEdge - zoomBtnW * 2 - zoomGap * 2, btnTop, zoomBtnW, zoomBtnH);
-			}
+				int subChartTop = origPriceTop + priceChartHeight;
+				int tabX = stockListWidth + yAxisWidth + g_data.RDPI(4);
+				int tabY = subChartTop + g_data.RDPI(1);
+				int tabW = g_data.RDPI(42);
+				int tabH = titleH - g_data.RDPI(2);
+				int tabGap = g_data.RDPI(2);
 
-			// JZ/MA/BL/CJL/KDJ/W&R/RSI按钮统一布局（左侧Y轴预留区域）
-			{
-				int btnW = yAxisWidth - g_data.RDPI(4);
-				int btnX = stockListWidth + g_data.RDPI(2);
-				int btnGap = g_data.RDPI(1);
-				// MA/BL/MACD在MACD区域
-				int macdAreaTop = origIndicatorTop + titleH;
-				int macdAreaBottom = origKdjTop;
-				int macdAreaH = max(1, macdAreaBottom - macdAreaTop);
-				int macdBtnH = max(g_data.RDPI(16), (macdAreaH - btnGap * 2) / 3);
-				int btn1Y = macdAreaTop;
-				int btn2Y = btn1Y + macdBtnH + btnGap;
-				int btn3Y = btn2Y + macdBtnH + btnGap;
-				SafeSetWindowPos(m_btnMA, btnX, btn1Y, btnW, macdBtnH);
-				SafeSetWindowPos(m_btnBoll, btnX, btn2Y, btnW, macdBtnH);
-				SafeSetWindowPos(m_btnIndicatorMACD, btnX, btn3Y, btnW, macdBtnH);
-				// KDJ/W&R/RSI在KDJ区域
-				int kdjAreaTop = origKdjTop + titleH;
-				int kdjAreaBottom = origKdjTop + kdjChartHeight;
-				int kdjAreaH = max(1, kdjAreaBottom - kdjAreaTop);
-				int kdjBtnH = max(g_data.RDPI(16), (kdjAreaH - btnGap * 2) / 3);
-				int btn4Y = kdjAreaTop;
-				int btn5Y = btn4Y + kdjBtnH + btnGap;
-				int btn6Y = min(btn5Y + kdjBtnH + btnGap, kdjAreaBottom - kdjBtnH);
-				SafeShowWindow(m_btnIndicatorCJL, false);
-				if (m_expandedMode)
-				{
-					SafeShowWindow(m_btnIndicatorKDJ, false);
-					SafeShowWindow(m_btnIndicatorWR, false);
-					SafeShowWindow(m_btnIndicatorRSI, false);
-				}
-				else
-				{
-					SafeSetWindowPos(m_btnIndicatorKDJ, btnX, btn4Y, btnW, kdjBtnH);
-					SafeShowWindow(m_btnIndicatorKDJ, true);
-					SafeSetWindowPos(m_btnIndicatorWR, btnX, btn5Y, btnW, kdjBtnH);
-					SafeShowWindow(m_btnIndicatorWR, true);
-					SafeSetWindowPos(m_btnIndicatorRSI, btnX, btn6Y, btnW, kdjBtnH);
-					SafeShowWindow(m_btnIndicatorRSI, true);
-				}
+				SafeSetWindowPos(m_btnIndicatorCJL, tabX, tabY, tabW, tabH);
+				m_btnIndicatorCJL.SetWindowText(_T("VOL"));
+				SafeShowWindow(m_btnIndicatorCJL, true);
 
-				// 首次绘制时强制所有按钮正确渲染
-				if (!m_indicatorBtnsInitialized)
-				{
-					m_indicatorBtnsInitialized = true;
-				}
-				// 强制重绘指标按钮，避免位置变化后按钮不显示
+				SafeSetWindowPos(m_btnIndicatorMACD, tabX + (tabW + tabGap), tabY, tabW, tabH);
+				SafeShowWindow(m_btnIndicatorMACD, true);
+
+				SafeSetWindowPos(m_btnIndicatorKDJ, tabX + (tabW + tabGap) * 2, tabY, tabW, tabH);
+				SafeShowWindow(m_btnIndicatorKDJ, true);
+
+				SafeSetWindowPos(m_btnIndicatorRSI, tabX + (tabW + tabGap) * 3, tabY, tabW, tabH);
+				SafeShowWindow(m_btnIndicatorRSI, true);
+
+				SafeSetWindowPos(m_btnIndicatorWR, tabX + (tabW + tabGap) * 4, tabY, tabW, tabH);
+				SafeShowWindow(m_btnIndicatorWR, true);
+
+				m_btnIndicatorCJL.Invalidate();
 				m_btnIndicatorMACD.Invalidate();
 				m_btnIndicatorKDJ.Invalidate();
-				m_btnIndicatorWR.Invalidate();
 				m_btnIndicatorRSI.Invalidate();
+				m_btnIndicatorWR.Invalidate();
+
+				// 定位缩放按钮到副图标题栏右侧
+				int zoomBtnW = g_data.RDPI(22);
+				int zoomBtnH = titleH - g_data.RDPI(2);
+				int rightEdge = chartWidth;
+				SafeSetWindowPos(m_btnZoomIn, rightEdge - zoomBtnW - tabGap, tabY, zoomBtnW, zoomBtnH);
+				SafeSetWindowPos(m_btnZoomOut, rightEdge - zoomBtnW * 2 - tabGap * 2, tabY, zoomBtnW, zoomBtnH);
+				SafeShowWindow(m_btnZoomIn, true);
+				SafeShowWindow(m_btnZoomOut, true);
 			}
+			else
+			{
+				SafeShowWindow(m_btnIndicatorCJL, false);
+				SafeShowWindow(m_btnIndicatorMACD, false);
+				SafeShowWindow(m_btnIndicatorKDJ, false);
+				SafeShowWindow(m_btnIndicatorRSI, false);
+				SafeShowWindow(m_btnIndicatorWR, false);
+				SafeShowWindow(m_btnZoomIn, false);
+				SafeShowWindow(m_btnZoomOut, false);
+			}
+			SafeShowWindow(m_btnMA, false);
+			SafeShowWindow(m_btnBoll, false);
 
 			// 主标题栏右侧按钮定位（关闭按钮、放大按钮、股票列表切换按钮）
 			{
@@ -2526,6 +2509,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) { isActive = m_showStockList; }
 	else if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
 	else if (nID == IDC_MA_BTN) { signalColor = m_maSignalColor; isActive = m_showMA; }
+	else if (nID == IDC_INDICATOR_MACD_BTN) { isActive = (m_timelineIndicator == TimelineIndicator::CJL); }
 	else if (nID == IDC_INDICATOR_MACD_SIGNAL_BTN) { signalColor = m_macdSignalColor; isActive = (m_timelineIndicator == TimelineIndicator::MACD); }
 	else if (nID == IDC_INDICATOR_KDJ_BTN) { signalColor = m_kdjSignalColor; isActive = (m_timelineIndicator == TimelineIndicator::KDJ); }
 	else if (nID == IDC_INDICATOR_WR_BTN) { signalColor = m_wrSignalColor; isActive = (m_timelineIndicator == TimelineIndicator::WR); }

@@ -25,9 +25,12 @@ private:
 	// 盘口行数据
 	struct OrderBookRow
 	{
+		int level{ 1 };
 		STOCK::Price price{ 0.0 };
 		STOCK::Volume volume{ 0 };
 		bool isAsk{ false };
+		CString priceStr;
+		CString volumeStr;
 		CString text;
 		CString smallSuffix;
 		CString rightAlignSuffix;  // 右对齐的瞬时变化量（+N/-N）
@@ -74,30 +77,21 @@ private:
 	// 绘制委比（行0）
 	void DrawWeiBi(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
 
-	// 绘制趋势判定（行1）
-	void DrawTrend(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo, UIViewMode viewMode);
-
-	// 绘制卖盘行（最高+卖三~卖一，行2-5）
+	// 绘制卖盘五档（卖五~卖一，行1-5）
 	void DrawAskRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo, bool blinkOn);
 
-	// 绘制净比00柱状图（行6）
-	void DrawNetRatio00(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
+	// 绘制中间行情行：现价与今开（行6）
+	void DrawMidPriceRow(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
 
-	// 绘制买盘行（买一~买三+最低，行7-10）
+	// 绘制买盘五档（买一~买五，行7-11）
 	void DrawBidRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo, bool blinkOn);
 
-	// 绘制净比01/05/10/20（行11-14）
-	void DrawNetRatioPeriods(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
+	// 绘制净比汇总（行12）
+	void DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
 
-	// 绘制净比99（行15）
-	void DrawNetRatio99(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
-
-	// 绘制振幅（行16）
-	void DrawAmplitude(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo,
+	// 绘制振幅与换手率（行13）
+	void DrawStatsRow(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo,
 		const std::vector<STOCK::KLinePoint>& klineData);
-
-	// 绘制换手率（行17）
-	void DrawTurnoverRate(CDC& memDC, const LayoutContext& lc, const STOCK::StockInfo& stockInfo);
 
 	// 辅助：绘制单行盘口文本（含小号后缀、右对齐后缀）
 	void DrawOrderBookRowText(CDC& memDC, const OrderBookRow& row, int x, int y, int rowWidth, bool blinkOff = false);
