@@ -16,8 +16,10 @@
 // 文本颜色体系 (Typography)
 #define COLOR_WHITE               RGB(241, 245, 249)   // 主文字高亮白 (Slate-100)
 #define COLOR_BLACK               RGB(241, 245, 249)   // 暗黑主题下常规文本映射为浅色
-#define COLOR_GRAY_TEXT           RGB(148, 163, 184)   // 次要辅助文字 (Slate-400)
+#define COLOR_TEXT_PRIMARY        RGB(241, 245, 249)   // 主文字高亮白 (Slate-100)
+#define COLOR_TEXT_MUTED          RGB(148, 163, 184)   // 次要辅助文字 (Slate-400)
 #define COLOR_TEXT_DIM            RGB(100, 116, 139)   // 微弱文字/提示 (Slate-500)
+#define COLOR_GRAY_TEXT           RGB(148, 163, 184)   // 次要辅助文字 (Slate-400)
 #define COLOR_GRAY_PURPLE         RGB(148, 163, 184)   // 次要灰色
 
 // 现代金融红绿语义色
