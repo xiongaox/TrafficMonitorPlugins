@@ -428,7 +428,7 @@ void CIndicatorChart::DrawMacdChartArea(CDC& memDC, const TimelineDrawContext& c
 	int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 
 	CRect macdTitleRect(0, areaTop, ctx.chartWidth, areaTop + titleH);
-	memDC.FillSolidRect(macdTitleRect, RGB(245, 245, 245));
+	memDC.FillSolidRect(macdTitleRect, COLOR_BG_HEADER);
 
 	TimelineDrawContext tmpCtx = ctx;
 	tmpCtx.macdChartTop = areaTop + titleH;
@@ -606,7 +606,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 	int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 
 	CRect indicatorTitleRect(0, areaTop, ctx.chartWidth, areaTop + titleH);
-	memDC.FillSolidRect(indicatorTitleRect, RGB(245, 245, 245));
+	memDC.FillSolidRect(indicatorTitleRect, COLOR_BG_HEADER);
 
 	if (indicator == TimelineIndicator::KDJ)
 	{
@@ -825,7 +825,7 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 
 		int xPos = g_data.RDPI(4);
 		int centerY = areaTop + titleH / 2;
-		const COLORREF hoverBgColor = RGB(200, 220, 255);
+		const COLORREF hoverBgColor = RGB(38, 45, 60);
 
 		auto drawLabelValueHL = [&](const CString& labelText, const CString& valStr, COLORREF labelColor, COLORREF valueColor, bool highlight) {
 			memDC.SetTextColor(labelColor);
@@ -863,15 +863,15 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 			xPos += g_data.RDPI(4);
 			};
 
-		memDC.SetTextColor(COLOR_GRAY_TEXT);
+		memDC.SetTextColor(COLOR_TEXT_MUTED);
 		if (!perVolStr.IsEmpty())
-			drawLabelValueHL(_T("分量:"), perVolStr, COLOR_GRAY_TEXT, COLOR_GRAY_TEXT, isVolHovering);
+			drawLabelValueHL(_T("分量:"), perVolStr, COLOR_TEXT_MUTED, COLOR_WHITE, isVolHovering);
 		if (!perAmtStr.IsEmpty())
-			drawLabelValueHL(_T("分额:"), perAmtStr, COLOR_GRAY_TEXT, COLOR_GRAY_TEXT, isVolHovering);
+			drawLabelValueHL(_T("分额:"), perAmtStr, COLOR_TEXT_MUTED, COLOR_WHITE, isVolHovering);
 		if (hover.viewMode == UI_VIEW_MIN5_KLINE)
 		{
-			drawVolumeMA(_T("MA5:"), volMa5, prevVolMa5, RGB(0, 0, 230));
-			drawVolumeMA(_T("MA10:"), volMa10, prevVolMa10, RGB(0, 166, 235));
+			drawVolumeMA(_T("MA5:"), volMa5, prevVolMa5, RGB(56, 189, 248));
+			drawVolumeMA(_T("MA10:"), volMa10, prevVolMa10, RGB(251, 146, 60));
 		}
 	}
 

@@ -155,48 +155,46 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	const int btnHeight = g_data.RDPI(22);
 	const int btnGap = 0;  // 按钮之间不留缝隙
 
-	// 左侧按钮：竞价、分时、5分、30分、日K（贴边排列，无间隙）
+	// 左侧按钮：竞价、分时、5分、30分、日K（现代胶囊分段器，全自绘）
 	CRect callAuctionRect(0, g_data.RDPI(2), btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnCallAuction.Create(_T("竞价"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, callAuctionRect, this, IDC_CALL_AUCTION_BTN);
+	m_btnCallAuction.Create(_T("竞价"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, callAuctionRect, this, IDC_CALL_AUCTION_BTN);
 
 	CRect timelineRect(callAuctionRect.right + btnGap, g_data.RDPI(2), callAuctionRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnTimeLine.Create(_T("分时"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, timelineRect, this, IDC_TIMELINE_BTN);
+	m_btnTimeLine.Create(_T("分时"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, timelineRect, this, IDC_TIMELINE_BTN);
 
 	CRect min5KLineRect(timelineRect.right + btnGap, g_data.RDPI(2), timelineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnMin5KLine.Create(_T("5分"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, min5KLineRect, this, IDC_MIN5_KLINE_BTN);
+	m_btnMin5KLine.Create(_T("5分"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, min5KLineRect, this, IDC_MIN5_KLINE_BTN);
 
 	CRect min30KLineRect(min5KLineRect.right + btnGap, g_data.RDPI(2), min5KLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnMin30KLine.Create(_T("30分"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, min30KLineRect, this, IDC_MIN30_KLINE_BTN);
+	m_btnMin30KLine.Create(_T("30分"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, min30KLineRect, this, IDC_MIN30_KLINE_BTN);
 
 	CRect klineRect(min30KLineRect.right + btnGap, g_data.RDPI(2), min30KLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnKLine.Create(_T("日K"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, klineRect, this, IDC_KLINE_BTN);
+	m_btnKLine.Create(_T("日K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, klineRect, this, IDC_KLINE_BTN);
 
-	// 右侧按钮：关闭、筹码峰（T0/MA/BOLL 在走势图标题栏右侧定位）
-	const int closeBtnWidth = g_data.RDPI(20);
-	const int closeBtnHeight = g_data.RDPI(18);
+	// 右侧按钮：关闭、放大、自选折叠、筹码峰（全自绘）
+	const int closeBtnWidth = g_data.RDPI(22);
+	const int closeBtnHeight = g_data.RDPI(20);
 	const int cx = lpCreateStruct->cx;
 	CRect closeBtnRect(cx - closeBtnWidth, g_data.RDPI(2), cx, g_data.RDPI(2) + closeBtnHeight);
-	m_btnClose.Create(_T("X"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, closeBtnRect, this, IDC_CLOSE_BTN);
+	m_btnClose.Create(_T("✕"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, closeBtnRect, this, IDC_CLOSE_BTN);
 
-	// 放大按钮在X按钮左边
 	const int expandBtnWidth = closeBtnWidth;
 	const int expandBtnHeight = closeBtnHeight;
 	CRect expandBtnRect(closeBtnRect.left - expandBtnWidth, g_data.RDPI(2), closeBtnRect.left, g_data.RDPI(2) + expandBtnHeight);
-	m_btnExpand.Create(_T("△"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, expandBtnRect, this, IDC_EXPAND_BTN);
+	m_btnExpand.Create(_T("□"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, expandBtnRect, this, IDC_EXPAND_BTN);
 
-	// 股票列表显示/隐藏按钮在放大按钮左边
 	const int toggleStockListBtnWidth = closeBtnWidth;
 	const int toggleStockListBtnHeight = closeBtnHeight;
 	CRect toggleStockListBtnRect(expandBtnRect.left - toggleStockListBtnWidth, g_data.RDPI(2), expandBtnRect.left, g_data.RDPI(2) + toggleStockListBtnHeight);
-	m_btnToggleStockList.Create(_T("<|"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, toggleStockListBtnRect, this, IDC_TOGGLE_STOCK_LIST_BTN);
+	m_btnToggleStockList.Create(_T("<|"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, toggleStockListBtnRect, this, IDC_TOGGLE_STOCK_LIST_BTN);
 
-	const int rightBtnWidth = g_data.RDPI(40);
+	const int rightBtnWidth = g_data.RDPI(32);
 
-	CRect chipPeakBtnRect(closeBtnRect.left - rightBtnWidth, g_data.RDPI(2), closeBtnRect.left, g_data.RDPI(2) + btnHeight);
-	m_btnChipPeak.Create(_T("CM"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, chipPeakBtnRect, this, IDC_CHIP_PEAK_BTN);
+	CRect chipPeakBtnRect(toggleStockListBtnRect.left - rightBtnWidth, g_data.RDPI(2), toggleStockListBtnRect.left, g_data.RDPI(2) + btnHeight);
+	m_btnChipPeak.Create(_T("CM"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, chipPeakBtnRect, this, IDC_CHIP_PEAK_BTN);
 
 	CRect orderBookBtnRect(0, 0, rightBtnWidth, btnHeight);
-	m_btnOrderBook.Create(_T("PK"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_FLAT, orderBookBtnRect, this, IDC_ORDER_BOOK_BTN);
+	m_btnOrderBook.Create(_T("PK"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, orderBookBtnRect, this, IDC_ORDER_BOOK_BTN);
 
 	CRect bollBtnRect(0, 0, rightBtnWidth, btnHeight);
 	m_btnBoll.Create(_T("BL"), WS_CHILD | BS_OWNERDRAW, bollBtnRect, this, IDC_BOLL_BTN);
@@ -331,10 +329,10 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	BringWindowToTop();
 	SetForegroundWindow();
 
-	// 设置弹出窗口半透明（180兼顾可读性和隐蔽性）
+	// 设置弹出窗口半透明/暗黑质感底色
 	HWND hWnd = this->m_hWnd;
 	::SetWindowLongPtr(hWnd, GWL_EXSTYLE, ::GetWindowLongPtr(hWnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-	::SetLayeredWindowAttributes(hWnd, RGB(255, 255, 255), 220, LWA_ALPHA);
+	::SetLayeredWindowAttributes(hWnd, 0, 248, LWA_ALPHA);
 
 	// 设置父窗口完全透明
 	m_CTransparentWnd.SetLayeredWindowAttributes(0, 0, LWA_ALPHA);
@@ -361,7 +359,8 @@ void CFloatingWnd::OnPaint()
 	memBitmap.CreateCompatibleBitmap(&dc, rect.Width(), rect.Height());
 	CBitmap* pOldBitmap = memDC.SelectObject(&memBitmap);
 
-	memDC.FillSolidRect(rect, COLOR_WHITE);
+	// 填充现代暗黑专业底色 (#12141A)
+	memDC.FillSolidRect(rect, COLOR_BG_DARK);
 
 	memDC.SetBkMode(TRANSPARENT);
 
@@ -2126,51 +2125,26 @@ void CFloatingWnd::UpdateModeButtons()
 {
 	if (m_btnTimeLine.GetSafeHwnd() && m_btnKLine.GetSafeHwnd())
 	{
-		// 竞价按钮样式
-		SafeSetButtonStyle(m_btnCallAuction, m_viewMode == UI_VIEW_AUCTION ? BS_DEFPUSHBUTTON : BS_FLAT);
-
-		if (m_viewMode == UI_VIEW_DAY_KLINE)
-		{
-			m_btnTimeLine.SetWindowText(_T("分时"));
-			m_btnKLine.SetWindowText(_T("日K"));
-			SafeSetButtonStyle(m_btnTimeLine, BS_FLAT);
-			SafeSetButtonStyle(m_btnKLine, BS_DEFPUSHBUTTON);
-		}
-		else if (m_viewMode == UI_VIEW_MIN5_KLINE)
-		{
-			m_btnTimeLine.SetWindowText(_T("分时"));
-			m_btnKLine.SetWindowText(_T("日K"));
-			SafeSetButtonStyle(m_btnTimeLine, BS_FLAT);
-			SafeSetButtonStyle(m_btnKLine, BS_FLAT);
-		}
-		else if (m_viewMode == UI_VIEW_MIN30_KLINE)
-		{
-			m_btnTimeLine.SetWindowText(_T("分时"));
-			m_btnKLine.SetWindowText(_T("日K"));
-			SafeSetButtonStyle(m_btnTimeLine, BS_FLAT);
-			SafeSetButtonStyle(m_btnKLine, BS_FLAT);
-		}
-		else
-		{
-			m_btnTimeLine.SetWindowText(_T("分时"));
-			m_btnKLine.SetWindowText(_T("日K"));
-			SafeSetButtonStyle(m_btnTimeLine, BS_DEFPUSHBUTTON);
-			SafeSetButtonStyle(m_btnKLine, BS_FLAT);
-		}
+		if (m_btnCallAuction.GetSafeHwnd()) m_btnCallAuction.Invalidate();
+		if (m_btnTimeLine.GetSafeHwnd()) m_btnTimeLine.Invalidate();
+		if (m_btnMin5KLine.GetSafeHwnd()) m_btnMin5KLine.Invalidate();
+		if (m_btnMin30KLine.GetSafeHwnd()) m_btnMin30KLine.Invalidate();
+		if (m_btnKLine.GetSafeHwnd()) m_btnKLine.Invalidate();
 
 		if (m_btnMA.GetSafeHwnd()) m_btnMA.Invalidate();
-		SafeSetButtonStyle(m_btnMin5KLine, m_viewMode == UI_VIEW_MIN5_KLINE ? BS_DEFPUSHBUTTON : BS_FLAT);
-		SafeSetButtonStyle(m_btnMin30KLine, m_viewMode == UI_VIEW_MIN30_KLINE ? BS_DEFPUSHBUTTON : BS_FLAT);
 		if (m_btnBoll.GetSafeHwnd()) m_btnBoll.Invalidate();
 		if (m_btnIndicatorMACD.GetSafeHwnd()) m_btnIndicatorMACD.Invalidate();
-		SafeSetButtonStyle(m_btnChipPeak, m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
-		SafeSetButtonStyle(m_btnOrderBook, !m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
+		if (m_btnIndicatorKDJ.GetSafeHwnd()) m_btnIndicatorKDJ.Invalidate();
+		if (m_btnIndicatorWR.GetSafeHwnd()) m_btnIndicatorWR.Invalidate();
+		if (m_btnIndicatorRSI.GetSafeHwnd()) m_btnIndicatorRSI.Invalidate();
+		if (m_btnChipPeak.GetSafeHwnd()) m_btnChipPeak.Invalidate();
+		if (m_btnOrderBook.GetSafeHwnd()) m_btnOrderBook.Invalidate();
 
-		SafeSetButtonStyle(m_btnExpand, m_expandedMode ? BS_FLAT : BS_DEFPUSHBUTTON);
-		m_btnExpand.SetWindowText(m_expandedMode ? _T("△") : _T("▽"));
+		m_btnExpand.SetWindowText(m_expandedMode ? _T("△") : _T("□"));
+		if (m_btnExpand.GetSafeHwnd()) m_btnExpand.Invalidate();
 
 		m_btnToggleStockList.SetWindowText(m_showStockList ? _T("|>") : _T("<|"));
-		SafeSetButtonStyle(m_btnToggleStockList, m_showStockList ? BS_FLAT : BS_DEFPUSHBUTTON);
+		if (m_btnToggleStockList.GetSafeHwnd()) m_btnToggleStockList.Invalidate();
 		SafeShowWindow(m_btnToggleStockList, m_viewMode != UI_VIEW_OVERVIEW);
 
 		// 缩放按钮在所有模式下显示（除总览模式外）
@@ -2536,10 +2510,21 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	if (lpDrawItemStruct->CtlType != ODT_BUTTON) return;
 	UINT nID = lpDrawItemStruct->CtlID;
 
-	// 获取信号颜色
+	// 获取信号与激活状态
 	COLORREF signalColor = CLR_INVALID;
-	bool isActive = false;  // 按钮是否为当前选中状态
-	if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
+	bool isActive = false;
+	bool isCloseBtn = (nID == IDC_CLOSE_BTN);
+
+	if (nID == IDC_CALL_AUCTION_BTN) { isActive = (m_viewMode == UI_VIEW_AUCTION); }
+	else if (nID == IDC_TIMELINE_BTN) { isActive = (m_viewMode == UI_VIEW_TIMELINE); }
+	else if (nID == IDC_MIN5_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MIN5_KLINE); }
+	else if (nID == IDC_MIN30_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MIN30_KLINE); }
+	else if (nID == IDC_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_DAY_KLINE); }
+	else if (nID == IDC_CHIP_PEAK_BTN) { isActive = m_showChipPeak; }
+	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak; }
+	else if (nID == IDC_EXPAND_BTN) { isActive = m_expandedMode; }
+	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) { isActive = m_showStockList; }
+	else if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
 	else if (nID == IDC_MA_BTN) { signalColor = m_maSignalColor; isActive = m_showMA; }
 	else if (nID == IDC_INDICATOR_MACD_SIGNAL_BTN) { signalColor = m_macdSignalColor; isActive = (m_timelineIndicator == TimelineIndicator::MACD); }
 	else if (nID == IDC_INDICATOR_KDJ_BTN) { signalColor = m_kdjSignalColor; isActive = (m_timelineIndicator == TimelineIndicator::KDJ); }
@@ -2550,14 +2535,19 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	dc.Attach(lpDrawItemStruct->hDC);
 	CRect rect = lpDrawItemStruct->rcItem;
 
-	// 判断按钮状态
 	bool isSelected = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
 
-	// 背景色：有信号时用信号颜色，否则激活项用现代蓝，未激活项用浅灰
 	COLORREF bgColor;
 	COLORREF textColor;
 	COLORREF borderColor;
-	if (signalColor != CLR_INVALID)
+
+	if (isCloseBtn)
+	{
+		bgColor = isSelected ? RGB(185, 28, 28) : RGB(24, 27, 34);
+		textColor = isSelected ? RGB(255, 255, 255) : RGB(148, 163, 184);
+		borderColor = RGB(38, 42, 54);
+	}
+	else if (signalColor != CLR_INVALID)
 	{
 		bgColor = signalColor;
 		textColor = RGB(255, 255, 255);
@@ -2571,17 +2561,16 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	}
 	else
 	{
-		bgColor = RGB(241, 245, 249);
-		textColor = COLOR_BLACK;
-		borderColor = COLOR_DARK_GRAY_BORDER;
+		bgColor = RGB(24, 27, 34);
+		textColor = RGB(148, 163, 184);
+		borderColor = RGB(38, 42, 54);
 	}
 
-	// 按下时微调
-	if (isSelected)
+	if (isSelected && !isCloseBtn)
 	{
-		int r = max(0, GetRValue(bgColor) - 25);
-		int g = max(0, GetGValue(bgColor) - 25);
-		int b = max(0, GetBValue(bgColor) - 25);
+		int r = max(0, GetRValue(bgColor) - 20);
+		int g = max(0, GetGValue(bgColor) - 20);
+		int b = max(0, GetBValue(bgColor) - 20);
 		bgColor = RGB(r, g, b);
 	}
 

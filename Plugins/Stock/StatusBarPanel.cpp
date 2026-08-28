@@ -84,7 +84,11 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 
 void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int singleBarHeight, const std::wstring& stockId, int viewMode)
 {
-	const int GAP = 2;
+	// 绘制关联股票/指数栏深色背景 (#15171E)
+	memDC.FillSolidRect(0, topBarY, w, singleBarHeight, COLOR_BG_SUBHEADER);
+	memDC.FillSolidRect(0, topBarY + singleBarHeight - 1, w, 1, COLOR_DARK_GRAY_BORDER);
+
+	const int GAP = 4;
 
 	std::vector<std::wstring> relatedCodes = g_data.GetRelatedStocks(stockId);
 	bool isRelatedMode = !relatedCodes.empty();
@@ -178,80 +182,45 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 		else
 		{
 			// 关联模式：用实际测量法，从最大字号开始尝试，逐步缩小直到文字总宽度适合
-			// 右侧预留120像素不参与均分，仅左侧区域用于字体计算
-			// 趋势箭头在120像素区域左侧，也需要预留空间
-			int trendArrowWidth = 0;
-			if (showAvgDiff && !trendArrowStr.IsEmpty())
-			{
-				// 用最大字号测量趋势箭头宽度（趋势箭头使用avgFont固定字号）
-				CFont tmpAvgFont;
-				tmpAvgFont.CreateFont(-g_data.RDPI(maxFont), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-					DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-					DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
-				CFont* pOldTmpFont = memDC.SelectObject(&tmpAvgFont);
-				trendArrowWidth = memDC.GetTextExtent(trendArrowStr).cx + GAP;
-				memDC.SelectObject(pOldTmpFont);
-				tmpAvgFont.DeleteObject();
-			}
-			int availableWidth = w - (showAvgDiff ? g_data.RDPI(120) : 0) - trendArrowWidth;
-
-			std::lock_guard<std::mutex> lockMeasure(Stock::Instance().m_stockDataMutex);
-
-			// 预先构建所有文本字符串
-			struct StockText { CString nameStr; CString changeStr; bool valid; };
-			std::vector<StockText> stockTexts(relatedCount);
-			for (int i = 0; i < relatedCount; i++)
-			{
-				auto stockData = g_data.GetStockData(relatedCodes[i]);
-				if (stockData && stockData->info.is_ok)
-				{
-					const auto& info = stockData->info;
-					double displayPrice = info.currentPrice > 0 ? info.currentPrice : info.prevClosePrice;
-					double diff = displayPrice - info.prevClosePrice;
-					double diffPercent = info.prevClosePrice != 0 ? (diff / info.prevClosePrice) * 100 : 0;
-					stockTexts[i].nameStr = info.GetStockListName() + _T(":");
-					if (diff >= 0)
-						stockTexts[i].changeStr.Format(_T("+%.2f%%"), diffPercent);
-					else
-						stockTexts[i].changeStr.Format(_T("%.2f%%"), diffPercent);
-					stockTexts[i].valid = true;
-				}
-				else
-				{
-					stockTexts[i].nameStr = CString(relatedCodes[i].c_str()) + _T(" --");
-					stockTexts[i].valid = false;
-				}
-			}
+			int availableWidth = w - GAP * 2;
+			if (showAvgDiff)
+				availableWidth -= (g_data.RDPI(120) + GAP * 2);
 
 			int fontSize = maxFont;
-
 			while (fontSize >= minFont)
 			{
-				// 创建临时字体测量
-				CFont tmpFont;
-				tmpFont.CreateFont(-g_data.RDPI(fontSize), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+				CFont testFont;
+				testFont.CreateFont(-g_data.RDPI(fontSize), 0, 0, 0, FW_NORMAL, 0, 0, 0,
 					DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 					DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
-				CFont* pOldTmp = memDC.SelectObject(&tmpFont);
+				CFont* pPrev = memDC.SelectObject(&testFont);
 
-				// 计算所有股票文字总宽度（已包含每个元素后的GAP间隔）
-				int totalWidth = GAP; // 左侧起始边距
+				int totalWidth = 0;
 				for (int i = 0; i < relatedCount; i++)
 				{
-					totalWidth += memDC.GetTextExtent(stockTexts[i].nameStr).cx + GAP;
-					if (stockTexts[i].valid)
-						totalWidth += memDC.GetTextExtent(stockTexts[i].changeStr).cx + GAP;
+					auto stockData = g_data.GetStockData(relatedCodes[i]);
+					if (stockData && stockData->info.is_ok)
+					{
+						CString nameStr = stockData->info.GetStockListName() + _T(":");
+						CString changeStr = _T("+00.00%");
+						totalWidth += memDC.GetTextExtent(nameStr).cx + memDC.GetTextExtent(changeStr).cx + GAP * 2;
+					}
+					else
+					{
+						CString nameStr = CString(relatedCodes[i].c_str()) + _T(" --");
+						totalWidth += memDC.GetTextExtent(nameStr).cx + GAP;
+					}
 				}
 
-				memDC.SelectObject(pOldTmp);
-				tmpFont.DeleteObject();
+				memDC.SelectObject(pPrev);
+				testFont.DeleteObject();
 
-				// 检查是否适合左侧可用区域（去掉预留120像素）
 				if (totalWidth <= availableWidth)
 					break; // 当前字号适合
 
 				fontSize--;
 			}
+
 			if (fontSize < minFont) fontSize = minFont;
 
 			dynFont.CreateFont(-g_data.RDPI(fontSize), 0, 0, 0, FW_NORMAL, 0, 0, 0,
@@ -284,24 +253,24 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 				else
 					changeStr.Format(_T("%.2f%%"), diffPercent);
 
-				memDC.SetTextColor(COLOR_BLACK);
+				memDC.SetTextColor(COLOR_TEXT_MUTED);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), nameStr);
 				textX += memDC.GetTextExtent(nameStr).cx + GAP;
 
-				memDC.SetTextColor(CCommon::GetProfitLossColor(diffPercent));
+				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), changeStr);
 				textX += memDC.GetTextExtent(changeStr).cx + GAP;
 			}
 			else
 			{
 				CString nameStr = CString(relatedCodes[i].c_str()) + _T(" --");
-				memDC.SetTextColor(COLOR_GRAY_PURPLE);
+				memDC.SetTextColor(COLOR_TEXT_DIM);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), nameStr);
 				textX += memDC.GetTextExtent(nameStr).cx + GAP;
 			}
 		}
 
-		// 右侧预留120像素显示：最小值 均值 最大值（固定字体大小，红绿背景）
+		// 右侧预留120像素显示：最小值 均值 最大值
 		if (showAvgDiff)
 		{
 			int avgAreaWidth = g_data.RDPI(120);
@@ -309,19 +278,17 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 			int avgAreaH = singleBarHeight;
 			int avgAreaY = topBarY;
 
-			// 红绿颜色分3档，由浅到深
 			static const COLORREF AVG_RED_COLORS[] = {
-				RGB(240, 40, 40),   // 浅红
-				RGB(180, 50, 50),   // 中红
-				RGB(130, 20, 40)    // 深红
+				RGB(190, 24, 60),
+				RGB(159, 18, 57),
+				RGB(136, 19, 55)
 			};
 			static const COLORREF AVG_GREEN_COLORS[] = {
-				RGB(40, 240, 40),   // 浅绿
-				RGB(50, 180, 50),   // 中绿
-				RGB(20, 130, 40)    // 深绿
+				RGB(6, 95, 70),
+				RGB(6, 78, 59),
+				RGB(4, 47, 46)
 			};
 
-			// 红绿颜色深度由均值在区间中的位置决定
 			double range = maxAvgDiff - minAvgDiff;
 			int redIdx, greenIdx;
 			if (range == 0)
@@ -341,7 +308,6 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 			COLORREF redColor = AVG_RED_COLORS[redIdx];
 			COLORREF greenColor = AVG_GREEN_COLORS[greenIdx];
 
-			// 绘制红绿背景
 			if (range == 0 || avgDiffPercent <= minAvgDiff)
 			{
 				memDC.FillSolidRect(avgAreaX, avgAreaY, avgAreaWidth, avgAreaH, greenColor);
@@ -352,11 +318,10 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 			}
 			else
 			{
-				double ratio = (avgDiffPercent - minAvgDiff) / range;
-				int redWidth = static_cast<int>(ratio * avgAreaWidth);
-				redWidth = max(0, min(redWidth, avgAreaWidth));
+				double redRatio = (avgDiffPercent - minAvgDiff) / range;
+				int redWidth = static_cast<int>(avgAreaWidth * redRatio);
 				int greenWidth = avgAreaWidth - redWidth;
-				if (redWidth >= greenWidth)
+				if (avgDiffPercent >= 0)
 				{
 					memDC.FillSolidRect(avgAreaX, avgAreaY, redWidth, avgAreaH, redColor);
 					memDC.FillSolidRect(avgAreaX + redWidth, avgAreaY, greenWidth, avgAreaH, greenColor);
@@ -368,13 +333,9 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 				}
 			}
 
-			// 切换到固定字体绘制均幅区域
 			CFont* pPrevFont = memDC.SelectObject(&avgFont);
-
-			// 120像素区域三等分
 			int thirdWidth = avgAreaWidth / 3;
 
-			// 趋势指示器（120像素左侧，间隔2像素，无背景）
 			if (!trendArrowStr.IsEmpty())
 			{
 				TCHAR firstChar = trendArrowStr.GetAt(0);
@@ -383,25 +344,21 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 				else if (firstChar == _T('↓'))
 					memDC.SetTextColor(COLOR_GREEN_DOWN);
 				else
-					memDC.SetTextColor(RGB(0, 0, 0));
+					memDC.SetTextColor(COLOR_TEXT_MUTED);
 				int trendX = avgAreaX - GAP - memDC.GetTextExtent(trendArrowStr).cx;
 				memDC.TextOut(trendX, avgAreaY + g_data.RDPI(2), trendArrowStr);
 			}
 
-			// 最小值（白色文字）
 			memDC.SetTextColor(RGB(255, 255, 255));
 			int minX = avgAreaX + (thirdWidth - memDC.GetTextExtent(minAvgValueStr).cx) / 2;
 			memDC.TextOut(minX, avgAreaY + g_data.RDPI(2), minAvgValueStr);
 
-			// 均值（白色文字）
 			int avgX = avgAreaX + thirdWidth + (thirdWidth - memDC.GetTextExtent(avgValueStr).cx) / 2;
 			memDC.TextOut(avgX, avgAreaY + g_data.RDPI(2), avgValueStr);
 
-			// 最大值（白色文字）
 			int maxX = avgAreaX + thirdWidth * 2 + (thirdWidth - memDC.GetTextExtent(maxAvgValueStr).cx) / 2;
 			memDC.TextOut(maxX, avgAreaY + g_data.RDPI(2), maxAvgValueStr);
 
-			// 恢复之前的字体
 			memDC.SelectObject(pPrevFont);
 		}
 	}
@@ -431,46 +388,47 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 				else
 					changeStr.Format(_T("%.2f%%"), diffPercent);
 
-				memDC.SetTextColor(COLOR_BLACK);
+				memDC.SetTextColor(COLOR_TEXT_MUTED);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), nameStr);
 				textX += memDC.GetTextExtent(nameStr).cx + GAP;
 
-				memDC.SetTextColor(CCommon::GetProfitLossColor(diffPercent));
+				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), priceStr);
 				textX += memDC.GetTextExtent(priceStr).cx + GAP;
 
-				memDC.SetTextColor(CCommon::GetProfitLossColor(diffPercent));
+				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), changeStr);
 			}
 			else
 			{
-				CString nameStr = CString(relatedCodes[i].c_str());
-				memDC.SetTextColor(COLOR_GRAY_PURPLE);
+				CString nameStr = (relatedCodes[i] == L"sh000001") ? _T("上证:") : ((relatedCodes[i] == L"sz399986") ? _T("中证银行:") : ((relatedCodes[i] == L"rt_hkHSTECH") ? _T("恒生科技:") : CString(relatedCodes[i].c_str()) + _T(":")));
+				memDC.SetTextColor(COLOR_TEXT_DIM);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), nameStr + _T(" --"));
 			}
 		}
 	}
 
-	// 恢复原始字体
-	if (pOldFont != nullptr)
-	{
+	if (pOldFont)
 		memDC.SelectObject(pOldFont);
-		dynFont.DeleteObject();
-	}
+	dynFont.DeleteObject();
+	avgFont.DeleteObject();
 }
 
 void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int singleBarHeight)
 {
-	const int GAP = 2;
+	// 绘制底部系统状态栏深色背景 (#161820)
+	memDC.FillSolidRect(0, bottomBarY, w, singleBarHeight, COLOR_BG_FOOTER);
+	memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
+
+	const int GAP = 4;
 
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
 	{
-		// 没有配置时使用默认指数：上证指数、中证银行、恒生科技
-		statusBarCodes = { L"sh000001", L"sz399986", L"rt_hkHSTECH" };
+		// 没有配置时使用默认指数：上证指数、深证成指、创业板指
+		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006" };
 	}
 	const int sbCount = static_cast<int>(statusBarCodes.size());
-	// 下行状态栏使用等分列宽布局
 	const int colWidth = w / max(sbCount, 1);
 
 	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
@@ -496,21 +454,21 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 			else
 				changeStr.Format(_T("%.2f%%"), diffPercent);
 
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), nameStr);
 			textX += memDC.GetTextExtent(nameStr).cx + GAP;
 
-			memDC.SetTextColor(CCommon::GetProfitLossColor(diffPercent));
+			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
 			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), priceStr);
 			textX += memDC.GetTextExtent(priceStr).cx + GAP;
 
-			memDC.SetTextColor(CCommon::GetProfitLossColor(diffPercent));
+			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
 			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), changeStr);
 		}
 		else
 		{
-			CString nameStr = CString(statusBarCodes[i].c_str());
-			memDC.SetTextColor(COLOR_GRAY_PURPLE);
+			CString nameStr = (statusBarCodes[i] == L"sh000001") ? _T("上证综指:") : ((statusBarCodes[i] == L"sz399001") ? _T("深证成指:") : ((statusBarCodes[i] == L"sz399006") ? _T("创业板指:") : CString(statusBarCodes[i].c_str()) + _T(":")));
+			memDC.SetTextColor(COLOR_TEXT_DIM);
 			memDC.TextOut(textX, bottomBarY + g_data.RDPI(2), nameStr + _T(" --"));
 		}
 	}

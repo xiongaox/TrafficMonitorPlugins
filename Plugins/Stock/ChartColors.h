@@ -2,41 +2,51 @@
 
 #include <afxwin.h>
 
-// 图表绘制共享颜色常量
-// 注：这些颜色宏在各图表模块（CStockListPanel/COrderBookPanel/CChartPrice 等）间共享
+// 现代暗黑专业主题表面底色体系 (Dark Surfaces)
+#define COLOR_BG_DARK             RGB(18, 20, 26)      // 核心图表深色底 (#12141A)
+#define COLOR_BG_HEADER           RGB(24, 27, 34)      // 顶部主标题栏 (#181B22)
+#define COLOR_BG_SUBHEADER        RGB(21, 23, 30)      // 次级关联指数栏 (#15171E)
+#define COLOR_BG_PANEL            RGB(20, 22, 29)      // 左侧列表与右侧盘口底色 (#14161D)
+#define COLOR_BG_FOOTER           RGB(22, 24, 32)      // 底部系统状态栏 (#161820)
+#define COLOR_BG_CARD             RGB(24, 27, 34)      // 卡片底色 (#181B22)
+#define COLOR_CARD_SELECTED       RGB(28, 45, 75)      // 列表选中项高亮深蓝底
+#define COLOR_ACCENT_BLUE         RGB(37, 99, 235)     // 品牌聚焦蓝 (Blue-600)
+#define COLOR_DARK_GRAY_BORDER    RGB(38, 42, 54)      // 暗黑边框/分隔线 (#262A36)
 
-#define COLOR_WHITE               RGB(255, 255, 255)
-#define COLOR_BLACK               RGB(30, 35, 45)
+// 文本颜色体系 (Typography)
+#define COLOR_WHITE               RGB(241, 245, 249)   // 主文字高亮白 (Slate-100)
+#define COLOR_BLACK               RGB(241, 245, 249)   // 暗黑主题下常规文本映射为浅色
+#define COLOR_GRAY_TEXT           RGB(148, 163, 184)   // 次要辅助文字 (Slate-400)
+#define COLOR_TEXT_DIM            RGB(100, 116, 139)   // 微弱文字/提示 (Slate-500)
+#define COLOR_GRAY_PURPLE         RGB(148, 163, 184)   // 次要灰色
 
-// 现代专业金融红绿语义色（护眼柔和版）
-#define COLOR_RED_UP              RGB(246, 70, 93)     // 现代高级红-上涨/盈利 (#F6465D)
-#define COLOR_GREEN_DOWN          RGB(14, 203, 129)    // 现代薄荷绿-下跌/亏损 (#0ECB81)
-#define COLOR_GRAY_TEXT           RGB(120, 130, 145)   // 次要灰色文字
-#define COLOR_GRAY_GRID           RGB(228, 231, 238)   // 浅灰网格线
-#define COLOR_GRAY_MIDDLE         RGB(160, 168, 180)   // 中灰虚线
-#define COLOR_GRAY_PURPLE         RGB(154, 151, 157)   // 灰紫色
-#define COLOR_BLUE_COST           RGB(37, 99, 235)     // 现代宝蓝成本线
-#define COLOR_DARK_GRAY_BORDER    RGB(218, 222, 230)   // 边框线
-#define COLOR_BLUE_AVG1           RGB(59, 130, 246)    // 蓝色-1年均线
-#define COLOR_GREEN_AVG2          RGB(14, 165, 233)    // 2年均线
-#define COLOR_GREEN_AVG3          RGB(168, 85, 247)    // 3年均线
-#define COLOR_LIGHT_BLUE          RGB(239, 246, 255)   // 淡蓝色背景
-#define COLOR_LIGHT_GREEN         RGB(240, 253, 244)   // 淡绿色背景
-#define COLOR_GOLDEN              RGB(245, 158, 11)    // 黄金色 (MA5)
+// 现代金融红绿语义色
+#define COLOR_RED_UP              RGB(246, 70, 93)     // 现代金融红-上涨/多头 (#F6465D)
+#define COLOR_GREEN_DOWN          RGB(14, 203, 129)    // 现代薄荷绿-下跌/空头 (#0ECB81)
+
+// 网格与辅助线
+#define COLOR_GRAY_GRID           RGB(32, 36, 46)      // 细微网格虚线
+#define COLOR_GRAY_MIDDLE         RGB(55, 62, 78)      // 昨收平盘虚线
+
+// 均线体系与技术指标色
+#define COLOR_BLUE_COST           RGB(37, 99, 235)     // 宝蓝成本线
+#define COLOR_BLUE_AVG1           RGB(59, 130, 246)    // 分时走势线/1年均线 (#3B82F6)
+#define COLOR_GREEN_AVG2          RGB(56, 189, 248)    // 2年均线/MA10 (#38BDF8)
+#define COLOR_GREEN_AVG3          RGB(192, 132, 252)   // 3年均线/MA20 (#C084FC)
+#define COLOR_GOLDEN              RGB(245, 158, 11)    // 均价线/MA5 金黄 (#F59E0B)
 #define COLOR_DARK_ORANGE         RGB(217, 119, 6)     // 暗橙色
-#define COLOR_MACD_SUB            RGB(160, 170, 185)   // MACD辅助线浅灰色
+#define COLOR_MACD_SUB            RGB(148, 163, 184)   // MACD辅助线
 
-// 现代盘口买卖五档深度条背景色（柔和浅色）
-#define COLOR_DEPTH_SELL_BG       RGB(254, 226, 230)   // 卖单深度背景浅红
-#define COLOR_DEPTH_BUY_BG        RGB(220, 252, 238)   // 买单深度背景浅绿
-
-// 自选股列表与控件现代主题色
-#define COLOR_ACCENT_BLUE         RGB(37, 99, 235)     // 品牌聚焦蓝
-#define COLOR_PANEL_BG            RGB(248, 250, 252)   // 面板浅灰底色
-#define COLOR_CARD_SELECTED       RGB(235, 243, 255)   // 列表选中项背景
+// 图表分时面积填充与深度条
+#define COLOR_LIGHT_BLUE          RGB(22, 36, 62)      // 分时折线下方面积深蓝微渐变底
+#define COLOR_LIGHT_GREEN         RGB(15, 45, 32)      // 浅绿背景
+#define COLOR_DEPTH_SELL_BG       RGB(55, 22, 32)      // 卖单挂单深度条背景 (深红微透)
+#define COLOR_DEPTH_BUY_BG        RGB(15, 48, 35)      // 买单挂单深度条背景 (深绿微透)
+#define COLOR_DEPTH_SELL_HL       RGB(75, 28, 40)      // 卖一当前价高亮底
+#define COLOR_DEPTH_BUY_HL        RGB(20, 68, 48)      // 买一当前价高亮底
 
 // 涨幅/盈亏背景颜色
-#define COLOR_BG_RED              RGB(239, 68, 68)     // >= 5% 红色背景
-#define COLOR_BG_PURPLE           RGB(168, 85, 247)    // >= 10% 紫色背景
-#define COLOR_BG_GREEN            RGB(34, 197, 94)     // <= -5% 绿色背景
-#define COLOR_BG_DARK_GREEN       RGB(21, 128, 61)     // <= -10% 墨绿色背景
+#define COLOR_BG_RED              RGB(159, 18, 57)     // >= 5% 红色背景
+#define COLOR_BG_PURPLE           RGB(107, 33, 168)    // >= 10% 紫色背景
+#define COLOR_BG_GREEN            RGB(6, 95, 70)       // <= -5% 绿色背景
+#define COLOR_BG_DARK_GREEN       RGB(6, 78, 59)       // <= -10% 墨绿色背景

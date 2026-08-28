@@ -96,7 +96,9 @@ void CTimelineChart::DrawTimelineHeader(CDC& memDC, const TimelineDrawContext& c
 
 void CTimelineChart::DrawTimelineBackgroundHighlights(CDC& memDC, const TimelineDrawContext& ctx, UIViewMode viewMode)
 {
-	DrawTimelineBackgroundHighlightsForArea(memDC, ctx, ctx.priceChartTop, ctx.priceChartHeight, viewMode);
+	(void)memDC; (void)ctx; (void)viewMode;
+	// 现代暗黑主题保持纯净统一背景
+	return;
 }
 
 void CTimelineChart::DrawTimelineBackgroundHighlightsForArea(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight, UIViewMode viewMode)
@@ -253,14 +255,14 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 			else if (ctx.realtimeData.prevClosePrice > 0 && labelPrice < ctx.realtimeData.prevClosePrice - ctx.niceStep * 0.01)
 				memDC.SetTextColor(COLOR_GREEN_DOWN);
 			else
-				memDC.SetTextColor(COLOR_BLACK);
+				memDC.SetTextColor(COLOR_WHITE);
 			memDC.TextOut(labelX, labelY, priceTxt);
 		}
 
 		if (ctx.realtimeData.prevClosePrice > 0
 			&& ctx.realtimeData.prevClosePrice >= ctx.minPrice && ctx.realtimeData.prevClosePrice <= ctx.maxPrice)
 		{
-			memDC.SetTextColor(COLOR_GRAY_PURPLE);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			CString prevTxt = ctx.realtimeData.IsETF() ? CCommon::FormatETFPrice(ctx.realtimeData.prevClosePrice) : CCommon::FormatFloat(ctx.realtimeData.prevClosePrice);
 			CSize prevSize = memDC.GetTextExtent(prevTxt);
 			int prevY = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round((ctx.realtimeData.prevClosePrice - ctx.minPrice) * unitY));
@@ -1686,11 +1688,11 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 	int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 
 	CRect priceTitleRect(0, areaTop, ctx.chartWidth, areaTop + titleH);
-	memDC.FillSolidRect(priceTitleRect, RGB(245, 245, 245));
+	memDC.FillSolidRect(priceTitleRect, COLOR_BG_HEADER);
 
 	if (!hover.timelinePriceTitleTip.IsEmpty())
 	{
-		memDC.SetTextColor(COLOR_BLACK);
+		memDC.SetTextColor(COLOR_WHITE);
 		memDC.DrawText(hover.timelinePriceTitleTip, priceTitleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 	}
 	else if (hover.viewMode == UI_VIEW_DAY_KLINE && ctx.klineData && !ctx.klineData->empty())
@@ -1728,8 +1730,8 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 				xPos += vs.cx + g_data.RDPI(4);
 				};
 
-			drawKLineLabel(_T("开:"), kp.open, COLOR_BLACK, (kp.open >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
-			drawKLineLabel(_T("收:"), kp.close, COLOR_BLACK, (kp.close >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
+			drawKLineLabel(_T("开:"), kp.open, COLOR_TEXT_MUTED, (kp.open >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
+			drawKLineLabel(_T("收:"), kp.close, COLOR_TEXT_MUTED, (kp.close >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
 		}
 	}
 	else if ((hover.viewMode == UI_VIEW_MIN5_KLINE || hover.viewMode == UI_VIEW_MIN30_KLINE) && ctx.klineData && !ctx.klineData->empty())
@@ -1758,19 +1760,19 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			};
 
 		auto cmpPrevClose = [prevClose](STOCK::Price p) -> COLORREF {
-			if (prevClose <= 0) return COLOR_BLACK;
+			if (prevClose <= 0) return COLOR_WHITE;
 			if (p > prevClose) return COLOR_RED_UP;
 			if (p < prevClose) return COLOR_GREEN_DOWN;
-			return COLOR_BLACK;
+			return COLOR_WHITE;
 			};
 
 		// 左侧：现价
-		drawLabelValue(_T("现:"), ctx.realtimeData.currentPrice, COLOR_BLACK, cmpPrevClose(ctx.realtimeData.currentPrice));
+		drawLabelValue(_T("现:"), ctx.realtimeData.currentPrice, COLOR_TEXT_MUTED, cmpPrevClose(ctx.realtimeData.currentPrice));
 
 		// 右侧：ETF显示净:xx 溢:+/-xx%，股票显示均:xx
 		if (ctx.realtimeData.IsETF())
 		{
-			COLORREF iopvColor = COLOR_BLACK;
+			COLORREF iopvColor = COLOR_WHITE;
 			if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
 				iopvColor = COLOR_RED_UP;
 			else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
@@ -1789,18 +1791,18 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 				premVal.Format(_T("+%.2f%%"), premRate);
 			else
 				premVal.Format(_T("%.2f%%"), premRate);
-			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK);
+			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_WHITE);
 			CSize premLs = memDC.GetTextExtent(premLabel);
 			CSize premVs = memDC.GetTextExtent(premVal);
 
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - iopvLs.cx - iopvVs.cx - premLs.cx - premVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - iopvLs.cy / 2, iopvLabel);
 			rightX += iopvLs.cx;
 			memDC.SetTextColor(iopvColor);
 			memDC.TextOut(rightX, centerY - iopvVs.cy / 2, iopvVal);
 			rightX += iopvVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - premLs.cy / 2, premLabel);
 			rightX += premLs.cx;
 			memDC.SetTextColor(premColor);
@@ -1814,7 +1816,7 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize avgLs = memDC.GetTextExtent(avgLabel);
 			CSize avgVs = memDC.GetTextExtent(avgVal);
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - avgLs.cx - avgVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - avgLs.cy / 2, avgLabel);
 			rightX += avgLs.cx;
 			memDC.SetTextColor(avgColor);
@@ -1846,19 +1848,19 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			};
 
 		auto cmpPrevClose = [prevClose](STOCK::Price p) -> COLORREF {
-			if (prevClose <= 0) return COLOR_BLACK;
+			if (prevClose <= 0) return COLOR_WHITE;
 			if (p > prevClose) return COLOR_RED_UP;
 			if (p < prevClose) return COLOR_GREEN_DOWN;
-			return COLOR_BLACK;
+			return COLOR_WHITE;
 			};
 
 		// 左侧：现价
-		drawLabelValue(_T("现:"), ctx.realtimeData.currentPrice, COLOR_BLACK, cmpPrevClose(ctx.realtimeData.currentPrice));
+		drawLabelValue(_T("现:"), ctx.realtimeData.currentPrice, COLOR_TEXT_MUTED, cmpPrevClose(ctx.realtimeData.currentPrice));
 
 		// 右侧：ETF显示净:xx 溢:+/-xx%，股票显示均:xx
 		if (ctx.realtimeData.IsETF())
 		{
-			COLORREF iopvColor = COLOR_BLACK;
+			COLORREF iopvColor = COLOR_WHITE;
 			if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
 				iopvColor = COLOR_RED_UP;
 			else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
@@ -1877,18 +1879,18 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 				premVal.Format(_T("+%.2f%%"), premRate);
 			else
 				premVal.Format(_T("%.2f%%"), premRate);
-			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_BLACK);
+			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_WHITE);
 			CSize premLs = memDC.GetTextExtent(premLabel);
 			CSize premVs = memDC.GetTextExtent(premVal);
 
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - iopvLs.cx - iopvVs.cx - premLs.cx - premVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - iopvLs.cy / 2, iopvLabel);
 			rightX += iopvLs.cx;
 			memDC.SetTextColor(iopvColor);
 			memDC.TextOut(rightX, centerY - iopvVs.cy / 2, iopvVal);
 			rightX += iopvVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - premLs.cy / 2, premLabel);
 			rightX += premLs.cx;
 			memDC.SetTextColor(premColor);
@@ -1902,7 +1904,7 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize avgLs = memDC.GetTextExtent(avgLabel);
 			CSize avgVs = memDC.GetTextExtent(avgVal);
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - avgLs.cx - avgVs.cx;
-			memDC.SetTextColor(COLOR_BLACK);
+			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - avgLs.cy / 2, avgLabel);
 			rightX += avgLs.cx;
 			memDC.SetTextColor(avgColor);

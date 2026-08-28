@@ -36,15 +36,15 @@ void COrderBookPanel::Draw(CDC& memDC, int left, int right, int height, const ST
 	const int obTitleH = g_data.RDPI(16);       // 盘口标题栏高度，与走势图标题栏一致
 	const int topOffset = headerHeight + obTitleH;  // 内容从主标题栏+盘口标题栏下方开始
 	const int panelW = right - left;
-	// 绘制盘口标题栏背景（在主标题栏下方）
-	memDC.FillSolidRect(left, headerHeight, panelW, obTitleH, RGB(245, 245, 245));
+	// 绘制盘口标题栏背景（在主标题栏下方，#181B22）
+	memDC.FillSolidRect(left, headerHeight, panelW, obTitleH, COLOR_BG_HEADER);
 	const int rowHeight = (height - obTitleH) / totalRows;  // 每行基础高度
 	const int contentH = height - obTitleH;  // 内容区域总高度
 	const int rem = contentH % totalRows;    // 余数：前rem行多1px
 	const int textX = left + g_data.RDPI(5) + 3;
 
-	// 填充内容区域背景，避免底部空白
-	memDC.FillSolidRect(left, topOffset, panelW, contentH, RGB(250, 250, 250));
+	// 填充内容区域深色背景 (#14161D)
+	memDC.FillSolidRect(left, topOffset, panelW, contentH, COLOR_BG_PANEL);
 	memDC.SetBkMode(TRANSPARENT);
 
 	// 初始化挂单量累加缓存
@@ -402,10 +402,10 @@ void COrderBookPanel::DrawNetRatio00(CDC& memDC, const LayoutContext& lc, const 
 	}
 	else
 	{
-		memDC.FillSolidRect(barX, barY, barW, 2, RGB(230, 230, 230));
+		memDC.FillSolidRect(barX, barY, barW, 2, RGB(28, 32, 42));
 	}
-	// 中间白色竖线
-	memDC.FillSolidRect(midX - 1, barY, 2, 2, RGB(255, 255, 255));
+	// 中间中灰竖线
+	memDC.FillSolidRect(midX - 1, barY, 2, 2, COLOR_DARK_GRAY_BORDER);
 }
 
 // ============================================================================
@@ -743,7 +743,7 @@ void COrderBookPanel::DrawRatioBar(CDC& memDC, int x, int y, int w, int h, doubl
 	int halfW = w / 2;
 	int fillW = static_cast<int>(std::sqrt(std::abs(ratio) / 100.0) * halfW);
 	fillW = min(fillW, halfW);
-	memDC.FillSolidRect(x, y, w, h, RGB(230, 230, 230));
+	memDC.FillSolidRect(x, y, w, h, RGB(28, 32, 42));
 	int dominantW = min(w, halfW + fillW);
 	if (ratio > 0)
 	{
@@ -755,8 +755,8 @@ void COrderBookPanel::DrawRatioBar(CDC& memDC, int x, int y, int w, int h, doubl
 		memDC.FillSolidRect(x, y, dominantW, h, greenColor);
 		memDC.FillSolidRect(x + dominantW, y, w - dominantW, h, redColor);
 	}
-	memDC.FillSolidRect(midX - 1, y, 2, h, RGB(180, 180, 180));
-	CPen borderPen(PS_SOLID, 1, RGB(255, 255, 255));
+	memDC.FillSolidRect(midX - 1, y, 2, h, COLOR_DARK_GRAY_BORDER);
+	CPen borderPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
 	CPen* oldPen = memDC.SelectObject(&borderPen);
 	CBrush* oldBrush = static_cast<CBrush*>(memDC.SelectStockObject(NULL_BRUSH));
 	memDC.Rectangle(x, y, x + w, y + h);
@@ -862,7 +862,7 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildAskRow(const STOCK::StockInf
 	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
 	{
 		row.fillBackground = true;
-		row.backgroundColor = RGB(254, 215, 220);
+		row.backgroundColor = COLOR_DEPTH_SELL_HL;
 		// 挂单量≤1万时闪烁
 		if (volume <= 10000)
 			row.blink = true;
@@ -870,7 +870,7 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildAskRow(const STOCK::StockInf
 	else
 	{
 		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = RGB(254, 215, 220);
+		row.backgroundColor = COLOR_DEPTH_SELL_HL;
 	}
 	return row;
 }
@@ -917,7 +917,7 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildBidRow(const STOCK::StockInf
 	if (idx == 0 && stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price)
 	{
 		row.fillBackground = true;
-		row.backgroundColor = RGB(215, 250, 230);
+		row.backgroundColor = COLOR_DEPTH_BUY_HL;
 		// 挂单量≤1万时闪烁
 		if (volume <= 10000)
 			row.blink = true;
@@ -925,7 +925,7 @@ COrderBookPanel::OrderBookRow COrderBookPanel::BuildBidRow(const STOCK::StockInf
 	else
 	{
 		row.fillBackground = (stockInfo.currentPrice > 0 && price > 0 && stockInfo.currentPrice == price);
-		row.backgroundColor = RGB(215, 250, 230);
+		row.backgroundColor = COLOR_DEPTH_BUY_HL;
 	}
 	return row;
 }
@@ -946,8 +946,8 @@ void COrderBookPanel::DrawPriceRows(CDC& memDC, const LayoutContext& lc, const s
 		int y = lc.RowY(startRow + i);
 		int h = lc.RowH(startRow + i);
 
-		// 绘制基础行背景
-		memDC.FillSolidRect(lc.left, y, totalW, h, RGB(250, 252, 254));
+		// 绘制基础行背景 (暗黑面板底色)
+		memDC.FillSolidRect(lc.left, y, totalW, h, COLOR_BG_PANEL);
 
 		// 绘制挂单量深度条（Depth Bar 从右往左按挂单量比例绘制）
 		if (rows[i].volume > 0 && maxVol > 0)
@@ -961,7 +961,7 @@ void COrderBookPanel::DrawPriceRows(CDC& memDC, const LayoutContext& lc, const s
 		if (rows[i].fillBackground)
 		{
 			if (rows[i].blink && !blinkOn)
-				memDC.FillSolidRect(lc.left, y, totalW, h, RGB(250, 252, 254));  // 闪烁关闭时用背景色
+				memDC.FillSolidRect(lc.left, y, totalW, h, COLOR_BG_PANEL);  // 闪烁关闭时用背景色
 			else
 				memDC.FillSolidRect(lc.left, y, totalW, h, rows[i].backgroundColor);
 		}

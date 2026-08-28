@@ -109,7 +109,7 @@ void CKLineChart::DrawKLineMonthLabels(CDC& memDC, const KLineDrawData& drawData
 	int labelBottom = labelTop + tempSize.cy;
 
 	CRect fullLabelClearRect(drawData.x - tempSize.cx, labelTop, drawData.x + drawData.w + tempSize.cx, labelBottom + 4);
-	memDC.FillSolidRect(fullLabelClearRect, COLOR_WHITE);
+	memDC.FillSolidRect(fullLabelClearRect, COLOR_BG_DARK);
 
 	lastLabelYear = -1;
 	for (size_t i = 0; i < labelInfos.size(); i++)
@@ -209,10 +209,10 @@ void CKLineChart::DrawMAIndicators(CDC& memDC, const KLineDrawData& drawData, co
 		int width;
 	};
 	const MAConfig maConfigs[] = {
-		{ 5, RGB(100, 100, 100), 1 },
-		{ 13, RGB(255, 130, 0), 1 },
-		{ 34, RGB(0, 80, 200), 1 },
-		{ 55, RGB(0, 120, 60), 1 },
+		{ 5, COLOR_GOLDEN, 1 },
+		{ 10, RGB(56, 189, 248), 1 },
+		{ 20, RGB(192, 132, 252), 1 },
+		{ 60, RGB(52, 211, 153), 1 },
 	};
 
 	auto stockDataPtr = g_data.GetStockData(hover.stockId);
