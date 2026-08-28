@@ -387,8 +387,8 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 	// 5. GDI+ 抗锯齿丝滑渲染
 	{
 		Gdiplus::Graphics graphics(memDC.GetSafeHdc());
-		graphics.SetSmoothingMode(Gdiplus::SmoothingMode::SmoothingModeAntiAlias);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetMode::PixelOffsetModeHalf);
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 
 		// (1) 走势线下方面积柔和垂直线性渐变（同花顺高级金融质感）
 		if (pricePoints.size() >= 2)
@@ -410,7 +410,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				gradRect,
 				Gdiplus::Color(45, 33, 150, 243),  // 顶部半透明宝蓝
 				Gdiplus::Color(2, 33, 150, 243),   // 底部近透明消隐
-				Gdiplus::LinearGradientMode::LinearGradientModeVertical
+				Gdiplus::LinearGradientModeVertical
 			);
 			graphics.FillPath(&areaBrush, &areaPath);
 		}
@@ -438,19 +438,19 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			if (ma5Points.size() >= 2)
 			{
 				Gdiplus::Pen ma5Pen(Gdiplus::Color(220, 251, 191, 36), 1.1f);
-				ma5Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				ma5Pen.SetLineJoin(Gdiplus::LineJoinRound);
 				graphics.DrawCurve(&ma5Pen, ma5Points.data(), static_cast<int>(ma5Points.size()), 0.25f);
 			}
 			if (ma17Points.size() >= 2)
 			{
 				Gdiplus::Pen ma17Pen(Gdiplus::Color(220, 56, 189, 248), 1.1f);
-				ma17Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				ma17Pen.SetLineJoin(Gdiplus::LineJoinRound);
 				graphics.DrawCurve(&ma17Pen, ma17Points.data(), static_cast<int>(ma17Points.size()), 0.25f);
 			}
 			if (ma60Points.size() >= 2)
 			{
 				Gdiplus::Pen ma60Pen(Gdiplus::Color(220, 192, 132, 252), 1.1f);
-				ma60Pen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
+				ma60Pen.SetLineJoin(Gdiplus::LineJoinRound);
 				graphics.DrawCurve(&ma60Pen, ma60Points.data(), static_cast<int>(ma60Points.size()), 0.25f);
 			}
 		}
@@ -459,9 +459,9 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		if (avgPoints.size() >= 2)
 		{
 			Gdiplus::Pen avgPen(Gdiplus::Color(240, 255, 179, 0), 1.3f);
-			avgPen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
-			avgPen.SetStartCap(Gdiplus::LineCap::LineCapRound);
-			avgPen.SetEndCap(Gdiplus::LineCap::LineCapRound);
+			avgPen.SetLineJoin(Gdiplus::LineJoinRound);
+			avgPen.SetStartCap(Gdiplus::LineCapRound);
+			avgPen.SetEndCap(Gdiplus::LineCapRound);
 			graphics.DrawCurve(&avgPen, avgPoints.data(), static_cast<int>(avgPoints.size()), 0.25f);
 		}
 
@@ -469,9 +469,9 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		if (pricePoints.size() >= 2)
 		{
 			Gdiplus::Pen pricePen(Gdiplus::Color(255, 33, 150, 243), 1.8f);
-			pricePen.SetLineJoin(Gdiplus::LineJoin::LineJoinRound);
-			pricePen.SetStartCap(Gdiplus::LineCap::LineCapRound);
-			pricePen.SetEndCap(Gdiplus::LineCap::LineCapRound);
+			pricePen.SetLineJoin(Gdiplus::LineJoinRound);
+			pricePen.SetStartCap(Gdiplus::LineCapRound);
+			pricePen.SetEndCap(Gdiplus::LineCapRound);
 			graphics.DrawCurve(&pricePen, pricePoints.data(), static_cast<int>(pricePoints.size()), 0.25f);
 		}
 	}
