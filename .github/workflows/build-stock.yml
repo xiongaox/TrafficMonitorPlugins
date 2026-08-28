@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Build Stock Plugin (${{ matrix.platform }})
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     strategy:
       fail-fast: false
@@ -29,6 +29,8 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+        with:
+          vs-version: '[17.0, 18.0)'
 
       - name: Build utilities (${{ matrix.platform }})
         shell: cmd
