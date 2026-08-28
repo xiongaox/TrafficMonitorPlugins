@@ -289,8 +289,58 @@ void CIndicatorChart::DrawVolumeChartArea(CDC& memDC, const TimelineDrawContext&
 	// 先绘制背景高亮，确保数据不被覆盖
 	CTimelineChart::DrawTimelineBackgroundHighlightsForArea(memDC, tmpCtx, tmpCtx.volumeChartTop, tmpCtx.volumeChartHeight, hover.viewMode);
 
+	// 1. 绘制网格线（置于底层，确保量柱和均线不被网格线覆盖）
+	CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
+	CPen* pOldVolPen = memDC.SelectObject(&pGrid);
+	int volumeY = tmpCtx.volumeChartTop;
+	memDC.MoveTo(0, volumeY);
+	memDC.LineTo(ctx.chartWidth, volumeY);
+
+	if (!timelinePoint.empty())
+	{
+		STOCK::Volume maxVolume = 0;
+		for (const auto& item : timelinePoint)
+		{
+			if (item.volume > maxVolume)
+				maxVolume = item.volume;
+		}
+		if (maxVolume > 0)
+		{
+			CPen dotPen(PS_DOT, 1, COLOR_GRAY_MIDDLE);
+			memDC.SelectObject(&dotPen);
+			memDC.SetTextColor(COLOR_GRAY_TEXT);
+			for (int i = 1; i <= 2; i++)
+			{
+				int yPos = volumeY + tmpCtx.volumeChartHeight * i / 3;
+				memDC.MoveTo(0, yPos);
+				memDC.LineTo(ctx.chartWidth, yPos);
+				STOCK::Volume volAtLine = maxVolume * (3 - i) / 3;
+				STOCK::Volume volInLots = volAtLine / 100;
+				CString volLabel = CCommon::FormatVolumeInt(volInLots);
+				CSize labelSize = memDC.GetTextExtent(volLabel);
+				memDC.TextOut(-labelSize.cx - g_data.RDPI(3), yPos - labelSize.cy / 2, volLabel);
+			}
+			memDC.SelectObject(&pGrid);
+		}
+	}
+
+	if (ctx.timelinePoint && !ctx.timelinePoint->empty())
+	{
+		const int totalPts = static_cast<int>(ctx.timelinePoint->size());
+		const int numVLines = 6;
+		for (int i = 0; i <= numVLines; i++)
+		{
+			int xPos2 = ctx.chartWidth * i / numVLines;
+			memDC.MoveTo(xPos2, volumeY);
+			memDC.LineTo(xPos2, volumeY + tmpCtx.volumeChartHeight);
+		}
+	}
+	memDC.SelectObject(pOldVolPen);
+
+	// 2. 绘制量柱图
 	DrawVolumeChart(memDC, 0, tmpCtx.volumeChartTop, ctx.chartWidth, tmpCtx.volumeChartHeight, *ctx.timelinePoint, &ctx.realtimeData, 0, -1, ctx.xAxisPoints, hover.isHoveringVolume, hover.hoveredBarIndex);
 
+	// 3. 绘制均线
 	if (hover.viewMode >= UI_VIEW_DAY_KLINE && ctx.fullTimeline && !ctx.fullTimeline->empty() && ctx.timelinePoint && !ctx.timelinePoint->empty())
 	{
 		const auto& fullData = *ctx.fullTimeline;
@@ -352,53 +402,7 @@ void CIndicatorChart::DrawVolumeChartArea(CDC& memDC, const TimelineDrawContext&
 		}
 	}
 
-	CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
-	CPen* pOldVolPen = memDC.SelectObject(&pGrid);
-	int volumeY = tmpCtx.volumeChartTop;
-	memDC.MoveTo(0, volumeY);
-	memDC.LineTo(ctx.chartWidth, volumeY);
-
-	if (!timelinePoint.empty())
-	{
-		STOCK::Volume maxVolume = 0;
-		for (const auto& item : timelinePoint)
-		{
-			if (item.volume > maxVolume)
-				maxVolume = item.volume;
-		}
-		if (maxVolume > 0)
-		{
-			CPen dotPen(PS_DOT, 1, COLOR_GRAY_MIDDLE);
-			memDC.SelectObject(&dotPen);
-			memDC.SetTextColor(COLOR_GRAY_TEXT);
-			for (int i = 1; i <= 2; i++)
-			{
-				int yPos = volumeY + tmpCtx.volumeChartHeight * i / 3;
-				memDC.MoveTo(0, yPos);
-				memDC.LineTo(ctx.chartWidth, yPos);
-				STOCK::Volume volAtLine = maxVolume * (3 - i) / 3;
-				STOCK::Volume volInLots = volAtLine / 100;
-				CString volLabel = CCommon::FormatVolumeInt(volInLots);
-				CSize labelSize = memDC.GetTextExtent(volLabel);
-				memDC.TextOut(-labelSize.cx - g_data.RDPI(3), yPos - labelSize.cy / 2, volLabel);
-			}
-			memDC.SelectObject(&pGrid);
-		}
-	}
-
-	if (ctx.timelinePoint && !ctx.timelinePoint->empty())
-	{
-		const int totalPts = static_cast<int>(ctx.timelinePoint->size());
-		const int numVLines = 6;
-		for (int i = 0; i <= numVLines; i++)
-		{
-			int xPos2 = ctx.chartWidth * i / numVLines;
-			memDC.MoveTo(xPos2, volumeY);
-			memDC.LineTo(xPos2, volumeY + tmpCtx.volumeChartHeight);
-		}
-	}
-	memDC.SelectObject(pOldVolPen);
-
+	// 4. 绘制时间标签
 	if (drawTimeLabels && !timelinePoint.empty())
 	{
 		const int totalPts = static_cast<int>(timelinePoint.size());
@@ -563,8 +567,7 @@ void CIndicatorChart::DrawMacdChartArea(CDC& memDC, const TimelineDrawContext& c
 	// 先绘制背景高亮，确保数据不被覆盖
 	CTimelineChart::DrawTimelineBackgroundHighlightsForArea(memDC, tmpCtx, tmpCtx.macdChartTop, tmpCtx.macdChartHeight, hover.viewMode);
 
-	DrawMACDChart(memDC, 0, tmpCtx.macdChartTop, ctx.chartWidth, tmpCtx.macdChartHeight, timelinePoint, macdData, ctx.startIndex, -1, ctx.xAxisPoints);
-
+	// 1. 绘制网格线（置于底层，确保0轴线、MACD柱状图、DIF/DEA曲线不被网格线覆盖）
 	CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
 	CPen* pOldPen = memDC.SelectObject(&pGrid);
 	int macdY = tmpCtx.macdChartTop;
@@ -585,6 +588,9 @@ void CIndicatorChart::DrawMacdChartArea(CDC& memDC, const TimelineDrawContext& c
 		}
 	}
 	memDC.SelectObject(pOldPen);
+
+	// 2. 绘制MACD图表（0轴参考线、柱状图、DIF/DEA曲线、金叉死叉）
+	DrawMACDChart(memDC, 0, tmpCtx.macdChartTop, ctx.chartWidth, tmpCtx.macdChartHeight, timelinePoint, macdData, ctx.startIndex, -1, ctx.xAxisPoints);
 }
 
 // ========== DrawIndicatorChartArea ==========
@@ -891,8 +897,61 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 		tmpCtx.volumeChartTop = areaTop + titleH;
 		tmpCtx.volumeChartHeight = areaHeight - titleH;
 		CTimelineChart::DrawTimelineBackgroundHighlightsForArea(memDC, tmpCtx, tmpCtx.volumeChartTop, tmpCtx.volumeChartHeight, hover.viewMode);
+
+		// 1. 成交量网格线（置于底层，确保量柱和均线不被网格线覆盖）
+		CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
+		CPen* pOldVolPen = memDC.SelectObject(&pGrid);
+		int volumeY = tmpCtx.volumeChartTop;
+		memDC.MoveTo(0, volumeY);
+		memDC.LineTo(ctx.chartWidth, volumeY);
+
+		if (!timelinePoint.empty())
+		{
+			STOCK::Volume maxVolume = 0;
+			for (const auto& item : timelinePoint)
+			{
+				if (item.volume > maxVolume)
+					maxVolume = item.volume;
+			}
+			if (maxVolume > 0)
+			{
+				CPen dotPen(PS_DOT, 1, COLOR_GRAY_MIDDLE);
+				memDC.SelectObject(&dotPen);
+				memDC.SetBkMode(TRANSPARENT);
+				memDC.SetTextColor(COLOR_GRAY_TEXT);
+				for (int i = 1; i <= 2; i++)
+				{
+					int yPos = volumeY + tmpCtx.volumeChartHeight * i / 3;
+					memDC.MoveTo(0, yPos);
+					memDC.LineTo(ctx.chartWidth, yPos);
+					STOCK::Volume volAtLine = maxVolume * (3 - i) / 3;
+					STOCK::Volume volInLots = volAtLine / 100;
+					CString volLabel = CCommon::FormatVolumeInt(volInLots);
+					CSize labelSize = memDC.GetTextExtent(volLabel);
+					memDC.TextOut(-labelSize.cx - g_data.RDPI(3), yPos - labelSize.cy / 2, volLabel);
+				}
+				memDC.SelectObject(&pGrid);
+			}
+		}
+
+		// X轴时间竖线
+		if (ctx.timelinePoint && !ctx.timelinePoint->empty())
+		{
+			const int totalPts = static_cast<int>(ctx.timelinePoint->size());
+			const int numVLines = 6;
+			for (int i = 0; i <= numVLines; i++)
+			{
+				int xPos = ctx.chartWidth * i / numVLines;
+				memDC.MoveTo(xPos, volumeY);
+				memDC.LineTo(xPos, volumeY + tmpCtx.volumeChartHeight);
+			}
+		}
+		memDC.SelectObject(pOldVolPen);
+
+		// 2. 绘制量柱图
 		DrawVolumeChart(memDC, 0, tmpCtx.volumeChartTop, ctx.chartWidth, tmpCtx.volumeChartHeight, *ctx.timelinePoint, &ctx.realtimeData, 0, -1, ctx.xAxisPoints, hover.isHoveringVolume, hover.hoveredBarIndex);
 
+		// 3. 绘制均线
 		if (hover.viewMode >= UI_VIEW_DAY_KLINE && ctx.fullTimeline && !ctx.fullTimeline->empty() && ctx.timelinePoint && !ctx.timelinePoint->empty())
 		{
 			const auto& fullData = *ctx.fullTimeline;
@@ -953,56 +1012,6 @@ void CIndicatorChart::DrawIndicatorChartArea(CDC& memDC, const TimelineDrawConte
 				drawVolumeMALine(ma10, RGB(0, 166, 235));
 			}
 		}
-
-		// 成交量网格线
-		CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
-		CPen* pOldVolPen = memDC.SelectObject(&pGrid);
-		int volumeY = tmpCtx.volumeChartTop;
-		memDC.MoveTo(0, volumeY);
-		memDC.LineTo(ctx.chartWidth, volumeY);
-
-		if (!timelinePoint.empty())
-		{
-			STOCK::Volume maxVolume = 0;
-			for (const auto& item : timelinePoint)
-			{
-				if (item.volume > maxVolume)
-					maxVolume = item.volume;
-			}
-			if (maxVolume > 0)
-			{
-				CPen dotPen(PS_DOT, 1, COLOR_GRAY_MIDDLE);
-				memDC.SelectObject(&dotPen);
-				memDC.SetBkMode(TRANSPARENT);
-				memDC.SetTextColor(COLOR_GRAY_TEXT);
-				for (int i = 1; i <= 2; i++)
-				{
-					int yPos = volumeY + tmpCtx.volumeChartHeight * i / 3;
-					memDC.MoveTo(0, yPos);
-					memDC.LineTo(ctx.chartWidth, yPos);
-					STOCK::Volume volAtLine = maxVolume * (3 - i) / 3;
-					STOCK::Volume volInLots = volAtLine / 100;
-					CString volLabel = CCommon::FormatVolumeInt(volInLots);
-					CSize labelSize = memDC.GetTextExtent(volLabel);
-					memDC.TextOut(-labelSize.cx - g_data.RDPI(3), yPos - labelSize.cy / 2, volLabel);
-				}
-				memDC.SelectObject(&pGrid);
-			}
-		}
-
-		// X轴时间竖线
-		if (ctx.timelinePoint && !ctx.timelinePoint->empty())
-		{
-			const int totalPts = static_cast<int>(ctx.timelinePoint->size());
-			const int numVLines = 6;
-			for (int i = 0; i <= numVLines; i++)
-			{
-				int xPos = ctx.chartWidth * i / numVLines;
-				memDC.MoveTo(xPos, volumeY);
-				memDC.LineTo(xPos, volumeY + tmpCtx.volumeChartHeight);
-			}
-		}
-		memDC.SelectObject(pOldVolPen);
 	}
 
 	// 如果 drawTimeLabels 为 true，在区域下方绘制X轴时间标签
@@ -1221,9 +1230,9 @@ void CIndicatorChart::DrawCrossArrow(CDC& memDC, int markX, int markY, int dotRa
 	memDC.SelectObject(pOldPen);
 }
 
-// ========== DrawSectionGridAndTimeLabels ==========
+// ========== DrawSectionGrid ==========
 
-void CIndicatorChart::DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight, bool drawTimeLabels)
+void CIndicatorChart::DrawSectionGrid(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight)
 {
 	const auto& timelinePoint = *ctx.timelinePoint;
 	CPen pGrid(PS_SOLID, 1, COLOR_GRAY_GRID);
@@ -1244,9 +1253,18 @@ void CIndicatorChart::DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDra
 		}
 	}
 	memDC.SelectObject(pOldPen);
-	if (drawTimeLabels && totalPts > 0)
+}
+
+// ========== DrawSectionTimeLabels ==========
+
+void CIndicatorChart::DrawSectionTimeLabels(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight)
+{
+	const auto& timelinePoint = *ctx.timelinePoint;
+	const int totalPts = static_cast<int>(timelinePoint.size());
+	const int numVLines = 6;
+	if (totalPts > 0)
 	{
-		memDC.SetBkMode(TRANSPARENT);
+		int oldBkMode = memDC.SetBkMode(TRANSPARENT);
 		memDC.SetTextColor(COLOR_GRAY_TEXT);
 		for (int i = 0; i <= numVLines; i++)
 		{
@@ -1259,6 +1277,18 @@ void CIndicatorChart::DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDra
 			int labelX = max(0, min(xPos - labelSize.cx / 2, ctx.chartWidth - labelSize.cx));
 			memDC.TextOut(labelX, chartTop + chartHeight + g_data.RDPI(2), timeLabel);
 		}
+		memDC.SetBkMode(oldBkMode);
+	}
+}
+
+// ========== DrawSectionGridAndTimeLabels ==========
+
+void CIndicatorChart::DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight, bool drawTimeLabels)
+{
+	DrawSectionGrid(memDC, ctx, chartTop, chartHeight);
+	if (drawTimeLabels)
+	{
+		DrawSectionTimeLabels(memDC, ctx, chartTop, chartHeight);
 	}
 }
 
@@ -1275,8 +1305,12 @@ void CIndicatorChart::DrawTimelineKDJSection(CDC& memDC, const TimelineDrawConte
 		kdjN = 7; kdjM1 = 3; kdjM2 = 3;
 	}
 	auto kdjData = CStockIndicator::CalculateTimelineKDJ(fullData, kdjN, kdjM1, kdjM2);
+	// 1. 绘制网格线（置于底层，确保KDJ曲线和买卖信号点不被网格线覆盖）
+	DrawSectionGrid(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
+	// 2. 绘制KDJ图表（参考线、K/D/J曲线、金叉死叉信号）
 	DrawTimelineKDJChart(memDC, 0, ctx.macdChartTop, ctx.chartWidth, ctx.macdChartHeight, timelinePoint, kdjData, ctx.startIndex, ctx.xAxisPoints);
-	DrawSectionGridAndTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight, true);
+	// 3. 绘制时间标签
+	DrawSectionTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
 }
 
 // ========== DrawTimelineKDJChart ==========
@@ -1494,8 +1528,12 @@ void CIndicatorChart::DrawTimelineWRSection(CDC& memDC, const TimelineDrawContex
 		wrData = CStockIndicator::CalculateTimelineWR(fullData);
 	}
 
+	// 1. 绘制网格线（置于底层，确保WR曲线不被网格线覆盖）
+	DrawSectionGrid(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
+	// 2. 绘制WR图表
 	DrawTimelineWRChart(memDC, 0, ctx.macdChartTop, ctx.chartWidth, ctx.macdChartHeight, timelinePoint, wrData, ctx.startIndex, ctx.xAxisPoints);
-	DrawSectionGridAndTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight, true);
+	// 3. 绘制时间标签
+	DrawSectionTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
 }
 
 // ========== DrawTimelineRSIChart ==========
@@ -1577,8 +1615,12 @@ void CIndicatorChart::DrawTimelineRSISection(CDC& memDC, const TimelineDrawConte
 		rsiData = CStockIndicator::CalculateTimelineRSI(fullData);
 	}
 
+	// 1. 绘制网格线（置于底层，确保RSI曲线不被网格线覆盖）
+	DrawSectionGrid(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
+	// 2. 绘制RSI图表
 	DrawTimelineRSIChart(memDC, 0, ctx.macdChartTop, ctx.chartWidth, ctx.macdChartHeight, timelinePoint, rsiData, ctx.startIndex, ctx.xAxisPoints);
-	DrawSectionGridAndTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight, true);
+	// 3. 绘制时间标签
+	DrawSectionTimeLabels(memDC, ctx, ctx.macdChartTop, ctx.macdChartHeight);
 }
 
 // ========== DrawVolumeChart ==========

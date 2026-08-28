@@ -96,7 +96,12 @@ public:
                          int startIndex = 0, int visibleCount = -1, int xAxisPoints = 0,
                          bool isHoveringVolume = false, int hoveredBarIndex = -1);
 
-private:
+    // 绘制网格线（置于底层，分时指标区域共用）
+    void DrawSectionGrid(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight);
+
+    // 绘制时间标签（分时指标区域共用）
+    void DrawSectionTimeLabels(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight);
+
     // 绘制网格线和时间标签（分时指标区域共用）
     void DrawSectionGridAndTimeLabels(CDC& memDC, const TimelineDrawContext& ctx, int chartTop, int chartHeight, bool drawTimeLabels);
 
