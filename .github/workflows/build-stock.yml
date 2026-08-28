@@ -30,19 +30,15 @@ jobs:
       - name: Build Stock (x64)
         run: msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" /fl /flp:logfile=msbuild.log;verbosity=normal
 
-      - name: Show MSBuild Errors on Failure
+      - name: Push Build Log to Branch on Failure
         if: failure()
         run: |
-          $errs = Get-Content msbuild.log | Select-String -Pattern ": error " -Context 2,2
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### MSBuild Errors`n`n```text`n$($errs | Out-String)`n```"
-
-      - name: Upload MSBuild Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: msbuild-log-file
-          path: msbuild.log
-          if-no-files-found: ignore
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B build-log
+          git add -f msbuild.log
+          git commit -m "ci: msbuild error log"
+          git push -f origin build-log
 
       - name: Package Stock_x64
         shell: pwsh
