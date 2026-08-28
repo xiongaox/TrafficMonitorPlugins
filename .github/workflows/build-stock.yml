@@ -29,14 +29,19 @@ jobs:
           msbuild utilities\utilities.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/"
 
       - name: Build Stock (x64)
-        shell: pwsh
+        shell: cmd
         run: |
-          & msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" 2>&1 | Tee-Object -FilePath "stock_build.log"
-          $buildLog = Get-Content "stock_build.log" -Raw
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Stock Build Log`n`n\`\`\`text`n$buildLog`n\`\`\`"
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
+          msbuild Plugins\Stock\Stock.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="${{ github.workspace }}/" > stock_build.log 2>&1
+          set BUILD_CODE=%ERRORLEVEL%
+          type stock_build.log
+          exit /b %BUILD_CODE%
+
+      - name: Upload Build Log Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-txt
+          path: stock_build.log
 
       - name: Package Stock_x64
         shell: pwsh
