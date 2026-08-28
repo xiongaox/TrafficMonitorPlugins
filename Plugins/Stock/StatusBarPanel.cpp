@@ -401,7 +401,11 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 			}
 			else
 			{
-				CString nameStr = (relatedCodes[i] == L"sh000001") ? _T("上证:") : ((relatedCodes[i] == L"sz399986") ? _T("中证银行:") : ((relatedCodes[i] == L"rt_hkHSTECH") ? _T("恒生科技:") : CString(relatedCodes[i].c_str()) + _T(":")));
+				CString nameStr;
+				if (relatedCodes[i] == L"sh000001") nameStr = _T("上证:");
+				else if (relatedCodes[i] == L"sz399986") nameStr = _T("中证银行:");
+				else if (relatedCodes[i] == L"rt_hkHSTECH") nameStr = _T("恒生科技:");
+				else nameStr = CString(relatedCodes[i].c_str()) + _T(":");
 				memDC.SetTextColor(COLOR_TEXT_DIM);
 				memDC.TextOut(textX, topBarY + g_data.RDPI(2), nameStr + _T(" --"));
 			}
@@ -448,7 +452,7 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 		auto stockData = g_data.GetStockData(statusBarCodes[i]);
 		int colX = i * colWidth;
 		int textX = colX + GAP;
-		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : statusBarCodes[i].c_str();
+		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
 		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
 
 		if (stockData && stockData->info.is_ok && (stockData->info.currentPrice > 0 || stockData->info.prevClosePrice > 0))

@@ -1009,17 +1009,29 @@ namespace STOCK
 
 	// 转换函数模板
 	template <typename T>
-	T convert(const std::string& str)
+	T convert(const std::string& str);
+
+	template <>
+	inline double convert<double>(const std::string& str)
 	{
-		if (str.empty()) return T();
-		if constexpr (std::is_same_v<T, double>)
-		{
+		if (str.empty()) return 0.0;
+		try {
 			return std::stod(str);
 		}
-		else if constexpr (std::is_same_v<T, long long>)
-		{
+		catch (...) {
+			return 0.0;
+		}
+	}
+
+	template <>
+	inline long long convert<long long>(const std::string& str)
+	{
+		if (str.empty()) return 0;
+		try {
 			return std::stoll(str);
 		}
-		return T();
+		catch (...) {
+			return 0;
+		}
 	}
 }
