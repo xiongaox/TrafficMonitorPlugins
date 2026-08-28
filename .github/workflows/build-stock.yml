@@ -36,6 +36,14 @@ jobs:
           $errs = Get-Content msbuild.log | Select-String -Pattern ": error " -Context 2,2
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### MSBuild Errors`n`n```text`n$($errs | Out-String)`n```"
 
+      - name: Upload MSBuild Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msbuild-log-file
+          path: msbuild.log
+          if-no-files-found: ignore
+
       - name: Package Stock_x64
         shell: pwsh
         run: |
