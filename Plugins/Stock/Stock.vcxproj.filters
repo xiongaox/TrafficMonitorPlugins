@@ -138,6 +138,9 @@
     <ClInclude Include="TdxTcpClient.h">
       <Filter>DataManager</Filter>
     </ClInclude>
+    <ClInclude Include="WebDavSync.h">
+      <Filter>DataManager</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -231,6 +234,9 @@
       <Filter>DataManager</Filter>
     </ClCompile>
     <ClCompile Include="TdxTcpClient.cpp">
+      <Filter>DataManager</Filter>
+    </ClCompile>
+    <ClCompile Include="WebDavSync.cpp">
       <Filter>DataManager</Filter>
     </ClCompile>
   </ItemGroup>

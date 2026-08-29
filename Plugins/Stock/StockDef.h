@@ -17,6 +17,41 @@ struct RegResult
 	double r2;     // 拟合优度R²
 };
 
+// 预置主流大盘指数结构
+struct PresetIndexInfo
+{
+	std::wstring code;
+	std::wstring name;
+};
+
+inline const std::vector<PresetIndexInfo>& GetPresetIndices()
+{
+	static const std::vector<PresetIndexInfo> s_indices = {
+		{ L"sh000001", L"上证指数" },
+		{ L"sz399001", L"深证成指" },
+		{ L"sz399006", L"创业板指" },
+		{ L"sh000688", L"科创50" },
+		{ L"sh000300", L"沪深300" },
+		{ L"sh000905", L"中证500" },
+		{ L"sh000852", L"中证1000" },
+		{ L"sz399303", L"中证2000" },
+		{ L"sz399852", L"微盘股" },
+		{ L"sh000016", L"上证50" },
+		{ L"bj899050", L"北证50" },
+		{ L"sz399673", L"创业板50" },
+		{ L"sz399350", L"深证50" },
+		{ L"sh000043", L"富时中国A50" },
+		{ L"rt_hkHSI", L"恒生指数" },
+		{ L"rt_hkHSTECH", L"恒生科技指数" },
+		{ L"sz399997", L"中国互联网30" },
+		{ L"rt_hkHSHCI", L"恒生医疗保健" },
+		{ L"rt_hkHSHBI", L"港股创新药" },
+		{ L"sh000985", L"中证全指" },
+		{ L"sh000002", L"A股平均股价" }
+	};
+	return s_indices;
+}
+
 namespace STOCK
 {
 	// 价格

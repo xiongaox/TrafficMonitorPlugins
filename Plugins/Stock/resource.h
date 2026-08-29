@@ -93,13 +93,35 @@
 #define ID_OPTIONS                      40005
 #define ID_Menu                         40006
 
+#define IDC_MGR_EDIT_BTN                1055
+#define IDC_GROUP_TAB                   1056
+#define IDC_MA_INPUT_EDIT               1057
+#define IDC_MA_ADD_BTN                  1058
+#define IDC_POS_LIST                    1059
+#define IDC_CUSTOM_LIST                 1060
+#define IDC_PAGE_TITLE_STATIC           1061
+#define IDC_PAGE_SUBTITLE_STATIC        1062
+#define IDC_WEBDAV_URL_STATIC           1070
+#define IDC_WEBDAV_URL_EDIT             1071
+#define IDC_WEBDAV_USER_STATIC          1072
+#define IDC_WEBDAV_USER_EDIT            1073
+#define IDC_WEBDAV_PWD_STATIC           1074
+#define IDC_WEBDAV_PWD_EDIT             1075
+#define IDC_WEBDAV_DIR_STATIC           1076
+#define IDC_WEBDAV_DIR_EDIT             1077
+#define IDC_WEBDAV_AUTO_SYNC_CHECK      1078
+#define IDC_WEBDAV_AUTO_BACKUP_CHECK    1079
+#define IDC_WEBDAV_TEST_BTN             1080
+#define IDC_WEBDAV_UPLOAD_BTN           1081
+#define IDC_WEBDAV_DOWNLOAD_BTN         1082
+
 // Next default values for new objects
 //
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
 #define _APS_NEXT_COMMAND_VALUE         40007
-#define _APS_NEXT_CONTROL_VALUE         1055
+#define _APS_NEXT_CONTROL_VALUE         1090
 #define _APS_NEXT_SYMED_VALUE           130
 #endif
 #endif

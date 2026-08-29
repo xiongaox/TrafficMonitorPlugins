@@ -302,6 +302,7 @@
     <ClInclude Include="StockListPanel.h" />
     <ClInclude Include="TradeRecordDialog.h" />
     <ClInclude Include="TransparentWnd.h" />
+    <ClInclude Include="WebDavSync.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp" />
@@ -326,6 +327,7 @@
     <ClCompile Include="NetFetch.cpp" />
     <ClCompile Include="OptionsDlg.cpp" />
     <ClCompile Include="RelateStockDlg.cpp" />
+    <ClCompile Include="WebDavSync.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

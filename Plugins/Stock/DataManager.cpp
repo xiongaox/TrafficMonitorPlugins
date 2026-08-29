@@ -106,6 +106,31 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_kline_height = ini.GetInt(L"config", L"kline_height", 210);
 	m_setting_data.m_use_socks5_proxy = ini.GetBool(L"config", L"use_socks5_proxy", false);
 	m_setting_data.m_socks5_proxy = ini.GetString(L"config", L"socks5_proxy", L"");
+	ini.GetStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices, std::vector<std::wstring>{
+		L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300"
+	});
+	std::vector<std::wstring> ma_str_list;
+	ini.GetStringList(L"config", L"ma_days", ma_str_list, std::vector<std::wstring>{ L"5", L"17", L"60" });
+	m_setting_data.m_ma_days.clear();
+	for (const auto& s : ma_str_list)
+	{
+		int v = _wtoi(s.c_str());
+		if (v > 0)
+			m_setting_data.m_ma_days.push_back(v);
+	}
+	if (m_setting_data.m_ma_days.empty())
+		m_setting_data.m_ma_days = { 5, 17, 60 };
+
+	ini.GetStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes, std::vector<std::wstring>{});
+
+	// WebDAV 云端备份配置
+	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
+	m_setting_data.m_webdav_username = ini.GetString(L"webdav", L"username", L"");
+	m_setting_data.m_webdav_password = ini.GetString(L"webdav", L"password", L"");
+	m_setting_data.m_webdav_dir = ini.GetString(L"webdav", L"dir", L"/TrafficMonitor/Stock/");
+	m_setting_data.m_webdav_auto_sync = ini.GetBool(L"webdav", L"auto_sync", false);
+	m_setting_data.m_webdav_auto_backup = ini.GetBool(L"webdav", L"auto_backup", false);
+	m_setting_data.m_webdav_last_sync_time = ini.GetString(L"webdav", L"last_sync_time", L"");
 
 	// 加载每个股票的关注价格
 	m_stock_alert_prices.clear();
@@ -434,6 +459,21 @@ void CDataManager::SaveConfig()
 		ini.WriteInt(L"config", L"kline_height", m_setting_data.m_kline_height);
 		ini.WriteBool(L"config", L"use_socks5_proxy", m_setting_data.m_use_socks5_proxy);
 		ini.WriteString(L"config", L"socks5_proxy", m_setting_data.m_socks5_proxy);
+		ini.WriteStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices);
+		std::vector<std::wstring> ma_str_list;
+		for (int ma : m_setting_data.m_ma_days)
+			ma_str_list.push_back(std::to_wstring(ma));
+		ini.WriteStringList(L"config", L"ma_days", ma_str_list);
+		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
+
+		// 保存 WebDAV 云端备份配置
+		ini.WriteString(L"webdav", L"url", m_setting_data.m_webdav_url);
+		ini.WriteString(L"webdav", L"username", m_setting_data.m_webdav_username);
+		ini.WriteString(L"webdav", L"password", m_setting_data.m_webdav_password);
+		ini.WriteString(L"webdav", L"dir", m_setting_data.m_webdav_dir);
+		ini.WriteBool(L"webdav", L"auto_sync", m_setting_data.m_webdav_auto_sync);
+		ini.WriteBool(L"webdav", L"auto_backup", m_setting_data.m_webdav_auto_backup);
+		ini.WriteString(L"webdav", L"last_sync_time", m_setting_data.m_webdav_last_sync_time);
 
 		// 保存每个股票的关注价格到 CIniHelper 缓冲区
 		for (const auto& alert : m_stock_alert_prices)

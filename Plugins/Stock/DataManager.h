@@ -21,10 +21,22 @@ struct SettingData
 	bool m_show_stock_name{};           // 显示股票名称
 	bool m_show_fluctuation{};          // 显示涨跌幅
 	bool m_color_with_price{};          // 涨跌颜色标识
-	unsigned m_kline_width;             // 走势图宽度
-	unsigned m_kline_height;            // 走势图高度
+	unsigned m_kline_width{ 450 };      // 走势图宽度
+	unsigned m_kline_height{ 210 };     // 走势图高度
 	bool m_use_socks5_proxy{};          // 是否启用 SOCKS5 代理
 	std::wstring m_socks5_proxy;        // SOCKS5 代理地址，如 127.0.0.1:1080
+	std::vector<std::wstring> m_selected_indices; // 选中的指数列表
+	std::vector<int> m_ma_days;         // 均线日列表，例如 {5, 17, 60}
+	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表
+
+	// WebDAV 云端备份配置
+	std::wstring m_webdav_url{ L"https://dav.jianguoyun.com/dav/" }; // WebDAV 服务器地址
+	std::wstring m_webdav_username;                                  // WebDAV 用户名
+	std::wstring m_webdav_password;                                  // WebDAV 应用密码
+	std::wstring m_webdav_dir{ L"/TrafficMonitor/Stock/" };           // 远端存储目录
+	bool m_webdav_auto_sync{ false };                                // 启动时自动从云端同步
+	bool m_webdav_auto_backup{ false };                              // 保存配置时自动备份至云端
+	std::wstring m_webdav_last_sync_time;                            // 上次同步时间
 };
 
 // Stock显示数据

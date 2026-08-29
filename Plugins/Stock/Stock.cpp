@@ -9,6 +9,7 @@
 #include "FloatingWnd.h"
 #include "StockFetchThread.h"
 #include "SignalAnalyzer.h"
+#include "WebDavSync.h"
 
 Stock Stock::m_instance;
 
@@ -207,6 +208,19 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 		CStockFetchThread::Instance().PostCallAuctionTask([]() {
 			CStockFetchThread::Instance().FetchCallAuction();
 			});
+
+		// 检查是否开启了启动时自动同步 WebDAV 云端备份
+		if (g_data.m_setting_data.m_webdav_auto_sync && !g_data.m_setting_data.m_webdav_url.empty())
+		{
+			CStockFetchThread::Instance().PostBackgroundTask([]() {
+				std::wstring errMsg;
+				if (CWebDavSync::DownloadBackup(g_data.m_setting_data, errMsg))
+				{
+					Stock::Instance().updateItems();
+					Stock::Instance().SendStockInfoRequest();
+				}
+			});
+		}
 		break;
 	case ITMPlugin::EI_TASKBAR_WND_VALUE_RIGHT_ALIGN:
 		// 获取TrafficMonitor任务栏窗口中“数值右对齐”设置

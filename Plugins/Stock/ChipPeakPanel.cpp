@@ -197,19 +197,35 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 
 	double minPrice = 999999.0;
 	double maxPrice = 0.0;
-	for (const auto& point : points)
+
+	// 计算有效筹码价格区间（过滤累计头尾各0.5%的衰减残余噪点，避免远期极小残值拉大Y轴导致顶部大片空白）
+	double cum = 0.0;
+	double effMinPrice = points.front().price;
+	double effMaxPrice = points.back().price;
+	bool foundMin = false;
+	for (const auto& pt : points)
 	{
-		if (point.price > 0 && point.percent > 0.0001)
+		if (pt.percent <= 0) continue;
+		cum += pt.percent;
+		if (!foundMin && cum >= totalPercent * 0.005)
 		{
-			minPrice = min(minPrice, point.price);
-			maxPrice = max(maxPrice, point.price);
+			effMinPrice = pt.price;
+			foundMin = true;
+		}
+		if (cum >= totalPercent * 0.995)
+		{
+			effMaxPrice = pt.price;
+			break;
 		}
 	}
-	if (minPrice > maxPrice || minPrice <= 0.0)
+	if (effMinPrice > effMaxPrice || effMinPrice <= 0.0)
 	{
-		minPrice = points.front().price;
-		maxPrice = points.back().price;
+		effMinPrice = points.front().price;
+		effMaxPrice = points.back().price;
 	}
+
+	minPrice = effMinPrice;
+	maxPrice = effMaxPrice;
 	if (currentPrice > 0)
 	{
 		minPrice = min(minPrice, currentPrice);
@@ -220,13 +236,60 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		minPrice = min(minPrice, avgCost);
 		maxPrice = max(maxPrice, avgCost);
 	}
-	double padding = (maxPrice - minPrice) * 0.03;
+	if (chip90Low > 0) minPrice = min(minPrice, chip90Low);
+	if (chip90High > 0) maxPrice = max(maxPrice, chip90High);
+
+	double padding = (maxPrice - minPrice) * 0.04;
 	if (padding < 0.01) padding = 0.01;
 	minPrice -= padding;
 	maxPrice += padding;
 	if (minPrice < 0.01) minPrice = 0.01;
 	if (maxPrice <= minPrice)
 		return;
+
+	// 5点高斯加权平滑滤波，消除离散价格阶梯毛刺，形成类似同花顺的圆润波峰
+	const size_t nPoints = points.size();
+	std::vector<double> smoothed(nPoints, 0.0);
+	static const double kernel[5] = { 1.0, 4.0, 6.0, 4.0, 1.0 };
+	for (size_t i = 0; i < nPoints; ++i)
+	{
+		double wSum = 0.0;
+		double vSum = 0.0;
+		for (int k = -2; k <= 2; ++k)
+		{
+			int idx = static_cast<int>(i) + k;
+			if (idx >= 0 && idx < static_cast<int>(nPoints))
+			{
+				double kw = kernel[k + 2];
+				vSum += points[idx].percent * kw;
+				wSum += kw;
+			}
+		}
+		smoothed[i] = (wSum > 0.0) ? (vSum / wSum) : points[i].percent;
+	}
+
+	double maxSmoothed = 0.0;
+	for (double val : smoothed)
+		maxSmoothed = max(maxSmoothed, val);
+	if (maxSmoothed <= 0.0)
+		maxSmoothed = maxPercent;
+
+	auto getPercentAtPrice = [&](double p) -> double {
+		if (points.empty() || p < points.front().price || p > points.back().price)
+			return 0.0;
+		auto it = std::lower_bound(points.begin(), points.end(), p, [](const STOCK::ChipPoint& pt, double val) {
+			return pt.price < val;
+			});
+		if (it == points.begin()) return smoothed[0];
+		if (it == points.end()) return smoothed.back();
+		size_t idx1 = it - points.begin();
+		size_t idx0 = idx1 - 1;
+		double p0 = points[idx0].price;
+		double p1 = points[idx1].price;
+		if (p1 <= p0) return smoothed[idx0];
+		double t = (p - p0) / (p1 - p0);
+		return smoothed[idx0] + t * (smoothed[idx1] - smoothed[idx0]);
+		};
 
 	CPen borderPen(PS_SOLID, 1, COLOR_DARK_GRAY_BORDER);
 	CPen* oldPen = memDC.SelectObject(&borderPen);
@@ -240,22 +303,55 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		return max(chartTop, min(y, chartBottom));
 		};
 
-	// 计算每个价格格子的像素高度，使柱状图具备合理的厚度，不再是细如发丝的 1px 单线
-	double priceRange = maxPrice - minPrice;
-	int stepH = priceRange > 0 ? static_cast<int>(ceil(0.01 / priceRange * chartH)) : g_data.RDPI(2);
-	int barH = max(g_data.RDPI(2), min(stepH, g_data.RDPI(5)));
+	// 逐像素扫描填充平滑波峰，并收集外轮廓线点集
+	std::vector<CPoint> greenContour;
+	std::vector<CPoint> redContour;
+	const int maxPeakW = chartW - g_data.RDPI(8);
 
-	for (const auto& point : points)
+	for (int y = chartTop; y < chartBottom; ++y)
 	{
-		if (point.percent <= 0) continue;
-		int y = priceToY(point.price);
-		int barW = max(1, static_cast<int>(point.percent / maxPercent * chartW));
-		COLORREF color = point.price < currentPrice ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-		int drawY = max(chartTop, min(y - barH / 2, chartBottom - barH));
-		memDC.FillSolidRect(chartLeft, drawY, barW, barH, color);
+		double priceAtY = minPrice + static_cast<double>(chartBottom - y) / chartH * (maxPrice - minPrice);
+		double pct = getPercentAtPrice(priceAtY);
+		int barW = max(0, static_cast<int>(pct / maxSmoothed * maxPeakW));
+
+		if (barW > 0)
+		{
+			COLORREF fillColor = (priceAtY <= currentPrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+			memDC.FillSolidRect(chartLeft, y, barW, 1, fillColor);
+		}
+
+		CPoint contourPt(chartLeft + barW, y);
+		if (priceAtY > currentPrice)
+		{
+			greenContour.push_back(contourPt);
+		}
+		else
+		{
+			if (redContour.empty() && !greenContour.empty())
+			{
+				redContour.push_back(greenContour.back());
+			}
+			redContour.push_back(contourPt);
+		}
 	}
 
-	if (avgCost > minPrice && avgCost < maxPrice)
+	// 绘制波峰外边缘轮廓线（平滑高光边缘）
+	if (greenContour.size() >= 2)
+	{
+		CPen greenPen(PS_SOLID, 1, COLOR_GREEN_DOWN);
+		oldPen = memDC.SelectObject(&greenPen);
+		memDC.Polyline(greenContour.data(), static_cast<int>(greenContour.size()));
+		memDC.SelectObject(oldPen);
+	}
+	if (redContour.size() >= 2)
+	{
+		CPen redPen(PS_SOLID, 1, COLOR_RED_UP);
+		oldPen = memDC.SelectObject(&redPen);
+		memDC.Polyline(redContour.data(), static_cast<int>(redContour.size()));
+		memDC.SelectObject(oldPen);
+	}
+
+	if (avgCost >= minPrice && avgCost <= maxPrice)
 	{
 		int avgY = priceToY(avgCost);
 		CPen avgPen(PS_DOT, 1, COLOR_BLUE_AVG1);
@@ -269,13 +365,11 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		memDC.SetTextColor(COLOR_BLUE_AVG1);
 		CSize avgLabelSize = memDC.GetTextExtent(avgLabel);
 		int avgLabelX = chartRight - avgLabelSize.cx - g_data.RDPI(2);
-		int avgLabelY = avgY - avgLabelSize.cy / 2;
-		// 避免标签超出图表区域
-		avgLabelY = max(chartTop, min(avgLabelY, chartBottom - avgLabelSize.cy));
+		int avgLabelY = max(chartTop, min(avgY - avgLabelSize.cy / 2, chartBottom - avgLabelSize.cy));
 		memDC.TextOut(avgLabelX, avgLabelY, avgLabel);
 	}
 
-	if (currentPrice > minPrice && currentPrice < maxPrice)
+	if (currentPrice >= minPrice && currentPrice <= maxPrice)
 	{
 		int y = priceToY(currentPrice);
 		CPen curPen(PS_DOT, 1, COLOR_GREEN_AVG3);
@@ -298,28 +392,26 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		memDC.TextOut(labelRect.left + paddingX, labelRect.top + paddingY, priceTxt);
 	}
 
-	CString highTxt;
-	highTxt = CCommon::FormatFloat(maxPrice);
-	CString lowTxt;
-	lowTxt = CCommon::FormatFloat(minPrice);
+	CString highTxt = CCommon::FormatFloat(maxPrice);
+	CString lowTxt = CCommon::FormatFloat(minPrice);
 	memDC.SetTextColor(COLOR_TEXT_MUTED);
-	memDC.TextOut(chartRight - memDC.GetTextExtent(highTxt).cx, chartTop, highTxt);
-	memDC.TextOut(chartRight - memDC.GetTextExtent(lowTxt).cx, chartBottom - memDC.GetTextExtent(lowTxt).cy, lowTxt);
+	memDC.TextOut(chartRight - memDC.GetTextExtent(highTxt).cx - g_data.RDPI(2), chartTop + g_data.RDPI(1), highTxt);
+	memDC.TextOut(chartRight - memDC.GetTextExtent(lowTxt).cx - g_data.RDPI(2), chartBottom - memDC.GetTextExtent(lowTxt).cy - g_data.RDPI(1), lowTxt);
 
 	// 文字信息绘制在筹码峰图下方，拆分为3行
-	memDC.SetTextColor(COLOR_TEXT_MUTED);
-	// 获利比例：标签 + 带红绿背景的数字
+	// 行1：获利比例：标签 + 带红绿背景的数字
 	CString profitLabelTxt = _T("获利比例:");
 	double profitRatio = totalPercent > 0 ? (profitPercent / totalPercent * 100.0) : 0.0;
 	CString profitNumTxt;
 	profitNumTxt.Format(_T("%.1f%%"), profitRatio);
 	int profitY = rowY(chartRowEnd) + max(0, (rowH(chartRowEnd) - memDC.GetTextExtent(profitLabelTxt).cy) / 2);
 	int profitX = left + g_data.RDPI(5);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
 	memDC.TextOut(profitX, profitY, profitLabelTxt);
 	{
 		int labelW = memDC.GetTextExtent(profitLabelTxt).cx;
 		int numH = memDC.GetTextExtent(profitNumTxt).cy;
-		int barX = profitX + labelW;
+		int barX = profitX + labelW + g_data.RDPI(3);
 		// 总长度固定：从标签后到面板右边界，留少量右边距
 		int barW = max(0, right - barX - g_data.RDPI(4));
 		int barH = numH + g_data.RDPI(2);
@@ -342,13 +434,26 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		// 数字绘制在背景条左侧（白色文字，带少量内边距）
 		memDC.SetTextColor(COLOR_WHITE);
 		memDC.TextOut(barX + g_data.RDPI(4), profitY, profitNumTxt);
-		memDC.SetTextColor(COLOR_TEXT_MUTED);
 	}
-	CString avgCostTxt;
-	avgCostTxt.Format(_T("平均成本:%s"), CCommon::FormatFloat(avgCost));
-	memDC.TextOut(left + g_data.RDPI(5), rowY(chartRowEnd + 1) + max(0, (rowH(chartRowEnd + 1) - memDC.GetTextExtent(avgCostTxt).cy) / 2), avgCostTxt);
 
-	CString rangeTxt;
-	rangeTxt.Format(_T("90%%成本:%s-%s"), CCommon::FormatFloat(chip90Low), CCommon::FormatFloat(chip90High));
-	memDC.TextOut(left + g_data.RDPI(5), rowY(chartRowEnd + 2) + max(0, (rowH(chartRowEnd + 2) - memDC.GetTextExtent(rangeTxt).cy) / 2), rangeTxt);
+	// 行2：平均成本（标签与数值清晰分离）
+	int avgYPos = rowY(chartRowEnd + 1) + max(0, (rowH(chartRowEnd + 1) - memDC.GetTextExtent(_T("平均成本:")).cy) / 2);
+	int avgXPos = left + g_data.RDPI(5);
+	CString avgCostLabel = _T("平均成本: ");
+	CString avgCostValStr = CCommon::FormatFloat(avgCost);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
+	memDC.TextOut(avgXPos, avgYPos, avgCostLabel);
+	memDC.SetTextColor(COLOR_TEXT_PRIMARY);
+	memDC.TextOut(avgXPos + memDC.GetTextExtent(avgCostLabel).cx, avgYPos, avgCostValStr);
+
+	// 行3：90%成本区间（使用清晰的波浪号 ~ 分隔，数值高亮，避免粘合）
+	int rangeYPos = rowY(chartRowEnd + 2) + max(0, (rowH(chartRowEnd + 2) - memDC.GetTextExtent(_T("90%成本:")).cy) / 2);
+	int rangeXPos = left + g_data.RDPI(5);
+	CString rangeLabel = _T("90%成本: ");
+	CString rangeValStr;
+	rangeValStr.Format(_T("%s ~ %s"), CCommon::FormatFloat(chip90Low), CCommon::FormatFloat(chip90High));
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
+	memDC.TextOut(rangeXPos, rangeYPos, rangeLabel);
+	memDC.SetTextColor(COLOR_TEXT_PRIMARY);
+	memDC.TextOut(rangeXPos + memDC.GetTextExtent(rangeLabel).cx, rangeYPos, rangeValStr);
 }
