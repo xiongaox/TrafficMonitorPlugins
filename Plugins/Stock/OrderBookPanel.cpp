@@ -222,38 +222,46 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	double ratio99 = 0;
 	bool has99 = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(99, diff99, ratio99);
 
-	// 净比 05
-	memDC.SetTextColor(COLOR_TEXT_DIM);
-	memDC.TextOut(lc.textX, textY, _T("净比 05: "));
-	int n05X = lc.textX + memDC.GetTextExtent(_T("净比 05: ")).cx;
-	if (has05)
-	{
-		COLORREF net05Color = diff05 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff05) / 100.0);
-		CString n05Val = CString(diff05 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
-		memDC.SetTextColor(net05Color);
-		memDC.TextOut(n05X, textY, n05Val);
-	}
-	else
-	{
-		memDC.SetTextColor(COLOR_TEXT_MUTED);
-		memDC.TextOut(n05X, textY, _T("--"));
-	}
-
-	// 净比 99
+	// 1. 准备右侧文本（99/全天净差）
+	CString label99 = _T("99: ");
+	CString n99Val = _T("--");
+	COLORREF net99Color = COLOR_TEXT_MUTED;
 	if (has99)
 	{
-		COLORREF net99Color = diff99 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+		net99Color = diff99 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff99) / 100.0);
-		CString n99Val = CString(diff99 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
-		CString full99 = _T("99: ") + n99Val;
-		CSize full99Size = memDC.GetTextExtent(full99);
-		int n99X = lc.right - full99Size.cx - g_data.RDPI(6);
+		n99Val = CString(diff99 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+	}
+	CSize lbl99Size = memDC.GetTextExtent(label99);
+	CSize val99Size = memDC.GetTextExtent(n99Val);
+	int n99X = lc.right - lbl99Size.cx - val99Size.cx - g_data.RDPI(6);
+
+	// 2. 准备左侧文本（05/5分净差）
+	CString label05 = _T("05: ");
+	CString n05Val = _T("--");
+	COLORREF net05Color = COLOR_TEXT_MUTED;
+	if (has05)
+	{
+		net05Color = diff05 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff05) / 100.0);
+		n05Val = CString(diff05 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+	}
+	CSize lbl05Size = memDC.GetTextExtent(label05);
+	CSize val05Size = memDC.GetTextExtent(n05Val);
+
+	// 3. 绘制左侧 (05)
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(lc.textX, textY, label05);
+	memDC.SetTextColor(net05Color);
+	memDC.TextOut(lc.textX + lbl05Size.cx, textY, n05Val);
+
+	// 4. 绘制右侧 (99，含防重叠安全检测)
+	if (has99 && n99X > (lc.textX + lbl05Size.cx + val05Size.cx + g_data.RDPI(4)))
+	{
 		memDC.SetTextColor(COLOR_TEXT_DIM);
-		memDC.TextOut(n99X, textY, _T("99: "));
-		int n99ValX = n99X + memDC.GetTextExtent(_T("99: ")).cx;
+		memDC.TextOut(n99X, textY, label99);
 		memDC.SetTextColor(net99Color);
-		memDC.TextOut(n99ValX, textY, n99Val);
+		memDC.TextOut(n99X + lbl99Size.cx, textY, n99Val);
 	}
 }
 

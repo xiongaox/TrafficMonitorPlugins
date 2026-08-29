@@ -1105,6 +1105,115 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 		rows.push_back({ _T("成交额"), amountStr, COLOR_TEXT_PRIMARY });
 	}
 
+	// 动态添加副图指标数据到悬浮卡片
+	const auto* fullPts = ctx.fullTimeline ? ctx.fullTimeline : ctx.timelinePoint;
+	int globalIdx = ctx.startIndex + hover.hoveredBarIndex;
+	if (fullPts && globalIdx >= 0 && globalIdx < static_cast<int>(fullPts->size()))
+	{
+		if (hover.timelineIndicator == 0) // VOL / CJL
+		{
+			auto calcVolMA = [&](int idx, int period) -> double {
+				if (idx < period - 1 || idx >= static_cast<int>(fullPts->size()))
+					return 0.0;
+				double sum = 0.0;
+				for (int p = idx - period + 1; p <= idx; ++p)
+					sum += static_cast<double>((*fullPts)[p].volume);
+				return sum / period;
+			};
+			double volMa5 = calcVolMA(globalIdx, 5);
+			double volMa10 = calcVolMA(globalIdx, 10);
+			if (volMa5 > 0)
+			{
+				CString ma5Str = CCommon::FormatVolumeInt(volMa5 / 100.0) + _T("手");
+				rows.push_back({ _T("MA5"), ma5Str, RGB(56, 189, 248) });
+			}
+			if (volMa10 > 0)
+			{
+				CString ma10Str = CCommon::FormatVolumeInt(volMa10 / 100.0) + _T("手");
+				rows.push_back({ _T("MA10"), ma10Str, RGB(251, 146, 60) });
+			}
+		}
+		else if (hover.timelineIndicator == 1) // MACD
+		{
+			int shortP = isKLine ? 12 : 6;
+			int longP = isKLine ? 26 : 12;
+			int signalP = isKLine ? 9 : 4;
+			auto macdData = CStockIndicator::CalculateTimelineMACD(*fullPts, shortP, longP, signalP);
+			if (globalIdx < static_cast<int>(macdData.size()) && macdData[globalIdx].valid)
+			{
+				auto formatMACD = [](double val) -> CString {
+					CString s;
+					double absVal = std::abs(val);
+					if (absVal < 0.001 && absVal > 0)
+						s.Format(_T("%.5f"), val);
+					else if (absVal < 0.01)
+						s.Format(_T("%.4f"), val);
+					else
+						s.Format(_T("%.3f"), val);
+					return s;
+				};
+				double dif = macdData[globalIdx].dif;
+				double dea = macdData[globalIdx].dea;
+				double macdVal = (dif - dea) * 2.0;
+
+				COLORREF difColor = (dif >= 0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+				COLORREF deaColor = (dea >= 0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+				COLORREF macdColor = (macdVal >= 0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+
+				rows.push_back({ _T("DIF"), formatMACD(dif), difColor });
+				rows.push_back({ _T("DEA"), formatMACD(dea), deaColor });
+				rows.push_back({ _T("MACD"), formatMACD(macdVal), macdColor });
+			}
+		}
+		else if (hover.timelineIndicator == 2) // KDJ
+		{
+			int kdjN = isKLine ? 9 : 7;
+			int kdjM1 = 3, kdjM2 = 3;
+			auto kdjData = CStockIndicator::CalculateTimelineKDJ(*fullPts, kdjN, kdjM1, kdjM2);
+			if (globalIdx < static_cast<int>(kdjData.size()) && kdjData[globalIdx].valid)
+			{
+				CString kStr, dStr, jStr;
+				kStr.Format(_T("%.2f"), kdjData[globalIdx].k);
+				dStr.Format(_T("%.2f"), kdjData[globalIdx].d);
+				jStr.Format(_T("%.2f"), kdjData[globalIdx].j);
+
+				COLORREF kColor = (kdjData[globalIdx].k >= 50.0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+				COLORREF dColor = (kdjData[globalIdx].d >= 50.0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+				COLORREF jColor = (kdjData[globalIdx].j >= 50.0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+
+				rows.push_back({ _T("K"), kStr, kColor });
+				rows.push_back({ _T("D"), dStr, dColor });
+				rows.push_back({ _T("J"), jStr, jColor });
+			}
+		}
+		else if (hover.timelineIndicator == 3) // WR
+		{
+			auto wrData = CStockIndicator::CalculateTimelineWR(*fullPts);
+			if (globalIdx < static_cast<int>(wrData.size()) && wrData[globalIdx].valid)
+			{
+				CString wr1Str, wr2Str;
+				wr1Str.Format(_T("%.2f"), wrData[globalIdx].wr1);
+				wr2Str.Format(_T("%.2f"), wrData[globalIdx].wr2);
+
+				rows.push_back({ _T("WR6"), wr1Str, RGB(56, 189, 248) });
+				rows.push_back({ _T("WR14"), wr2Str, RGB(251, 146, 60) });
+			}
+		}
+		else if (hover.timelineIndicator == 4) // RSI
+		{
+			auto rsiData = CStockIndicator::CalculateTimelineRSI(*fullPts);
+			if (globalIdx < static_cast<int>(rsiData.size()) && rsiData[globalIdx].valid)
+			{
+				CString rsi1Str, rsi2Str;
+				rsi1Str.Format(_T("%.2f"), rsiData[globalIdx].rsi1);
+				rsi2Str.Format(_T("%.2f"), rsiData[globalIdx].rsi2);
+
+				rows.push_back({ _T("RSI6"), rsi1Str, RGB(56, 189, 248) });
+				rows.push_back({ _T("RSI14"), rsi2Str, RGB(251, 146, 60) });
+			}
+		}
+	}
+
 	// 布局与绘制悬浮卡片
 	int padX = g_data.RDPI(8);
 	int padY = g_data.RDPI(6);
@@ -1135,6 +1244,10 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 		cardX = ctx.chartWidth - cardW - g_data.RDPI(6);
 	}
 	int cardY = ctx.priceChartTop + g_data.RDPI(6);
+	if (cardY + cardH > ctx.priceChartTop + ctx.priceChartHeight)
+	{
+		cardY = max(ctx.priceChartTop + g_data.RDPI(2), ctx.priceChartTop + ctx.priceChartHeight - cardH - g_data.RDPI(2));
+	}
 
 	CRect cardRect(cardX, cardY, cardX + cardW, cardY + cardH);
 
