@@ -60,6 +60,7 @@ private:
 
 	// ===== 暗色主题自绘状态 =====
 	std::map<UINT, bool> m_checkStates; // 自绘复选框状态（控件为 BS_OWNERDRAW，勾选状态自行托管）
+	std::map<UINT, CRect> m_editFieldRects; // 输入框字段矩形（控件在字段内垂直居中，整框由 OnPaint 绘制）
 	CFlatHeaderCtrl m_hdr_stock;        // 三个列表的平面化表头
 	CFlatHeaderCtrl m_hdr_pos;
 	CFlatHeaderCtrl m_hdr_custom;
@@ -105,6 +106,9 @@ private:
 	void DrawFlatButton(CDC& dc, const CRect& rect, const CString& text, bool primary, bool destructive, bool hot, bool pressed);
 	void DrawControlBorder(Gdiplus::Graphics& g, UINT nID);
 	void DrawSectionTitle(Gdiplus::Graphics& g, int x, int y, const std::wstring& title);
+	// 单行 EDIT 不支持垂直居中：控件实际高度缩为字段高-8 并居中放置，
+	// 字段整框（底色+边框）由 DrawControlBorder 绘制，文字自然居中
+	void PlaceEditInField(UINT nID, const CRect& fieldRect);
 	void SwitchPage(PageIndex page);
 	void SwitchGroupTab(GroupSubTab tab);
 	void UpdateControlsLayout();

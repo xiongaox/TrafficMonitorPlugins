@@ -578,24 +578,21 @@ void CManagerDialog::UpdateControlsLayout()
 		// 卡片 2: 走势图尺寸配置
 		int card2Top = card1Top + g_data.DPI(110);
 		CWnd* pKWLbl = GetDlgItem(IDC_KLINE_WIDTH_STATIC);
-		CWnd* pKWEdit = GetDlgItem(IDC_KLINE_WIDTH_EDIT);
 		CWnd* pKHLbl = GetDlgItem(IDC_KLINE_HEIGHT_STATIC);
-		CWnd* pKHEdit = GetDlgItem(IDC_KLINE_HEIGHT_EDIT);
 
 		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(42), g_data.DPI(90), g_data.DPI(20));
-		if (pKWEdit && pKWEdit->GetSafeHwnd()) pKWEdit->MoveWindow(rightLeft + g_data.DPI(112), card2Top + g_data.DPI(38), g_data.DPI(80), g_data.DPI(26));
+		PlaceEditInField(IDC_KLINE_WIDTH_EDIT, CRect(rightLeft + g_data.DPI(112), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(192), card2Top + g_data.DPI(64)));
 		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(220), card2Top + g_data.DPI(42), g_data.DPI(90), g_data.DPI(20));
-		if (pKHEdit && pKHEdit->GetSafeHwnd()) pKHEdit->MoveWindow(rightLeft + g_data.DPI(314), card2Top + g_data.DPI(38), g_data.DPI(80), g_data.DPI(26));
+		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(314), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(394), card2Top + g_data.DPI(64)));
 
 		// 卡片 3: SOCKS5 代理网络
 		int card3Top = card1Top + g_data.DPI(192);
 		CWnd* pProxyChk = GetDlgItem(IDC_USE_SOCKS5_PROXY_CHECK);
 		CWnd* pProxyLbl = GetDlgItem(IDC_SOCKS5_PROXY_STATIC);
-		CWnd* pProxyEdit = GetDlgItem(IDC_SOCKS5_PROXY_EDIT);
 
 		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), card3Top + g_data.DPI(40), g_data.DPI(150), chkH);
 		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(180), card3Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
-		if (pProxyEdit && pProxyEdit->GetSafeHwnd()) pProxyEdit->MoveWindow(rightLeft + g_data.DPI(250), card3Top + g_data.DPI(38), min(g_data.DPI(210), rightWidth - g_data.DPI(268)), g_data.DPI(26));
+		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(250), card3Top + g_data.DPI(38), rightLeft + g_data.DPI(250) + min(g_data.DPI(210), rightWidth - g_data.DPI(268)), card3Top + g_data.DPI(64)));
 	}
 
 	// 分组管理控件布局
@@ -659,8 +656,7 @@ void CManagerDialog::UpdateControlsLayout()
 	if (isMa)
 	{
 		int maInputTop = rightTop + g_data.DPI(130);
-		if (m_ma_input_edit.GetSafeHwnd())
-			m_ma_input_edit.MoveWindow(rightLeft + g_data.DPI(155), maInputTop, g_data.DPI(84), g_data.DPI(26));
+		PlaceEditInField(IDC_MA_INPUT_EDIT, CRect(rightLeft + g_data.DPI(155), maInputTop, rightLeft + g_data.DPI(239), maInputTop + g_data.DPI(26)));
 		if (m_ma_add_btn.GetSafeHwnd())
 			m_ma_add_btn.MoveWindow(rightLeft + g_data.DPI(249), maInputTop, g_data.DPI(88), g_data.DPI(26));
 	}
@@ -697,9 +693,8 @@ void CManagerDialog::UpdateControlsLayout()
 		for (int i = 0; i < 4; ++i)
 		{
 			CWnd* pLbl = GetDlgItem(wdLabelIds[i]);
-			CWnd* pEdit = GetDlgItem(wdEditIds[i]);
 			if (pLbl && pLbl->GetSafeHwnd()) pLbl->MoveWindow(rightLeft + g_data.DPI(18), rowY0 + i * rowStep + g_data.DPI(4), lblW, g_data.DPI(20));
-			if (pEdit && pEdit->GetSafeHwnd()) pEdit->MoveWindow(rightLeft + g_data.DPI(18) + lblW + g_data.DPI(10), rowY0 + i * rowStep, editW, g_data.DPI(26));
+			PlaceEditInField(wdEditIds[i], CRect(CPoint(rightLeft + g_data.DPI(18) + lblW + g_data.DPI(10), rowY0 + i * rowStep), CSize(editW, g_data.DPI(26))));
 		}
 
 		// 卡片 2: 勾选项 / 操作按钮 / 提示文字分区排布，杜绝重叠
@@ -1401,6 +1396,17 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 
+	// 点击输入框字段上下留白区时，把焦点交给对应的编辑控件
+	for (const auto& kv : m_editFieldRects)
+	{
+		CWnd* pEdit = GetDlgItem(kv.first);
+		if (pEdit && pEdit->GetSafeHwnd() && pEdit->IsWindowVisible() && kv.second.PtInRect(point))
+		{
+			pEdit->SetFocus();
+			return;
+		}
+	}
+
 	CDialog::OnLButtonDown(nFlags, point);
 }
 
@@ -2045,7 +2051,7 @@ void CManagerDialog::DrawFlatButton(CDC& dc, const CRect& r, const CString& text
 	dc.SelectObject(pOldFont);
 }
 
-// 输入框/列表的自绘边框：聚焦品牌蓝，失焦暗灰；仅绘制当前可见控件
+// 输入框/列表的自绘边框：输入框铺内嵌底色再画边框（聚焦品牌蓝，失焦暗灰）；仅绘制当前可见控件
 void CManagerDialog::DrawControlBorder(Gdiplus::Graphics& g, UINT nID)
 {
 	CWnd* pWnd = GetDlgItem(nID);
@@ -2060,14 +2066,43 @@ void CManagerDialog::DrawControlBorder(Gdiplus::Graphics& g, UINT nID)
 		focused = (pFocus && pFocus->GetSafeHwnd() == pWnd->GetSafeHwnd());
 	}
 
+	// 输入框使用布局时登记的字段矩形（控件已在其内部居中缩小），列表仍用自身窗口矩形
 	CRect rc;
-	pWnd->GetWindowRect(&rc);
-	ScreenToClient(&rc);
-	rc.InflateRect(1, 1);
+	auto itField = m_editFieldRects.find(nID);
+	if (!isList && itField != m_editFieldRects.end())
+	{
+		rc = itField->second;
+	}
+	else
+	{
+		pWnd->GetWindowRect(&rc);
+		ScreenToClient(&rc);
+	}
 
+	if (!isList)
+	{
+		// 输入框字段底色：覆盖控件上下留白，与 OnCtlColor 的内嵌底色一致，形成整框观感
+		Gdiplus::SolidBrush fieldFill(Gdiplus::Color(255, 13, 15, 21));
+		g.FillRectangle(&fieldFill, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
+			static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+	}
+
+	rc.InflateRect(1, 1);
 	Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
 	g.DrawRectangle(&pen, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
 		static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+}
+
+// 在字段矩形内垂直居中放置单行编辑控件（控件高=字段高-8，水平各留 2px）
+void CManagerDialog::PlaceEditInField(UINT nID, const CRect& fieldRect)
+{
+	m_editFieldRects[nID] = fieldRect;
+	CWnd* pWnd = GetDlgItem(nID);
+	if (pWnd && pWnd->GetSafeHwnd())
+	{
+		pWnd->MoveWindow(fieldRect.left + g_data.DPI(2), fieldRect.top + g_data.DPI(4),
+			fieldRect.Width() - g_data.DPI(4), fieldRect.Height() - g_data.DPI(8));
+	}
 }
 
 // 章节标题：品牌蓝竖条 + 白色加粗文字（页头与卡片统一视觉语言）
