@@ -2219,8 +2219,6 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		return CWnd::OnMouseWheel(nFlags, zDelta, pt);
 	}
 
-	const int headerHeight = g_data.RDPI(26);
-
 	auto stockCodes = g_data.m_setting_data.m_stock_codes;
 	int totalRows = (int)stockCodes.size();
 	if (totalRows == 0)

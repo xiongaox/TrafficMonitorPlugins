@@ -92,14 +92,14 @@ BOOL COptionsDlg::OnInitDialog()
 	{
 		double low_price = g_data.GetAlertLowPrice(std::wstring(m_stock_code));
 		double high_price = g_data.GetAlertHighPrice(std::wstring(m_stock_code));
-		Log1("COptionsDlg::OnInitDialog: low_price=%f, high_price=%f\n", low_price, high_price);
+		Log2("COptionsDlg::OnInitDialog: low_price=%f, high_price=%f\n", low_price, high_price);
 		m_alert_low_price = low_price;
 		m_alert_high_price = high_price;
 
 		double cost_price = g_data.GetCostPrice(std::wstring(m_stock_code));
 		double holding_count = g_data.GetHoldingCount(std::wstring(m_stock_code));
 		std::wstring buy_date = g_data.GetBuyDate(std::wstring(m_stock_code));
-		Log1("COptionsDlg::OnInitDialog: cost_price=%f, holding_count=%f\n", cost_price, holding_count);
+		Log2("COptionsDlg::OnInitDialog: cost_price=%f, holding_count=%f\n", cost_price, holding_count);
 		m_cost_price = cost_price;
 		m_holding_count = holding_count;
 		m_buy_date = buy_date.c_str();
