@@ -85,6 +85,8 @@ public:
 	bool TryApplyCachedChipDistribution(const std::wstring& code);
 	// 筹码分布：根据K线计算筹码分布并入库
 	void ApplyChipDistribution(const std::wstring& code, const std::vector<STOCK::ChipKLinePoint>& klines, STOCK::Volume totalShares);
+	// 根据指定K线切片动态计算筹码分布（供悬停/滑动时实时推算历史筹码峰）
+	static bool CalculateChipDistributionForKLines(const std::wstring& code, const std::vector<STOCK::KLinePoint>& klines, int endIndex, STOCK::Volume totalShares, STOCK::ChipDistribution& outChip);
 
 	bool HasKLineCache(const std::wstring& stockCode, STOCK::Period period);
 	STOCK::Volume GetCirculatingAShares(const std::wstring& code);

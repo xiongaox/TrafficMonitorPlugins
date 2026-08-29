@@ -240,13 +240,19 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		return max(chartTop, min(y, chartBottom));
 		};
 
+	// 计算每个价格格子的像素高度，使柱状图具备合理的厚度，不再是细如发丝的 1px 单线
+	double priceRange = maxPrice - minPrice;
+	int stepH = priceRange > 0 ? static_cast<int>(ceil(0.01 / priceRange * chartH)) : g_data.RDPI(2);
+	int barH = max(g_data.RDPI(2), min(stepH, g_data.RDPI(5)));
+
 	for (const auto& point : points)
 	{
 		if (point.percent <= 0) continue;
 		int y = priceToY(point.price);
 		int barW = max(1, static_cast<int>(point.percent / maxPercent * chartW));
 		COLORREF color = point.price < currentPrice ? COLOR_RED_UP : COLOR_GREEN_DOWN;
-		memDC.FillSolidRect(chartLeft, y, barW, max(1, g_data.RDPI(1)), color);
+		int drawY = max(chartTop, min(y - barH / 2, chartBottom - barH));
+		memDC.FillSolidRect(chartLeft, drawY, barW, barH, color);
 	}
 
 	if (avgCost > minPrice && avgCost < maxPrice)

@@ -1502,3 +1502,50 @@ static bool CalculateChipDistribution(const std::vector<ChipKLinePoint>& klines,
 	chipData.benefitRatio = benefitChips / totalChips;
 	return true;
 }
+
+bool CDataManager::CalculateChipDistributionForKLines(const std::wstring& code, const std::vector<STOCK::KLinePoint>& klines, int endIndex, STOCK::Volume totalShares, STOCK::ChipDistribution& outChip)
+{
+	if (klines.empty() || endIndex < 0) return false;
+	endIndex = min(endIndex, static_cast<int>(klines.size()) - 1);
+
+	// 最多截取近120根K线用于筹码计算
+	int start = max(0, endIndex - 120 + 1);
+	std::vector<STOCK::ChipKLinePoint> chipKLines;
+	chipKLines.reserve(endIndex - start + 1);
+
+	for (int i = start; i <= endIndex; ++i)
+	{
+		const auto& kp = klines[i];
+		if (kp.high <= 0.0 || kp.low <= 0.0) continue;
+		STOCK::ChipKLinePoint pt;
+		pt.date = kp.day;
+		pt.open = kp.open;
+		pt.high = kp.high;
+		pt.low = kp.low;
+		pt.close = kp.close;
+		pt.volume = kp.volume;
+		if (totalShares > 0 && kp.volume > 0)
+			pt.turnoverRate = static_cast<double>(kp.volume) / static_cast<double>(totalShares) * 100.0;
+		else
+			pt.turnoverRate = 0.0;
+		chipKLines.push_back(pt);
+	}
+
+	if (chipKLines.empty()) return false;
+
+	bool isFund = CCommon::IsFundCode(code);
+	bool calcOk = false;
+	if (isFund)
+	{
+		calcOk = CalculateEtfChipDistribution(chipKLines, totalShares, outChip);
+	}
+	else
+	{
+		calcOk = CalculateChipDistribution(chipKLines, outChip);
+		if (!calcOk && totalShares > 0)
+		{
+			calcOk = CalculateEtfChipDistribution(chipKLines, totalShares, outChip);
+		}
+	}
+	return calcOk && outChip.IsValid();
+}

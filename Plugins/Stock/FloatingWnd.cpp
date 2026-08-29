@@ -1009,7 +1009,51 @@ void CFloatingWnd::OnPaint()
 
 			// 右侧盘口高度：不减xAxisLabelHeight（那是左侧走势图的时间标签，右侧不需要）
 			if (m_showChipPeak)
-				m_chipPeakPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, chipData, timelinePoint, m_viewMode);
+			{
+				STOCK::StockInfo drawRealtime = realtimeData;
+				STOCK::ChipDistribution drawChip = chipData;
+				std::vector<STOCK::TimelinePoint> drawTimeline = timelinePoint;
+
+				if (m_viewMode >= UI_VIEW_DAY_KLINE)
+				{
+					// K线模式（日K/周K/月K）：根据悬停点或当前滚动位置动态推算历史筹码分布
+					int targetIdx = -1;
+					if (m_hoveredBarIndex >= 0)
+					{
+						targetIdx = min(static_cast<int>(klineData.size()) - 1, startIndex + m_hoveredBarIndex);
+					}
+					else if (!klineData.empty())
+					{
+						targetIdx = min(static_cast<int>(klineData.size()) - 1, startIndex + visibleCount - 1);
+					}
+
+					if (targetIdx >= 0 && targetIdx < static_cast<int>(klineData.size()))
+					{
+						STOCK::ChipDistribution dynamicChip;
+						if (CDataManager::CalculateChipDistributionForKLines(m_stock_id, klineData, targetIdx, drawRealtime.circulatingAShares, dynamicChip))
+						{
+							drawChip = dynamicChip;
+						}
+						drawRealtime.currentPrice = klineData[targetIdx].close;
+						drawRealtime.prevClosePrice = targetIdx > 0 ? klineData[targetIdx - 1].close : klineData[targetIdx].open;
+					}
+				}
+				else if (m_viewMode < UI_VIEW_DAY_KLINE)
+				{
+					// 分时模式：若鼠标悬停在特定分时柱，则衰减计算仅截取到该分钟
+					if (m_hoveredBarIndex >= 0)
+					{
+						int targetIdx = min(static_cast<int>(timelinePoint.size()) - 1, startIndex + m_hoveredBarIndex);
+						if (targetIdx >= 0 && targetIdx < static_cast<int>(timelinePoint.size()))
+						{
+							drawTimeline.assign(timelinePoint.begin(), timelinePoint.begin() + targetIdx + 1);
+							drawRealtime.currentPrice = timelinePoint[targetIdx].price > 0 ? timelinePoint[targetIdx].price : timelinePoint[targetIdx].averagePrice;
+						}
+					}
+				}
+
+				m_chipPeakPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, drawRealtime, drawChip, drawTimeline, m_viewMode);
+			}
 			else
 				m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
 		}
