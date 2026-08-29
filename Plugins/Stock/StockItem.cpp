@@ -55,13 +55,17 @@ int StockItem::GetItemWidthEx(void* hDC) const
 {
 	CDC* pDC = CDC::FromHandle((HDC)hDC);
 	int width;
-	if (g_data.m_setting_data.m_show_fluctuation && !g_data.m_setting_data.m_show_today_profit)
+	if (g_data.m_setting_data.m_show_today_profit)
+	{
+		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%(+99.99万) ")).cx;
+	}
+	else if (g_data.m_setting_data.m_show_fluctuation)
 	{
 		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%(15.55) ")).cx;
 	}
 	else
 	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99万 ")).cx;
+		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99% ")).cx;
 	}
 	char buff[32];
 	sprintf_s(buff, "GetItemWidthEx %d", width);
@@ -131,39 +135,41 @@ void StockItem::DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode)
 		pDC->SetTextColor(color_default);
 	}
 
-	// 检查是否显示当天持仓收益（已开启开关且填写了持仓股数）
-	double holdingCount = g_data.GetHoldingCount(stock_id);
-	bool showTodayProfit = g_data.m_setting_data.m_show_today_profit && (holdingCount > 0.0001);
-
+	// 绘制涨跌幅百分比（始终显示）
 	CString strDiff;
-	if (showTodayProfit)
-	{
-		double curPrice = (data->info.currentPrice > 0.0001 ? data->info.currentPrice : data->info.prevClosePrice);
-		double todayProfit = (curPrice - data->info.prevClosePrice) * holdingCount;
-		if (todayProfit > 0.0001)
-			strDiff = _T("+") + CCommon::FormatAmount(todayProfit);
-		else if (todayProfit < -0.0001)
-			strDiff = _T("-") + CCommon::FormatAmount(-todayProfit);
-		else
-			strDiff = _T("0.00");
-	}
+	if (fluctuation_percent >= 0)
+		strDiff.Format(_T("+%s"), data->info.displayFluctuation.c_str());
 	else
-	{
-		// 绘制涨跌幅百分比
-		if (fluctuation_percent >= 0)
-			strDiff.Format(_T("+%s"), data->info.displayFluctuation.c_str());
-		else
-			strDiff.Format(_T("-%s"), data->info.displayFluctuation.c_str());
-	}
+		strDiff.Format(_T("-%s"), data->info.displayFluctuation.c_str());
 
 	CRect rect_diff = rect_value;
 	rect_diff.left = rect_price.right + 3; // 价格结束位置后留间隔
 	rect_diff.right = rect_diff.left + pDC->GetTextExtent(strDiff).cx;
 	pDC->DrawText(strDiff, rect_diff, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
-	// 绘制涨跌额（未开启当天持仓收益且勾选了显示涨跌额时）
-	if (!showTodayProfit && g_data.m_setting_data.m_show_fluctuation)
+	// 检查是否显示当天持仓收益（已开启开关且填写了持仓股数）
+	double holdingCount = g_data.GetHoldingCount(stock_id);
+	bool showTodayProfit = g_data.m_setting_data.m_show_today_profit && (holdingCount > 0.0001);
+
+	if (showTodayProfit)
 	{
+		double curPrice = (data->info.currentPrice > 0.0001 ? data->info.currentPrice : data->info.prevClosePrice);
+		double todayProfit = (curPrice - data->info.prevClosePrice) * holdingCount;
+		CString strProfit;
+		if (todayProfit > 0.0001)
+			strProfit.Format(_T("(+%s)"), CCommon::FormatAmount(todayProfit).GetString());
+		else if (todayProfit < -0.0001)
+			strProfit.Format(_T("(-%s)"), CCommon::FormatAmount(-todayProfit).GetString());
+		else
+			strProfit = _T("(0.00)");
+
+		CRect rect_profit{ rect_value };
+		rect_profit.left = rect_diff.right;
+		pDC->DrawText(strProfit, rect_profit, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	}
+	else if (g_data.m_setting_data.m_show_fluctuation)
+	{
+		// 绘制涨跌额（未开启当天持仓收益或未填写持仓时，若勾选了显示涨跌幅则显示涨跌额）
 		CRect rect_fluctuation{ rect_value };
 		rect_fluctuation.left = rect_diff.right; // 紧接在涨跌幅后面
 		pDC->DrawText(data->info.displayFluctuationDiff.c_str(), rect_fluctuation, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);

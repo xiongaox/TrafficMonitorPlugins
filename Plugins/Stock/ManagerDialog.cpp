@@ -934,10 +934,10 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	drawCard(contentRect.top + g_data.DPI(192), g_data.DPI(72), L"SOCKS5 代理网络");
 
 	// 绘制「当天持仓收益」说明文案
-	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184)); // #94A3B8
 	g.DrawString(L"（填写持仓后显示当天收益，未填写仍显示涨跌幅）", -1, &tipFont,
-		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(138)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(73))), &tipBrush);
+		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(72))), &tipBrush);
 }
 
 void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect)
