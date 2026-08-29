@@ -116,7 +116,8 @@ void StockItem::DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode)
 	pDC->SetTextColor(price_color);
 	CString strPrice = data->info.displayPrice.c_str();
 	CRect rect_price = rect_value;
-	int priceWidth = (std::max)(33, pDC->GetTextExtent(strPrice).cx);
+	int textW = pDC->GetTextExtent(strPrice).cx;
+	int priceWidth = textW > 33 ? textW : 33;
 	rect_price.right = rect_price.left + priceWidth;
 	pDC->DrawText(strPrice, rect_price, DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
