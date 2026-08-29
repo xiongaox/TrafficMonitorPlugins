@@ -289,11 +289,46 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	const int WIDTH = g_data.RDPI(g_data.m_setting_data.m_kline_width);
 	const int HEIGHT = g_data.RDPI(g_data.m_setting_data.m_kline_height);
 
-	// 固定在屏幕右下角（任务栏上方）
+	// 根据配置计算悬浮窗在屏幕工作区的位置
 	int x = screenRect.right - WIDTH - 3;
 	int y = screenRect.bottom - HEIGHT - 3;
-	x = max(screenRect.left, x);
-	y = max(screenRect.top, y);
+
+	switch (g_data.m_setting_data.m_display_area)
+	{
+	case AREA_LEFT_TOP:
+		x = screenRect.left + 3;
+		y = screenRect.top + 3;
+		break;
+	case AREA_RIGHT_TOP:
+		x = screenRect.right - WIDTH - 3;
+		y = screenRect.top + 3;
+		break;
+	case AREA_LEFT_BOTTOM:
+		x = screenRect.left + 3;
+		y = screenRect.bottom - HEIGHT - 3;
+		break;
+	case AREA_RIGHT_BOTTOM:
+		x = screenRect.right - WIDTH - 3;
+		y = screenRect.bottom - HEIGHT - 3;
+		break;
+	case AREA_CENTER:
+		x = screenRect.left + (screenRect.Width() - WIDTH) / 2;
+		y = screenRect.top + (screenRect.Height() - HEIGHT) / 2;
+		break;
+	default:
+		x = screenRect.right - WIDTH - 3;
+		y = screenRect.bottom - HEIGHT - 3;
+		break;
+	}
+
+	if (x + WIDTH > screenRect.right)
+		x = max(screenRect.left, screenRect.right - WIDTH);
+	if (x < screenRect.left)
+		x = screenRect.left;
+	if (y + HEIGHT > screenRect.bottom)
+		y = max(screenRect.top, screenRect.bottom - HEIGHT);
+	if (y < screenRect.top)
+		y = screenRect.top;
 
 	CRect rect(x, y, x + WIDTH, y + HEIGHT);
 

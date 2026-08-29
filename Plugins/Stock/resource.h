@@ -117,6 +117,8 @@
 #define IDC_WEBDAV_DOWNLOAD_BTN         1082
 #define IDC_KLINE_WIDTH_STATIC          1083
 #define IDC_KLINE_HEIGHT_STATIC         1084
+#define IDC_DISPLAY_AREA_STATIC         1086
+#define IDC_DISPLAY_AREA_COMBO          1087
 
 // Next default values for new objects
 //
@@ -124,7 +126,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        111
 #define _APS_NEXT_COMMAND_VALUE         40007
-#define _APS_NEXT_CONTROL_VALUE         1090
+#define _APS_NEXT_CONTROL_VALUE         1095
 #define _APS_NEXT_SYMED_VALUE           130
 #endif
 #endif

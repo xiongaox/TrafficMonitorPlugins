@@ -24,6 +24,7 @@ struct SettingData
 	bool m_color_with_price{ true };    // 涨跌颜色标识（默认开启）
 	unsigned m_kline_width{ 450 };      // 走势图宽度
 	unsigned m_kline_height{ 210 };     // 走势图高度
+	int m_display_area{ AREA_RIGHT_BOTTOM }; // 悬浮窗显示区域（默认右下角）
 	bool m_use_socks5_proxy{};          // 是否启用 SOCKS5 代理
 	std::wstring m_socks5_proxy;        // SOCKS5 代理地址，如 127.0.0.1:1080
 	std::vector<std::wstring> m_selected_indices; // 选中的指数列表

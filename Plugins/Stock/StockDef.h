@@ -54,6 +54,16 @@ inline const std::vector<PresetIndexInfo>& GetPresetIndices()
 
 namespace STOCK
 {
+	// 悬浮窗显示区域
+	enum DisplayArea
+	{
+		AREA_LEFT_TOP = 0,     // 左上角
+		AREA_RIGHT_TOP = 1,    // 右上角
+		AREA_LEFT_BOTTOM = 2,  // 左下角
+		AREA_RIGHT_BOTTOM = 3, // 右下角 (默认)
+		AREA_CENTER = 4        // 居中
+	};
+
 	// 价格
 	using Price = double;
 	// 数量

@@ -76,6 +76,7 @@ private:
 	CButton m_mgr_del_btn;
 	CButton m_mgr_up_btn;
 	CButton m_mgr_down_btn;
+	CComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
 	CBrush m_dark_brush;

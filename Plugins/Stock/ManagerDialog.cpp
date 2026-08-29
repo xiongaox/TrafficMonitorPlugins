@@ -57,6 +57,7 @@ void CManagerDialog::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_MGR_DEL_BTN, m_mgr_del_btn);
 	DDX_Control(pDX, IDC_MGR_MOVE_UP_BTN, m_mgr_up_btn);
 	DDX_Control(pDX, IDC_MGR_MOVE_DOWN_BTN, m_mgr_down_btn);
+	DDX_Control(pDX, IDC_DISPLAY_AREA_COMBO, m_display_area_combo);
 }
 
 BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
@@ -283,6 +284,18 @@ BOOL CManagerDialog::OnInitDialog()
 	SetDlgItemText(IDC_KLINE_WIDTH_EDIT, strKlineW);
 	strKlineH.Format(_T("%d"), static_cast<int>(m_data.m_kline_height));
 	SetDlgItemText(IDC_KLINE_HEIGHT_EDIT, strKlineH);
+
+	m_display_area_combo.ResetContent();
+	m_display_area_combo.AddString(L"左上角");
+	m_display_area_combo.AddString(L"右上角");
+	m_display_area_combo.AddString(L"左下角");
+	m_display_area_combo.AddString(L"右下角");
+	m_display_area_combo.AddString(L"居中");
+	int selArea = m_data.m_display_area;
+	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
+		selArea = AREA_RIGHT_BOTTOM;
+	m_display_area_combo.SetCurSel(selArea);
+	SetWindowTheme(m_display_area_combo.GetSafeHwnd(), L"DarkMode_Explorer", nullptr);
 
 	// 加载 WebDAV 云端备份控件值
 	SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
@@ -542,7 +555,8 @@ void CManagerDialog::UpdateControlsLayout()
 		IDC_USE_SOCKS5_PROXY_CHECK,
 		IDC_SOCKS5_PROXY_STATIC, IDC_SOCKS5_PROXY_EDIT,
 		IDC_KLINE_WIDTH_STATIC, IDC_KLINE_WIDTH_EDIT,
-		IDC_KLINE_HEIGHT_STATIC, IDC_KLINE_HEIGHT_EDIT
+		IDC_KLINE_HEIGHT_STATIC, IDC_KLINE_HEIGHT_EDIT,
+		IDC_DISPLAY_AREA_STATIC, IDC_DISPLAY_AREA_COMBO
 	};
 
 	bool isBasic = (m_current_page == PAGE_BASIC);
@@ -570,15 +584,18 @@ void CManagerDialog::UpdateControlsLayout()
 		if (pTodayProfit && pTodayProfit->GetSafeHwnd())
 			pTodayProfit->MoveWindow(rightLeft + g_data.DPI(18), card1Top + g_data.DPI(70), g_data.DPI(115), chkH);
 
-		// 卡片 2: 走势图尺寸配置
+		// 卡片 2: 走势图尺寸与显示位置配置
 		int card2Top = card1Top + g_data.DPI(110);
 		CWnd* pKWLbl = GetDlgItem(IDC_KLINE_WIDTH_STATIC);
 		CWnd* pKHLbl = GetDlgItem(IDC_KLINE_HEIGHT_STATIC);
+		CWnd* pPosLbl = GetDlgItem(IDC_DISPLAY_AREA_STATIC);
 
-		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(42), g_data.DPI(90), g_data.DPI(20));
-		PlaceEditInField(IDC_KLINE_WIDTH_EDIT, CRect(rightLeft + g_data.DPI(112), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(192), card2Top + g_data.DPI(64)));
-		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(220), card2Top + g_data.DPI(42), g_data.DPI(90), g_data.DPI(20));
-		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(314), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(394), card2Top + g_data.DPI(64)));
+		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
+		PlaceEditInField(IDC_KLINE_WIDTH_EDIT, CRect(rightLeft + g_data.DPI(85), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(145), card2Top + g_data.DPI(64)));
+		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(160), card2Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
+		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(227), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(287), card2Top + g_data.DPI(64)));
+		if (pPosLbl && pPosLbl->GetSafeHwnd()) pPosLbl->MoveWindow(rightLeft + g_data.DPI(302), card2Top + g_data.DPI(42), g_data.DPI(60), g_data.DPI(20));
+		if (m_display_area_combo.GetSafeHwnd()) m_display_area_combo.MoveWindow(rightLeft + g_data.DPI(364), card2Top + g_data.DPI(38), g_data.DPI(85), g_data.DPI(160));
 
 		// 卡片 3: SOCKS5 代理网络
 		int card3Top = card1Top + g_data.DPI(192);
@@ -930,7 +947,7 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	// 卡片位置/高度与 UpdateControlsLayout 严格对应
 	int card1Top = contentRect.top;
 	drawCard(card1Top, g_data.DPI(100), L"行情与走势图展示");
-	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(72), L"走势图高清尺寸（像素）");
+	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(72), L"走势图尺寸与显示位置");
 	drawCard(contentRect.top + g_data.DPI(192), g_data.DPI(72), L"SOCKS5 代理网络");
 
 	// 绘制「当天持仓收益」说明文案
@@ -1806,6 +1823,11 @@ void CManagerDialog::OnBnClickedWebDavDownloadBtn()
 		strKlineH.Format(_T("%d"), static_cast<int>(m_data.m_kline_height));
 		SetDlgItemText(IDC_KLINE_HEIGHT_EDIT, strKlineH);
 
+		int selArea = m_data.m_display_area;
+		if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
+			selArea = AREA_RIGHT_BOTTOM;
+		m_display_area_combo.SetCurSel(selArea);
+
 		SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
 		SetDlgItemText(IDC_WEBDAV_USER_EDIT, m_data.m_webdav_username.c_str());
 		SetDlgItemText(IDC_WEBDAV_PWD_EDIT, m_data.m_webdav_password.c_str());
@@ -1840,6 +1862,10 @@ void CManagerDialog::OnBnClickedOk()
 	int kh = _ttoi(value);
 	if (kh > 0)
 		m_data.m_kline_height = kh;
+
+	int selArea = m_display_area_combo.GetCurSel();
+	if (selArea >= AREA_LEFT_TOP && selArea <= AREA_CENTER)
+		m_data.m_display_area = selArea;
 
 	CString proxy_addr;
 	GetDlgItemText(IDC_SOCKS5_PROXY_EDIT, proxy_addr);

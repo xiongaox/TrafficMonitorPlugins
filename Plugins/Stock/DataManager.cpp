@@ -105,6 +105,9 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_color_with_price = ini.GetBool(L"config", L"color_with_price", true);
 	m_setting_data.m_kline_width = ini.GetInt(L"config", L"kline_width", 450);
 	m_setting_data.m_kline_height = ini.GetInt(L"config", L"kline_height", 210);
+	m_setting_data.m_display_area = ini.GetInt(L"config", L"display_area", AREA_RIGHT_BOTTOM);
+	if (m_setting_data.m_display_area < AREA_LEFT_TOP || m_setting_data.m_display_area > AREA_CENTER)
+		m_setting_data.m_display_area = AREA_RIGHT_BOTTOM;
 	m_setting_data.m_use_socks5_proxy = ini.GetBool(L"config", L"use_socks5_proxy", false);
 	m_setting_data.m_socks5_proxy = ini.GetString(L"config", L"socks5_proxy", L"");
 	ini.GetStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices, std::vector<std::wstring>{
@@ -459,6 +462,7 @@ void CDataManager::SaveConfig()
 		ini.WriteBool(L"config", L"color_with_price", m_setting_data.m_color_with_price);
 		ini.WriteInt(L"config", L"kline_width", m_setting_data.m_kline_width);
 		ini.WriteInt(L"config", L"kline_height", m_setting_data.m_kline_height);
+		ini.WriteInt(L"config", L"display_area", m_setting_data.m_display_area);
 		ini.WriteBool(L"config", L"use_socks5_proxy", m_setting_data.m_use_socks5_proxy);
 		ini.WriteString(L"config", L"socks5_proxy", m_setting_data.m_socks5_proxy);
 		ini.WriteStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices);
