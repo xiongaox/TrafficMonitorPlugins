@@ -54,25 +54,67 @@ bool StockItem::IsCustomDraw() const
 int StockItem::GetItemWidthEx(void* hDC) const
 {
 	CDC* pDC = CDC::FromHandle((HDC)hDC);
-	int width;
-	if (g_data.m_setting_data.m_show_today_profit)
+	auto data = g_data.GetStockData(stock_id);
+	if (!data || !data->info.is_ok)
 	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%【+99.99万】 ")).cx;
+		return pDC->GetTextExtent(_T("股票: 0.00 +0.00%")).cx;
+	}
+
+	int width = 0;
+
+	// 1. 股票名称
+	if (g_data.m_setting_data.m_show_stock_name)
+	{
+		CString stock_name = data->info.GetStockShortName();
+		stock_name += _T(": ");
+		width += pDC->GetTextExtent(stock_name).cx;
+	}
+
+	// 2. 价格
+	CString strPrice = data->info.displayPrice.c_str();
+	int textW = pDC->GetTextExtent(strPrice).cx;
+	int priceWidth = textW > 33 ? textW : 33;
+	width += priceWidth;
+
+	// 3. 价格与涨跌幅间隔 (3px) + 涨跌幅百分比
+	float fluctuation_percent = 0.0f;
+	if (data->info.prevClosePrice != 0)
+	{
+		fluctuation_percent = (data->info.currentPrice - data->info.prevClosePrice) / data->info.prevClosePrice * 100;
+	}
+
+	CString strDiff;
+	if (fluctuation_percent >= 0)
+		strDiff.Format(_T("+%s"), data->info.displayFluctuation.c_str());
+	else
+		strDiff.Format(_T("-%s"), data->info.displayFluctuation.c_str());
+
+	width += 3 + pDC->GetTextExtent(strDiff).cx;
+
+	// 4. 当天持仓收益 或 涨跌额
+	double holdingCount = g_data.GetHoldingCount(stock_id);
+	bool showTodayProfit = g_data.m_setting_data.m_show_today_profit && (holdingCount > 0.0001);
+
+	if (showTodayProfit)
+	{
+		double curPrice = (data->info.currentPrice > 0.0001 ? data->info.currentPrice : data->info.prevClosePrice);
+		double todayProfit = (curPrice - data->info.prevClosePrice) * holdingCount;
+		CString strProfit;
+		if (todayProfit > 0.0001)
+			strProfit.Format(_T("【+%s】"), CCommon::FormatAmount(todayProfit).GetString());
+		else if (todayProfit < -0.0001)
+			strProfit.Format(_T("【-%s】"), CCommon::FormatAmount(-todayProfit).GetString());
+		else
+			strProfit = _T("【0.00】");
+
+		width += pDC->GetTextExtent(strProfit).cx;
 	}
 	else if (g_data.m_setting_data.m_show_fluctuation)
 	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%【15.55】 ")).cx;
+		width += pDC->GetTextExtent(data->info.displayFluctuationDiff.c_str()).cx;
 	}
-	else
-	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99% ")).cx;
-	}
-	char buff[32];
-	sprintf_s(buff, "GetItemWidthEx %d", width);
 
-	// CCommon::WriteLog(CCommon::StrToUnicode(buff).c_str(), g_data.m_log_path.c_str());
-	LogX(L"GetItemWidthEx: %d\n", width);
-	return width;
+	return width + 4;
 }
 
 void StockItem::DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode)
