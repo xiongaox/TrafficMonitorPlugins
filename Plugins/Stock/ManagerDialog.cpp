@@ -291,11 +291,12 @@ BOOL CManagerDialog::OnInitDialog()
 	m_display_area_combo.AddString(L"左下角");
 	m_display_area_combo.AddString(L"右下角");
 	m_display_area_combo.AddString(L"居中");
+	m_display_area_combo.SetItemHeight(-1, g_data.DPI(26));
+	m_display_area_combo.SetItemHeight(0, g_data.DPI(24));
 	int selArea = m_data.m_display_area;
 	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
 		selArea = AREA_RIGHT_BOTTOM;
 	m_display_area_combo.SetCurSel(selArea);
-	SetWindowTheme(m_display_area_combo.GetSafeHwnd(), L"DarkMode_Explorer", nullptr);
 
 	// 加载 WebDAV 云端备份控件值
 	SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
@@ -1979,6 +1980,162 @@ void CFlatHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 		dc.Detach();
 		*pResult = CDRF_SKIPDEFAULT;
 	}
+}
+
+// ===================== CDarkComboBox 暗色自绘下拉框 =====================
+
+BEGIN_MESSAGE_MAP(CDarkComboBox, CComboBox)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
+	ON_WM_MOUSEMOVE()
+	ON_WM_MOUSELEAVE()
+	ON_WM_SETFOCUS()
+	ON_WM_KILLFOCUS()
+END_MESSAGE_MAP()
+
+void CDarkComboBox::OnPaint()
+{
+	CPaintDC dc(this);
+	CRect rc;
+	GetClientRect(&rc);
+
+	CDC memDC;
+	memDC.CreateCompatibleDC(&dc);
+	CBitmap memBmp;
+	memBmp.CreateCompatibleBitmap(&dc, rc.Width(), rc.Height());
+	CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+	Gdiplus::Graphics g(memDC.GetSafeHdc());
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+	bool focused = (::GetFocus() == GetSafeHwnd());
+	bool hovered = m_is_hovered;
+
+	// 1. 背景底色 (#0D0F15，与单行输入框底色严格一致)
+	Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 13, 15, 21));
+	Gdiplus::RectF bgRect(0.0f, 0.0f, static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+	g.FillRectangle(&bgBrush, bgRect);
+
+	// 2. 边框 (聚焦品牌蓝高亮，悬停亮灰，失焦暗灰)
+	Gdiplus::Color borderColor = focused ? Gdiplus::Color(255, 37, 99, 235) : (hovered ? Gdiplus::Color(255, 75, 85, 105) : Gdiplus::Color(255, 52, 58, 72));
+	Gdiplus::Pen borderPen(borderColor, 1.0f);
+	g.DrawRectangle(&borderPen, 0.5f, 0.5f, static_cast<Gdiplus::REAL>(rc.Width() - 1), static_cast<Gdiplus::REAL>(rc.Height() - 1));
+
+	// 3. 绘制选中项文字
+	CString text;
+	int curSel = GetCurSel();
+	if (curSel != CB_ERR)
+		GetLBText(curSel, text);
+	else
+		GetWindowText(text);
+
+	Gdiplus::Font font(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 241, 245, 249));
+	Gdiplus::StringFormat sf;
+	sf.SetAlignment(Gdiplus::StringAlignmentNear);
+	sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+
+	int textMargin = g_data.DPI(8);
+	int arrowAreaWidth = g_data.DPI(22);
+	Gdiplus::RectF textRect(static_cast<Gdiplus::REAL>(textMargin), 0.0f,
+		static_cast<Gdiplus::REAL>(rc.Width() - textMargin - arrowAreaWidth), static_cast<Gdiplus::REAL>(rc.Height()));
+	g.DrawString(text.GetString(), -1, &font, textRect, &sf, &textBrush);
+
+	// 4. 绘制右侧下拉箭头 (精致折线 V 形)
+	Gdiplus::Pen arrowPen(hovered || focused ? Gdiplus::Color(255, 241, 245, 249) : Gdiplus::Color(255, 148, 163, 184), 1.6f);
+	arrowPen.SetStartCap(Gdiplus::LineCapRound);
+	arrowPen.SetEndCap(Gdiplus::LineCapRound);
+	arrowPen.SetLineJoin(Gdiplus::LineJoinRound);
+
+	float arrowCenterX = static_cast<float>(rc.right - g_data.DPI(11));
+	float arrowCenterY = static_cast<float>(rc.Height() / 2.0f);
+	float arrowHalfW = static_cast<float>(g_data.DPI(3.5));
+	float arrowHalfH = static_cast<float>(g_data.DPI(2.0));
+
+	Gdiplus::PointF arrowPoints[3] = {
+		Gdiplus::PointF(arrowCenterX - arrowHalfW, arrowCenterY - arrowHalfH),
+		Gdiplus::PointF(arrowCenterX, arrowCenterY + arrowHalfH),
+		Gdiplus::PointF(arrowCenterX + arrowHalfW, arrowCenterY - arrowHalfH)
+	};
+	g.DrawLines(&arrowPen, arrowPoints, 3);
+
+	dc.BitBlt(0, 0, rc.Width(), rc.Height(), &memDC, 0, 0, SRCCOPY);
+	memDC.SelectObject(pOldBmp);
+}
+
+void CDarkComboBox::OnMouseMove(UINT nFlags, CPoint point)
+{
+	if (!m_is_hovered)
+	{
+		m_is_hovered = true;
+		Invalidate();
+		TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, GetSafeHwnd(), 0 };
+		TrackMouseEvent(&tme);
+	}
+	CComboBox::OnMouseMove(nFlags, point);
+}
+
+void CDarkComboBox::OnMouseLeave()
+{
+	m_is_hovered = false;
+	Invalidate();
+	CComboBox::OnMouseLeave();
+}
+
+void CDarkComboBox::OnSetFocus(CWnd* pOldWnd)
+{
+	CComboBox::OnSetFocus(pOldWnd);
+	Invalidate();
+}
+
+void CDarkComboBox::OnKillFocus(CWnd* pNewWnd)
+{
+	CComboBox::OnKillFocus(pNewWnd);
+	Invalidate();
+}
+
+void CDarkComboBox::DrawItem(LPDRAWITEMSTRUCT lp)
+{
+	if (lp->itemID == (UINT)-1)
+		return;
+
+	CDC dc;
+	dc.Attach(lp->hDC);
+	CRect r = lp->rcItem;
+
+	bool selected = (lp->itemState & ODS_SELECTED) != 0;
+
+	// 下拉列表背景色（选中深蓝，未选暗灰底）
+	COLORREF bgClr = selected ? RGB(28, 45, 75) : RGB(20, 22, 29);
+	COLORREF textClr = selected ? RGB(255, 255, 255) : RGB(226, 232, 240);
+
+	dc.FillSolidRect(&r, bgClr);
+
+	CString text;
+	GetLBText(lp->itemID, text);
+
+	dc.SetBkMode(TRANSPARENT);
+	dc.SetTextColor(textClr);
+
+	CFont font;
+	font.CreatePointFont(90, _T("微软雅黑"));
+	CFont* pOldFont = dc.SelectObject(&font);
+
+	CRect textRect = r;
+	textRect.left += g_data.DPI(8);
+	dc.DrawText(text, &textRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+	if (pOldFont)
+		dc.SelectObject(pOldFont);
+
+	dc.Detach();
+}
+
+void CDarkComboBox::MeasureItem(LPMEASUREITEMSTRUCT lp)
+{
+	lp->itemHeight = g_data.DPI(24);
 }
 
 bool CManagerDialog::IsChecked(UINT nID) const

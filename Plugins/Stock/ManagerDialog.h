@@ -14,6 +14,28 @@ protected:
 	afx_msg void OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 };
 
+// 深色主题扁平下拉框（自绘，与暗色输入框/卡片保持统一视觉设计）
+class CDarkComboBox : public CComboBox
+{
+	DECLARE_MESSAGE_MAP()
+
+public:
+	CDarkComboBox() = default;
+	virtual ~CDarkComboBox() = default;
+
+protected:
+	bool m_is_hovered{ false };
+
+	afx_msg void OnPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC) { return TRUE; }
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnMouseLeave();
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnKillFocus(CWnd* pNewWnd);
+	virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct) override;
+	virtual void MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct) override;
+};
+
 // CManagerDialog 对话框
 
 class CManagerDialog : public CDialog
@@ -76,7 +98,7 @@ private:
 	CButton m_mgr_del_btn;
 	CButton m_mgr_up_btn;
 	CButton m_mgr_down_btn;
-	CComboBox m_display_area_combo;
+	CDarkComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
 	CBrush m_dark_brush;

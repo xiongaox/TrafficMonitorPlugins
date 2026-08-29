@@ -194,28 +194,34 @@ $needRestart = $false
 
 $tmProcess = Get-Process -Name "TrafficMonitor" -ErrorAction SilentlyContinue
 if ($tmProcess -and (-not $NoRestart)) {
-    Write-Host "[*] TrafficMonitor is currently running." -ForegroundColor Yellow
+    Write-Host "[*] TrafficMonitor is currently running, attempting to close..." -ForegroundColor Yellow
     try {
         Stop-Process -Name "TrafficMonitor" -Force -ErrorAction Stop
         Start-Sleep -Milliseconds 800
         $needRestart = $true
     } catch {
-        Write-Host "[!] TrafficMonitor is running as Administrator." -ForegroundColor Yellow
-        Write-Host "[!] Please right-click and exit TrafficMonitor in system tray, or run this script as Administrator." -ForegroundColor Yellow
-        while (Get-Process -Name "TrafficMonitor" -ErrorAction SilentlyContinue) {
-            Start-Sleep -Seconds 1
-        }
-        $needRestart = $true
+        Write-Host "[!] Could not stop TrafficMonitor automatically (may run as Administrator)." -ForegroundColor Yellow
     }
 }
 
-Copy-Item -Path $newDllPath -Destination $targetDll -Force
-$dllSize = (Get-Item $targetDll).Length / 1MB
-Write-Host "[+] Updated plugin: $targetDll ($([math]::Round($dllSize, 2)) MB)" -ForegroundColor Green
+try {
+    Copy-Item -Path $newDllPath -Destination $targetDll -Force -ErrorAction Stop
+    $dllSize = (Get-Item $targetDll).Length / 1MB
+    Write-Host "[+] Updated plugin: $targetDll ($([math]::Round($dllSize, 2)) MB)" -ForegroundColor Green
+} catch {
+    Write-Host "[!] Failed to replace Stock.dll: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[!] The file is likely locked by running TrafficMonitor. Please exit TrafficMonitor manually and re-run." -ForegroundColor Yellow
+    Remove-Item -Path $tempZip, $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 1
+}
 
 if ($needRestart -and (Test-Path $AppPath)) {
-    Start-Process -FilePath $AppPath -WorkingDirectory (Split-Path $AppPath)
-    Write-Host "[+] TrafficMonitor restarted successfully!" -ForegroundColor Green
+    try {
+        Start-Process -FilePath $AppPath -WorkingDirectory (Split-Path $AppPath)
+        Write-Host "[+] TrafficMonitor restarted successfully!" -ForegroundColor Green
+    } catch {
+        Write-Host "[!] Please manually restart TrafficMonitor." -ForegroundColor Yellow
+    }
 }
 
 Remove-Item -Path $tempZip, $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
