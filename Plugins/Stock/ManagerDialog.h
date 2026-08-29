@@ -61,6 +61,12 @@ private:
 	CButton m_mgr_up_btn;
 	CButton m_mgr_down_btn;
 
+	// 深色主题 GDI 资源
+	CBrush m_dark_brush;
+	CBrush m_card_brush;
+	CBrush m_edit_brush;
+	CFont m_font;
+
 	// 布局与尺寸
 	int m_menu_width{ 140 };
 	std::vector<CRect> m_menu_rects;
@@ -80,6 +86,7 @@ private:
 	void RefreshCustomList();
 	void DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect);
 	void DrawHeader(Gdiplus::Graphics& g, const CRect& contentRect);
+	void DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect);
@@ -94,6 +101,7 @@ public:
 	virtual BOOL OnInitDialog();
 	afx_msg void OnPaint();
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);

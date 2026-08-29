@@ -114,6 +114,8 @@
 #define IDC_WEBDAV_TEST_BTN             1080
 #define IDC_WEBDAV_UPLOAD_BTN           1081
 #define IDC_WEBDAV_DOWNLOAD_BTN         1082
+#define IDC_KLINE_WIDTH_STATIC          1083
+#define IDC_KLINE_HEIGHT_STATIC         1084
 
 // Next default values for new objects
 //
