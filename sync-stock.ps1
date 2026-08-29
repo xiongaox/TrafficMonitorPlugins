@@ -1,10 +1,36 @@
 param(
-    [string]$PluginDir = "D:\Program Files (x86)\NIR\TrafficMonitor\plugins",
-    [string]$AppPath = "D:\Program Files (x86)\NIR\TrafficMonitor\TrafficMonitor.exe",
+    [string]$PluginDir = "",
+    [string]$AppPath = "",
     [switch]$NoPush,
     [switch]$NoRestart,
     [switch]$DirectDownload
 )
+
+if (-not $PluginDir -or -not $AppPath) {
+    $candidateDirs = @(
+        "D:\MyDir\soft\TrafficMonitor",
+        "D:\Program Files (x86)\NIR\TrafficMonitor",
+        "C:\Program Files (x86)\TrafficMonitor",
+        "C:\Program Files\TrafficMonitor"
+    )
+    $foundDir = $null
+    foreach ($cand in $candidateDirs) {
+        if (Test-Path $cand) {
+            $foundDir = $cand
+            break
+        }
+    }
+    if (-not $foundDir) {
+        $foundDir = "D:\Program Files (x86)\NIR\TrafficMonitor"
+    }
+
+    if (-not $PluginDir) {
+        $PluginDir = Join-Path $foundDir "plugins"
+    }
+    if (-not $AppPath) {
+        $AppPath = Join-Path $foundDir "TrafficMonitor.exe"
+    }
+}
 
 $ErrorActionPreference = "Stop"
 $RepoOwner = "xiongaox"

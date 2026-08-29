@@ -230,7 +230,7 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	{
 		net99Color = diff99 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff99) / 100.0);
-		n99Val = CString(diff99 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+		n99Val = CString(diff99 >= 0 ? _T("+") : _T("-")) + diffStr;
 	}
 	CSize lbl99Size = memDC.GetTextExtent(label99);
 	CSize val99Size = memDC.GetTextExtent(n99Val);
@@ -244,10 +244,9 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	{
 		net05Color = diff05 >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 		CString diffStr = CCommon::FormatVolumeInt(std::abs(diff05) / 100.0);
-		n05Val = CString(diff05 >= 0 ? _T("+") : _T("-")) + diffStr + _T("万");
+		n05Val = CString(diff05 >= 0 ? _T("+") : _T("-")) + diffStr;
 	}
 	CSize lbl05Size = memDC.GetTextExtent(label05);
-	CSize val05Size = memDC.GetTextExtent(n05Val);
 
 	// 3. 绘制左侧 (05)
 	memDC.SetTextColor(COLOR_TEXT_DIM);
@@ -255,14 +254,11 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	memDC.SetTextColor(net05Color);
 	memDC.TextOut(lc.textX + lbl05Size.cx, textY, n05Val);
 
-	// 4. 绘制右侧 (99，含防重叠安全检测)
-	if (has99 && n99X > (lc.textX + lbl05Size.cx + val05Size.cx + g_data.RDPI(4)))
-	{
-		memDC.SetTextColor(COLOR_TEXT_DIM);
-		memDC.TextOut(n99X, textY, label99);
-		memDC.SetTextColor(net99Color);
-		memDC.TextOut(n99X + lbl99Size.cx, textY, n99Val);
-	}
+	// 4. 绘制右侧 (99)
+	memDC.SetTextColor(COLOR_TEXT_DIM);
+	memDC.TextOut(n99X, textY, label99);
+	memDC.SetTextColor(net99Color);
+	memDC.TextOut(n99X + lbl99Size.cx, textY, n99Val);
 }
 
 // ============================================================================

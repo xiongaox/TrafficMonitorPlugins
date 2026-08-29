@@ -1,5 +1,5 @@
 
-// PluginTester.cpp : ¶¨ÒåÓ¦ÓÃ³ÌĞòµÄÀàĞĞÎª¡£
+// PluginTester.cpp : å®šä¹‰åº”ç”¨ç¨‹åºçš„ç±»è¡Œä¸ºã€‚
 //
 
 #include "stdafx.h"
@@ -19,12 +19,12 @@ BEGIN_MESSAGE_MAP(CPluginTesterApp, CWinApp)
 END_MESSAGE_MAP()
 
 
-// CPluginTesterApp ¹¹Ôì
+// CPluginTesterApp æ„é€ 
 
 CPluginTesterApp::CPluginTesterApp()
 {
-    // TODO: ÔÚ´Ë´¦Ìí¼Ó¹¹Ôì´úÂë£¬
-    // ½«ËùÓĞÖØÒªµÄ³õÊ¼»¯·ÅÖÃÔÚ InitInstance ÖĞ
+    // TODO: åœ¨æ­¤å¤„æ·»åŠ æ„é€ ä»£ç ï¼Œ
+    // å°†æ‰€æœ‰é‡è¦çš„åˆå§‹åŒ–æ”¾ç½®åœ¨ InitInstance ä¸­
 }
 
 
@@ -68,12 +68,12 @@ void CPluginTesterApp::SaveConfig() const
     ini.Save();
 }
 
-// Î¨Ò»µÄÒ»¸ö CPluginTesterApp ¶ÔÏó
+// å”¯ä¸€çš„ä¸€ä¸ª CPluginTesterApp å¯¹è±¡
 
 CPluginTesterApp theApp;
 
 
-// CPluginTesterApp ³õÊ¼»¯
+// CPluginTesterApp åˆå§‹åŒ–
 
 BOOL CPluginTesterApp::InitInstance()
 {
@@ -83,7 +83,7 @@ BOOL CPluginTesterApp::InitInstance()
 
     LoadConfig();
 
-    //³õÊ¼»¯½çÃæÓïÑÔ
+    //åˆå§‹åŒ–ç•Œé¢è¯­è¨€
     switch (m_language)
     {
     case Language::ENGLISH:
@@ -99,23 +99,23 @@ BOOL CPluginTesterApp::InitInstance()
     CWinApp::InitInstance();
 
 
-    // ´´½¨ shell ¹ÜÀíÆ÷£¬ÒÔ·À¶Ô»°¿ò°üº¬
-    // ÈÎºÎ shell Ê÷ÊÓÍ¼¿Ø¼ş»ò shell ÁĞ±íÊÓÍ¼¿Ø¼ş¡£
+    // åˆ›å»º shell ç®¡ç†å™¨ï¼Œä»¥é˜²å¯¹è¯æ¡†åŒ…å«
+    // ä»»ä½• shell æ ‘è§†å›¾æ§ä»¶æˆ– shell åˆ—è¡¨è§†å›¾æ§ä»¶ã€‚
     CShellManager *pShellManager = new CShellManager;
 
-    // ¼¤»î¡°Windows Native¡±ÊÓ¾õ¹ÜÀíÆ÷£¬ÒÔ±ãÔÚ MFC ¿Ø¼şÖĞÆôÓÃÖ÷Ìâ
+    // æ¿€æ´»â€œWindows Nativeâ€è§†è§‰ç®¡ç†å™¨ï¼Œä»¥ä¾¿åœ¨ MFC æ§ä»¶ä¸­å¯ç”¨ä¸»é¢˜
     CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows));
 
-    // ±ê×¼³õÊ¼»¯
-    // Èç¹ûÎ´Ê¹ÓÃÕâĞ©¹¦ÄÜ²¢Ï£Íû¼õĞ¡
-    // ×îÖÕ¿ÉÖ´ĞĞÎÄ¼şµÄ´óĞ¡£¬ÔòÓ¦ÒÆ³ıÏÂÁĞ
-    // ²»ĞèÒªµÄÌØ¶¨³õÊ¼»¯Àı³Ì
-    // ¸ü¸ÄÓÃÓÚ´æ´¢ÉèÖÃµÄ×¢²á±íÏî
-    // TODO: Ó¦ÊÊµ±ĞŞ¸Ä¸Ã×Ö·û´®£¬
-    // ÀıÈçĞŞ¸ÄÎª¹«Ë¾»ò×éÖ¯Ãû
-    //SetRegistryKey(_T("Ó¦ÓÃ³ÌĞòÏòµ¼Éú³ÉµÄ±¾µØÓ¦ÓÃ³ÌĞò"));
+    // æ ‡å‡†åˆå§‹åŒ–
+    // å¦‚æœæœªä½¿ç”¨è¿™äº›åŠŸèƒ½å¹¶å¸Œæœ›å‡å°
+    // æœ€ç»ˆå¯æ‰§è¡Œæ–‡ä»¶çš„å¤§å°ï¼Œåˆ™åº”ç§»é™¤ä¸‹åˆ—
+    // ä¸éœ€è¦çš„ç‰¹å®šåˆå§‹åŒ–ä¾‹ç¨‹
+    // æ›´æ”¹ç”¨äºå­˜å‚¨è®¾ç½®çš„æ³¨å†Œè¡¨é¡¹
+    // TODO: åº”é€‚å½“ä¿®æ”¹è¯¥å­—ç¬¦ä¸²ï¼Œ
+    // ä¾‹å¦‚ä¿®æ”¹ä¸ºå…¬å¸æˆ–ç»„ç»‡å
+    //SetRegistryKey(_T("åº”ç”¨ç¨‹åºå‘å¯¼ç”Ÿæˆçš„æœ¬åœ°åº”ç”¨ç¨‹åº"));
 
-    //³õÊ¼»¯DPI
+    //åˆå§‹åŒ–DPI
     HDC hDC = ::GetDC(HWND_DESKTOP);
     m_dpi = GetDeviceCaps(hDC, LOGPIXELSY);
     ::ReleaseDC(HWND_DESKTOP, hDC);
@@ -127,21 +127,21 @@ BOOL CPluginTesterApp::InitInstance()
     INT_PTR nResponse = dlg.DoModal();
     if (nResponse == IDOK)
     {
-        // TODO: ÔÚ´Ë·ÅÖÃ´¦ÀíºÎÊ±ÓÃ
-        //  ¡°È·¶¨¡±À´¹Ø±Õ¶Ô»°¿òµÄ´úÂë
+        // TODO: åœ¨æ­¤æ”¾ç½®å¤„ç†ä½•æ—¶ç”¨
+        //  â€œç¡®å®šâ€æ¥å…³é—­å¯¹è¯æ¡†çš„ä»£ç 
     }
     else if (nResponse == IDCANCEL)
     {
-        // TODO: ÔÚ´Ë·ÅÖÃ´¦ÀíºÎÊ±ÓÃ
-        //  ¡°È¡Ïû¡±À´¹Ø±Õ¶Ô»°¿òµÄ´úÂë
+        // TODO: åœ¨æ­¤æ”¾ç½®å¤„ç†ä½•æ—¶ç”¨
+        //  â€œå–æ¶ˆâ€æ¥å…³é—­å¯¹è¯æ¡†çš„ä»£ç 
     }
     else if (nResponse == -1)
     {
-        TRACE(traceAppMsg, 0, "¾¯¸æ: ¶Ô»°¿ò´´½¨Ê§°Ü£¬Ó¦ÓÃ³ÌĞò½«ÒâÍâÖÕÖ¹¡£\n");
-        TRACE(traceAppMsg, 0, "¾¯¸æ: Èç¹ûÄúÔÚ¶Ô»°¿òÉÏÊ¹ÓÃ MFC ¿Ø¼ş£¬ÔòÎŞ·¨ #define _AFX_NO_MFC_CONTROLS_IN_DIALOGS¡£\n");
+        TRACE(traceAppMsg, 0, "è­¦å‘Š: å¯¹è¯æ¡†åˆ›å»ºå¤±è´¥ï¼Œåº”ç”¨ç¨‹åºå°†æ„å¤–ç»ˆæ­¢ã€‚\n");
+        TRACE(traceAppMsg, 0, "è­¦å‘Š: å¦‚æœæ‚¨åœ¨å¯¹è¯æ¡†ä¸Šä½¿ç”¨ MFC æ§ä»¶ï¼Œåˆ™æ— æ³• #define _AFX_NO_MFC_CONTROLS_IN_DIALOGSã€‚\n");
     }
 
-    // É¾³ıÉÏÃæ´´½¨µÄ shell ¹ÜÀíÆ÷¡£
+    // åˆ é™¤ä¸Šé¢åˆ›å»ºçš„ shell ç®¡ç†å™¨ã€‚
     if (pShellManager != NULL)
     {
         delete pShellManager;
@@ -149,8 +149,8 @@ BOOL CPluginTesterApp::InitInstance()
 
     SaveConfig();
 
-    // ÓÉÓÚ¶Ô»°¿òÒÑ¹Ø±Õ£¬ËùÒÔ½«·µ»Ø FALSE ÒÔ±ãÍË³öÓ¦ÓÃ³ÌĞò£¬
-    //  ¶ø²»ÊÇÆô¶¯Ó¦ÓÃ³ÌĞòµÄÏûÏ¢±Ã¡£
+    // ç”±äºå¯¹è¯æ¡†å·²å…³é—­ï¼Œæ‰€ä»¥å°†è¿”å› FALSE ä»¥ä¾¿é€€å‡ºåº”ç”¨ç¨‹åºï¼Œ
+    //  è€Œä¸æ˜¯å¯åŠ¨åº”ç”¨ç¨‹åºçš„æ¶ˆæ¯æ³µã€‚
     return FALSE;
 }
 
@@ -158,7 +158,7 @@ BOOL CPluginTesterApp::InitInstance()
 
 void CPluginTesterApp::OnHelp()
 {
-    ShellExecute(NULL, _T("open"), _T("https://github.com/zhongyang219/TrafficMonitorPlugins/wiki/%E6%8F%92%E4%BB%B6%E6%B5%8B%E8%AF%95%E5%99%A8"), NULL, NULL, SW_SHOW);
+    // ç§»é™¤ F1 / å¸®åŠ©è·³è½¬ GitHub Wikiï¼Œé¿å…æˆªå›¾ç­‰å…¨å±€å¿«æ·é”®å†²çªä¸è¯¯è§¦
 }
 
 
