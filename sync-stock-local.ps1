@@ -118,15 +118,20 @@ $dllItem = Get-Item $targetDll
 $dllSizeMB = [math]::Round($dllItem.Length / 1MB, 2)
 Write-Host "[+] Updated: $targetDll (${dllSizeMB} MB)" -ForegroundColor Green
 
-# 5. 启动 / 重启 TrafficMonitor
+# 5. 启动 / 重启 TrafficMonitor（以管理员身份提权启动）
 if ((-not $NoRestart) -and (Test-Path $AppPath)) {
     $appDir = Split-Path $AppPath
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $AppPath
     $psi.WorkingDirectory = $appDir
+    $psi.Verb = "runas"
     $psi.UseShellExecute = $true
-    [System.Diagnostics.Process]::Start($psi) | Out-Null
-    Write-Host "[+] TrafficMonitor started successfully!" -ForegroundColor Green
+    try {
+        [System.Diagnostics.Process]::Start($psi) | Out-Null
+        Write-Host "[+] TrafficMonitor started with Administrator privileges!" -ForegroundColor Green
+    } catch {
+        Write-Warning "UAC elevation cancelled or failed: $($_.Exception.Message)"
+    }
 }
 
 $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
