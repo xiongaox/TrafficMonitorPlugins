@@ -118,11 +118,15 @@ $dllItem = Get-Item $targetDll
 $dllSizeMB = [math]::Round($dllItem.Length / 1MB, 2)
 Write-Host "[+] Updated: $targetDll (${dllSizeMB} MB)" -ForegroundColor Green
 
-# 5. 重启 TrafficMonitor
-if ($needRestart -and (Test-Path $AppPath)) {
+# 5. 启动 / 重启 TrafficMonitor
+if ((-not $NoRestart) -and (Test-Path $AppPath)) {
     $appDir = Split-Path $AppPath
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", '""', "`"$AppPath`"" -WorkingDirectory $appDir -WindowStyle Hidden
-    Write-Host "[+] TrafficMonitor restarted successfully!" -ForegroundColor Green
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $AppPath
+    $psi.WorkingDirectory = $appDir
+    $psi.UseShellExecute = $true
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
+    Write-Host "[+] TrafficMonitor started successfully!" -ForegroundColor Green
 }
 
 $elapsed = [math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
