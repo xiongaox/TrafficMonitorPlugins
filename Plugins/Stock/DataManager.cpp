@@ -1388,12 +1388,15 @@ static bool CalculateEtfChipDistribution(const std::vector<ChipKLinePoint>& klin
 	if (klines.empty() || totalShares <= 0) return false;
 
 	const double PRICE_STEP = 0.01;
+	int index = static_cast<int>(klines.size()) - 1;
+	int start = max(0, index - 120 + 1);
+
 	double minPrice = 999999.0;
 	double maxPrice = 0.0;
-	for (const auto& item : klines)
+	for (int i = start; i <= index; ++i)
 	{
-		if (item.low > 0.0) minPrice = min(minPrice, item.low);
-		if (item.high > 0.0) maxPrice = max(maxPrice, item.high);
+		if (klines[i].low > 0.0) minPrice = min(minPrice, klines[i].low);
+		if (klines[i].high > 0.0) maxPrice = max(maxPrice, klines[i].high);
 	}
 	if (minPrice <= 0.0 || maxPrice < minPrice) return false;
 
@@ -1405,12 +1408,12 @@ static bool CalculateEtfChipDistribution(const std::vector<ChipKLinePoint>& klin
 
 	const double CHIP_ATTRITION_N = 1.3;
 	const double MAX_EFFECT_TURN = 0.85;
-	const auto& first = klines.front();
+	const auto& first = klines[start];
 	double firstTurn = static_cast<double>(first.volume) / static_cast<double>(totalShares);
 	double firstEffTurn = min(MAX_EFFECT_TURN, firstTurn * CHIP_ATTRITION_N);
 	AddChipByRange(chips, minPrice, PRICE_STEP, first.low, first.high, firstEffTurn * totalShares);
 
-	for (size_t i = 1; i < klines.size(); ++i)
+	for (int i = start + 1; i <= index; ++i)
 		UpdateChipByKLine(chips, minPrice, PRICE_STEP, static_cast<double>(totalShares), klines[i]);
 
 	FillChipDistributionFromShares(chips, minPrice, PRICE_STEP, static_cast<double>(totalShares), klines.back().close, klines.back().date, chipData);

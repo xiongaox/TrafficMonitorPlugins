@@ -2351,9 +2351,7 @@ void CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn()
 void CFloatingWnd::OnBnClickedChipPeakBtn()
 {
 	m_showChipPeak = !m_showChipPeak;
-	SafeSetButtonStyle(m_btnChipPeak, m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
-	SafeSetButtonStyle(m_btnOrderBook, !m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
-
+	UpdateModeButtons();
 	EnsureChipPeakData();
 	Invalidate();
 }
@@ -2361,9 +2359,7 @@ void CFloatingWnd::OnBnClickedChipPeakBtn()
 void CFloatingWnd::OnBnClickedOrderBookBtn()
 {
 	m_showChipPeak = !m_showChipPeak;
-	SafeSetButtonStyle(m_btnChipPeak, m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
-	SafeSetButtonStyle(m_btnOrderBook, !m_showChipPeak ? BS_DEFPUSHBUTTON : BS_FLAT);
-
+	UpdateModeButtons();
 	EnsureChipPeakData();
 	Invalidate();
 }
@@ -2371,8 +2367,7 @@ void CFloatingWnd::OnBnClickedOrderBookBtn()
 void CFloatingWnd::OnBnClickedExpandBtn()
 {
 	m_expandedMode = !m_expandedMode;
-	m_btnExpand.SetWindowText(m_expandedMode ? _T("△") : _T("▽"));
-	SafeSetButtonStyle(m_btnExpand, m_expandedMode ? BS_FLAT : BS_DEFPUSHBUTTON);
+	UpdateModeButtons();
 	Invalidate();
 }
 
@@ -2383,8 +2378,6 @@ void CFloatingWnd::OnBnClickedToggleStockListBtn()
 	{
 		EnsureStockListVisible();
 	}
-	m_btnToggleStockList.SetWindowText(m_showStockList ? _T("|>") : _T("<|"));
-	SafeSetButtonStyle(m_btnToggleStockList, m_showStockList ? BS_FLAT : BS_DEFPUSHBUTTON);
 	UpdateModeButtons();
 	Invalidate();
 	// 强制重绘指标按钮，避免位置变化后按钮不显示
@@ -2420,17 +2413,6 @@ void CFloatingWnd::SafeShowWindow(CWnd& wnd, bool show)
 	if (curVisible != show)
 	{
 		wnd.ShowWindow(show ? SW_SHOW : SW_HIDE);
-	}
-}
-
-void CFloatingWnd::SafeSetButtonStyle(CButton& btn, UINT style)
-{
-	if (!btn.GetSafeHwnd()) return;
-	// GetButtonStyle返回的低8位是按钮样式
-	UINT curStyle = btn.GetButtonStyle() & 0xFF;
-	if (curStyle != (style & 0xFF))
-	{
-		btn.SetButtonStyle(style, TRUE);
 	}
 }
 

@@ -57,10 +57,21 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 		double yMax = 0.0;
 		for (const auto& point : chipData.points)
 		{
-			if (point.price > 0)
+			if (point.price > 0 && point.percent > 0.0001)
 			{
 				yMin = min(yMin, point.price);
 				yMax = max(yMax, point.price);
+			}
+		}
+		if (yMin > yMax || yMin <= 0.0)
+		{
+			for (const auto& point : chipData.points)
+			{
+				if (point.price > 0)
+				{
+					yMin = min(yMin, point.price);
+					yMax = max(yMax, point.price);
+				}
 			}
 		}
 
@@ -184,8 +195,36 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	if (chartH <= 0 || chartW <= 0)
 		return;
 
-	double minPrice = points.front().price;
-	double maxPrice = points.back().price;
+	double minPrice = 999999.0;
+	double maxPrice = 0.0;
+	for (const auto& point : points)
+	{
+		if (point.price > 0 && point.percent > 0.0001)
+		{
+			minPrice = min(minPrice, point.price);
+			maxPrice = max(maxPrice, point.price);
+		}
+	}
+	if (minPrice > maxPrice || minPrice <= 0.0)
+	{
+		minPrice = points.front().price;
+		maxPrice = points.back().price;
+	}
+	if (currentPrice > 0)
+	{
+		minPrice = min(minPrice, currentPrice);
+		maxPrice = max(maxPrice, currentPrice);
+	}
+	if (avgCost > 0)
+	{
+		minPrice = min(minPrice, avgCost);
+		maxPrice = max(maxPrice, avgCost);
+	}
+	double padding = (maxPrice - minPrice) * 0.03;
+	if (padding < 0.01) padding = 0.01;
+	minPrice -= padding;
+	maxPrice += padding;
+	if (minPrice < 0.01) minPrice = 0.01;
 	if (maxPrice <= minPrice)
 		return;
 
@@ -197,7 +236,8 @@ void CChipPeakPanel::Draw(CDC& memDC, int left, int right, int height, const STO
 	memDC.SelectObject(oldPen);
 
 	auto priceToY = [&](double price) -> int {
-		return chartBottom - static_cast<int>((price - minPrice) / (maxPrice - minPrice) * chartH);
+		int y = chartBottom - static_cast<int>((price - minPrice) / (maxPrice - minPrice) * chartH);
+		return max(chartTop, min(y, chartBottom));
 		};
 
 	for (const auto& point : points)

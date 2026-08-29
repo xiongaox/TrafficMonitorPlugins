@@ -622,7 +622,7 @@ bool CStockHttpFetcher::FetchChipKLines(const std::wstring& stock_id, STOCK::Vol
 			params.push_back(L"fields1=f1,f2,f3,f4,f5,f6");
 			params.push_back(L"fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
 			params.push_back(L"klt=101");
-			params.push_back(L"fqt=0");
+			params.push_back(L"fqt=1");
 			SYSTEMTIME st;
 			GetLocalTime(&st);
 			wchar_t dateBuf[16];
