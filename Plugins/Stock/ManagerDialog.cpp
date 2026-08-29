@@ -297,6 +297,7 @@ BOOL CManagerDialog::OnInitDialog()
 	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
 		selArea = AREA_RIGHT_BOTTOM;
 	m_display_area_combo.SetCurSel(selArea);
+	::SetWindowTheme(m_display_area_combo.GetSafeHwnd(), L"", L"");
 
 	// 加载 WebDAV 云端备份控件值
 	SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
@@ -1993,6 +1994,12 @@ BEGIN_MESSAGE_MAP(CDarkComboBox, CComboBox)
 	ON_WM_KILLFOCUS()
 END_MESSAGE_MAP()
 
+void CDarkComboBox::PreSubclassWindow()
+{
+	CComboBox::PreSubclassWindow();
+	::SetWindowTheme(GetSafeHwnd(), L"", L"");
+}
+
 void CDarkComboBox::OnPaint()
 {
 	CPaintDC dc(this);
@@ -2098,23 +2105,43 @@ void CDarkComboBox::OnKillFocus(CWnd* pNewWnd)
 
 void CDarkComboBox::DrawItem(LPDRAWITEMSTRUCT lp)
 {
-	if (lp->itemID == (UINT)-1)
-		return;
-
 	CDC dc;
 	dc.Attach(lp->hDC);
 	CRect r = lp->rcItem;
 
 	bool selected = (lp->itemState & ODS_SELECTED) != 0;
+	bool isComboEdit = (lp->itemState & ODS_COMBOBOXEDIT) != 0;
 
-	// 下拉列表背景色（选中深蓝，未选暗灰底）
-	COLORREF bgClr = selected ? RGB(28, 45, 75) : RGB(20, 22, 29);
-	COLORREF textClr = selected ? RGB(255, 255, 255) : RGB(226, 232, 240);
+	// 背景色：闭合状态与输入框底色 #0D0F15 一致；展开下拉项：选中深蓝 #1C2D4B，未选暗灰底 #14161D
+	COLORREF bgClr;
+	COLORREF textClr;
+
+	if (isComboEdit || (int)lp->itemID < 0)
+	{
+		bgClr = RGB(13, 15, 21);
+		textClr = RGB(241, 245, 249);
+	}
+	else
+	{
+		bgClr = selected ? RGB(28, 45, 75) : RGB(20, 22, 29);
+		textClr = selected ? RGB(255, 255, 255) : RGB(226, 232, 240);
+	}
 
 	dc.FillSolidRect(&r, bgClr);
 
 	CString text;
-	GetLBText(lp->itemID, text);
+	if ((int)lp->itemID >= 0)
+	{
+		GetLBText(lp->itemID, text);
+	}
+	else
+	{
+		int curSel = GetCurSel();
+		if (curSel != CB_ERR)
+			GetLBText(curSel, text);
+		else
+			GetWindowText(text);
+	}
 
 	dc.SetBkMode(TRANSPARENT);
 	dc.SetTextColor(textClr);

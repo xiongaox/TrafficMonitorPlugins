@@ -26,6 +26,7 @@ public:
 protected:
 	bool m_is_hovered{ false };
 
+	virtual void PreSubclassWindow() override;
 	afx_msg void OnPaint();
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC) { return TRUE; }
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
