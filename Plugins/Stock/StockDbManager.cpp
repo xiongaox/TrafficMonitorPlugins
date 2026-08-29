@@ -509,12 +509,14 @@ bool CStockDbManager::SaveTimelineCache(const std::wstring& stockCode, const std
 	int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 	if (rc != SQLITE_OK) return false;
 
+	bool isHK = (stockCode.find(kHK) == 0);
 	std::string tradeDate = GetTodayDateString();
 	time_t now = time(nullptr);
 	bool ok = true;
 	for (const auto& item : data)
 	{
 		if (item.time.empty()) continue;
+		if (!CCommon::IsValidTimelineTime(item.time, isHK)) continue;
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
@@ -544,11 +546,13 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadTimelineCache(const std::
 	sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(stmt, 2, tradeDate.c_str(), -1, SQLITE_TRANSIENT);
 
+	bool isHK = (stockCode.find(kHK) == 0);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
+		if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);
@@ -574,11 +578,13 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadLatestTimelineCache(const
 	sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text16(stmt, 2, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 
+	bool isHK = (stockCode.find(kHK) == 0);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
+		if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);

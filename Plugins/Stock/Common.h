@@ -132,6 +132,9 @@ public:
 	// 将真实时间转换为交易分钟序号（9:30=0, ..., 11:30=119, 13:00=120, ..., 14:59=239）
 	static int GetTradingMinute(time_t t);
 	static int GetTradingMinute(int hour, int minute);
+
+	// 校验分时数据点时间是否在交易时段内（A股：09:30-11:30, 13:00-15:00；港股：09:30-12:00, 13:00-16:10）
+	static bool IsValidTimelineTime(const std::string& timeStr, bool isHK = false);
 };
 
 //通过构造函数传递一个bool变量的引用，在构造时将其置为true，析构时置为false

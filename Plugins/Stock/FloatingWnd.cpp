@@ -91,8 +91,6 @@ enum {
 	IDC_MA_BTN = 1007,
 	IDC_WEEK_KLINE_BTN = 1008,
 	IDC_BOLL_BTN = 1009,
-	IDC_ZOOM_OUT_BTN = 1010,
-	IDC_ZOOM_IN_BTN = 1011,
 	IDC_INDICATOR_MACD_BTN = 1012,
 	IDC_INDICATOR_KDJ_BTN = 1013,
 	IDC_MONTH_KLINE_BTN = 1014,
@@ -133,8 +131,6 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_BN_CLICKED(IDC_CLOSE_BTN, &CFloatingWnd::OnBnClickedCloseBtn)
 	ON_BN_CLICKED(IDC_MA_BTN, &CFloatingWnd::OnBnClickedMABtn)
 	ON_BN_CLICKED(IDC_BOLL_BTN, &CFloatingWnd::OnBnClickedBollBtn)
-	ON_BN_CLICKED(IDC_ZOOM_OUT_BTN, &CFloatingWnd::OnBnClickedZoomOutBtn)
-	ON_BN_CLICKED(IDC_ZOOM_IN_BTN, &CFloatingWnd::OnBnClickedZoomInBtn)
 	ON_BN_CLICKED(IDC_INDICATOR_MACD_BTN, &CFloatingWnd::OnBnClickedIndicatorMACDBtn)
 	ON_BN_CLICKED(IDC_INDICATOR_MACD_SIGNAL_BTN, &CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn)
 	ON_BN_CLICKED(IDC_INDICATOR_KDJ_BTN, &CFloatingWnd::OnBnClickedIndicatorKDJBtn)
@@ -155,21 +151,17 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	const int btnHeight = g_data.RDPI(22);
 	const int btnGap = 0;  // 按钮之间不留缝隙
 
-	// 左侧按钮：竞价、分时、日K、周K、月K（现代胶囊分段器，全自绘）
-	CRect callAuctionRect(0, g_data.RDPI(2), btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnCallAuction.Create(_T("竞价"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, callAuctionRect, this, IDC_CALL_AUCTION_BTN);
-
-	CRect timelineRect(callAuctionRect.right + btnGap, g_data.RDPI(2), callAuctionRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnTimeLine.Create(_T("分时"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, timelineRect, this, IDC_TIMELINE_BTN);
-
-	CRect klineRect(timelineRect.right + btnGap, g_data.RDPI(2), timelineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnKLine.Create(_T("日K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, klineRect, this, IDC_KLINE_BTN);
-
-	CRect weekKLineRect(klineRect.right + btnGap, g_data.RDPI(2), klineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnWeekKLine.Create(_T("周K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, weekKLineRect, this, IDC_WEEK_KLINE_BTN);
-
-	CRect monthKLineRect(weekKLineRect.right + btnGap, g_data.RDPI(2), weekKLineRect.right + btnGap + btnWidth, g_data.RDPI(2) + btnHeight);
-	m_btnMonthKLine.Create(_T("月K"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, monthKLineRect, this, IDC_MONTH_KLINE_BTN);
+	// 模式切换胶囊按钮（竞价、分时、日K、周K、月K，全自绘，在副图标题栏右侧动态定位）
+	m_btnCallAuction.Create(_T("竞价"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_CALL_AUCTION_BTN);
+	m_btnTimeLine.Create(_T("分时"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_TIMELINE_BTN);
+	m_btnKLine.Create(_T("日K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_KLINE_BTN);
+	m_btnWeekKLine.Create(_T("周K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_WEEK_KLINE_BTN);
+	m_btnMonthKLine.Create(_T("月K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_MONTH_KLINE_BTN);
+	m_btnCallAuction.ShowWindow(SW_HIDE);
+	m_btnTimeLine.ShowWindow(SW_HIDE);
+	m_btnKLine.ShowWindow(SW_HIDE);
+	m_btnWeekKLine.ShowWindow(SW_HIDE);
+	m_btnMonthKLine.ShowWindow(SW_HIDE);
 
 	// 右侧按钮：关闭、放大、自选折叠、筹码峰（全自绘）
 	const int closeBtnWidth = g_data.RDPI(22);
@@ -203,16 +195,6 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	CRect maBtnRect(0, 0, rightBtnWidth, btnHeight);
 	m_btnMA.Create(_T("MA"), WS_CHILD | BS_OWNERDRAW, maBtnRect, this, IDC_MA_BTN);
 	m_btnMA.ShowWindow(SW_HIDE);
-
-	// 缩放按钮（分时模式专用，初始隐藏，在副图标题栏右侧定位）
-	const int zoomBtnWidth = g_data.RDPI(24);
-	const int zoomBtnHeight = g_data.RDPI(16);
-	CRect zoomOutRect(0, 0, zoomBtnWidth, zoomBtnHeight);
-	CRect zoomInRect(0, 0, zoomBtnWidth, zoomBtnHeight);
-	m_btnZoomOut.Create(_T("<"), WS_CHILD | BS_OWNERDRAW, zoomOutRect, this, IDC_ZOOM_OUT_BTN);
-	m_btnZoomIn.Create(_T(">"), WS_CHILD | BS_OWNERDRAW, zoomInRect, this, IDC_ZOOM_IN_BTN);
-	m_btnZoomOut.ShowWindow(SW_HIDE);
-	m_btnZoomIn.ShowWindow(SW_HIDE);
 
 	// 副图指标切换胶囊按钮（初始隐藏，在OnPaint中定位）
 	m_btnIndicatorCJL.Create(_T("VOL"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_INDICATOR_MACD_BTN);
@@ -638,12 +620,34 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnOrderBook, w - obBtnW * 2, obBtnTop, obBtnW, obBtnH);
 				SafeShowWindow(m_btnOrderBook, showObBtns);
 			}
-			// 竞价模式隐藏其他工具按钮
+			// 定位模式切换标签到副图标题栏右侧 [竞价] [分时] [日K] [周K] [月K]
+			int modeTabW = g_data.RDPI(38);
+			int tabY = origVolTop + g_data.RDPI(1);
+			int tabH = titleH - g_data.RDPI(2);
+			int tabGap = g_data.RDPI(2);
+			int rightEdge = chartWidth;
+			int modeTabsTotalW = 5 * modeTabW + 4 * tabGap;
+			int modeStartX = rightEdge - modeTabsTotalW - g_data.RDPI(2);
+
+			SafeSetWindowPos(m_btnCallAuction, modeStartX, tabY, modeTabW, tabH);
+			SafeShowWindow(m_btnCallAuction, true);
+
+			SafeSetWindowPos(m_btnTimeLine, modeStartX + (modeTabW + tabGap), tabY, modeTabW, tabH);
+			SafeShowWindow(m_btnTimeLine, true);
+
+			SafeSetWindowPos(m_btnKLine, modeStartX + (modeTabW + tabGap) * 2, tabY, modeTabW, tabH);
+			SafeShowWindow(m_btnKLine, true);
+
+			SafeSetWindowPos(m_btnWeekKLine, modeStartX + (modeTabW + tabGap) * 3, tabY, modeTabW, tabH);
+			SafeShowWindow(m_btnWeekKLine, true);
+
+			SafeSetWindowPos(m_btnMonthKLine, modeStartX + (modeTabW + tabGap) * 4, tabY, modeTabW, tabH);
+			SafeShowWindow(m_btnMonthKLine, true);
+
+			// 竞价模式隐藏副图指标工具按钮
 			SafeShowWindow(m_btnMA, false);
 			SafeShowWindow(m_btnBoll, false);
 			SafeShowWindow(m_btnIndicatorMACD, false);
-			SafeShowWindow(m_btnZoomOut, false);
-			SafeShowWindow(m_btnZoomIn, false);
 			SafeShowWindow(m_btnIndicatorCJL, false);
 			SafeShowWindow(m_btnIndicatorKDJ, false);
 			SafeShowWindow(m_btnIndicatorWR, false);
@@ -942,14 +946,26 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnIndicatorWR, tabX + (tabW + tabGap) * 4, tabY, tabW, tabH);
 				SafeShowWindow(m_btnIndicatorWR, true);
 
-				// 定位缩放按钮到副图标题栏右侧
-				int zoomBtnW = g_data.RDPI(22);
-				int zoomBtnH = titleH - g_data.RDPI(2);
+				// 定位模式切换标签到副图标题栏右侧 [竞价] [分时] [日K] [周K] [月K]
+				int modeTabW = g_data.RDPI(38);
 				int rightEdge = chartWidth;
-				SafeSetWindowPos(m_btnZoomIn, rightEdge - zoomBtnW - tabGap, tabY, zoomBtnW, zoomBtnH);
-				SafeSetWindowPos(m_btnZoomOut, rightEdge - zoomBtnW * 2 - tabGap * 2, tabY, zoomBtnW, zoomBtnH);
-				SafeShowWindow(m_btnZoomIn, true);
-				SafeShowWindow(m_btnZoomOut, true);
+				int modeTabsTotalW = 5 * modeTabW + 4 * tabGap;
+				int modeStartX = rightEdge - modeTabsTotalW - g_data.RDPI(2);
+
+				SafeSetWindowPos(m_btnCallAuction, modeStartX, tabY, modeTabW, tabH);
+				SafeShowWindow(m_btnCallAuction, true);
+
+				SafeSetWindowPos(m_btnTimeLine, modeStartX + (modeTabW + tabGap), tabY, modeTabW, tabH);
+				SafeShowWindow(m_btnTimeLine, true);
+
+				SafeSetWindowPos(m_btnKLine, modeStartX + (modeTabW + tabGap) * 2, tabY, modeTabW, tabH);
+				SafeShowWindow(m_btnKLine, true);
+
+				SafeSetWindowPos(m_btnWeekKLine, modeStartX + (modeTabW + tabGap) * 3, tabY, modeTabW, tabH);
+				SafeShowWindow(m_btnWeekKLine, true);
+
+				SafeSetWindowPos(m_btnMonthKLine, modeStartX + (modeTabW + tabGap) * 4, tabY, modeTabW, tabH);
+				SafeShowWindow(m_btnMonthKLine, true);
 			}
 			else
 			{
@@ -958,8 +974,12 @@ void CFloatingWnd::OnPaint()
 				SafeShowWindow(m_btnIndicatorKDJ, false);
 				SafeShowWindow(m_btnIndicatorRSI, false);
 				SafeShowWindow(m_btnIndicatorWR, false);
-				SafeShowWindow(m_btnZoomIn, false);
-				SafeShowWindow(m_btnZoomOut, false);
+
+				SafeShowWindow(m_btnCallAuction, false);
+				SafeShowWindow(m_btnTimeLine, false);
+				SafeShowWindow(m_btnKLine, false);
+				SafeShowWindow(m_btnWeekKLine, false);
+				SafeShowWindow(m_btnMonthKLine, false);
 			}
 			SafeShowWindow(m_btnMA, false);
 			SafeShowWindow(m_btnBoll, false);
@@ -1997,11 +2017,16 @@ void CFloatingWnd::UpdateModeButtons()
 		if (m_btnToggleStockList.GetSafeHwnd()) m_btnToggleStockList.Invalidate();
 		SafeShowWindow(m_btnToggleStockList, m_viewMode != UI_VIEW_OVERVIEW);
 
-		// 缩放按钮在所有模式下显示（除总览模式外）
-		SafeShowWindow(m_btnZoomOut, m_viewMode != UI_VIEW_OVERVIEW);
-		SafeShowWindow(m_btnZoomIn, m_viewMode != UI_VIEW_OVERVIEW);
-		// 副图指标按钮在所有模式下显示（除总览模式和放大模式外）
-		bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode;
+		// 模式按钮在所有图表模式下显示（除总览模式和放大模式外）
+		bool showModeBtns = (m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode);
+		SafeShowWindow(m_btnCallAuction, showModeBtns);
+		SafeShowWindow(m_btnTimeLine, showModeBtns);
+		SafeShowWindow(m_btnKLine, showModeBtns);
+		SafeShowWindow(m_btnWeekKLine, showModeBtns);
+		SafeShowWindow(m_btnMonthKLine, showModeBtns);
+
+		// 副图指标按钮在所有模式下显示（除总览模式、放大模式和竞价模式外）
+		bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode && m_viewMode != UI_VIEW_AUCTION;
 		SafeShowWindow(m_btnIndicatorCJL, showIndicatorBtns);
 		SafeShowWindow(m_btnIndicatorMACD, showIndicatorBtns);
 		SafeShowWindow(m_btnIndicatorKDJ, showIndicatorBtns);
@@ -2025,21 +2050,8 @@ void CFloatingWnd::UpdateIndicatorButtons()
 void CFloatingWnd::UpdatePeriodComboVisibility()
 {
 	// MA/BL/MACD按钮与指标按钮同区域，放大模式下也隐藏
-	bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode;
+	bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode && m_viewMode != UI_VIEW_AUCTION;
 	SafeShowWindow(m_btnMA, showIndicatorBtns);
-
-	if (m_btnWeekKLine.GetSafeHwnd())
-	{
-		// 周K按钮作为主模式按钮之一，始终显示
-		m_btnWeekKLine.ShowWindow(SW_SHOW);
-	}
-
-	if (m_btnMonthKLine.GetSafeHwnd())
-	{
-		// 月K按钮作为主模式按钮之一，始终显示
-		m_btnMonthKLine.ShowWindow(SW_SHOW);
-	}
-
 	SafeShowWindow(m_btnBoll, showIndicatorBtns);
 	SafeShowWindow(m_btnChipPeak, m_viewMode != UI_VIEW_OVERVIEW);
 	SafeShowWindow(m_btnOrderBook, m_viewMode != UI_VIEW_OVERVIEW);
@@ -2536,8 +2548,6 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_INDICATOR_KDJ_BTN) text = _T("KDJ");
 	else if (nID == IDC_INDICATOR_RSI_BTN) text = _T("RSI");
 	else if (nID == IDC_INDICATOR_WR_BTN) text = _T("W&R");
-	else if (nID == IDC_ZOOM_IN_BTN) text = _T(">");
-	else if (nID == IDC_ZOOM_OUT_BTN) text = _T("<");
 	else
 	{
 		CWnd* pBtn = CWnd::FromHandle(lpDrawItemStruct->hwndItem);
@@ -2732,37 +2742,6 @@ void CFloatingWnd::OnBnClickedBollBtn()
 	m_btnBoll.SetWindowText(_T("BL"));
 	if (m_btnBoll.GetSafeHwnd()) m_btnBoll.Invalidate();
 	if (m_btnMA.GetSafeHwnd()) m_btnMA.Invalidate();
-	Invalidate();
-}
-
-void CFloatingWnd::OnBnClickedZoomOutBtn()
-{
-	// 缩小：先放大到最大（与"+"按钮一致），然后移动到最开始位置
-	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
-		m_timelineScrollOffset = 0;
-	}
-	else
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1MIN;
-		m_timelineScrollOffset = 0;  // 分时模式从9:30开始
-	}
-	Invalidate();
-}
-
-void CFloatingWnd::OnBnClickedZoomInBtn()
-{
-	// 放大：显示最新40个数据点
-	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
-	}
-	else
-	{
-		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1MIN;
-	}
-	m_timelineScrollOffset = -1;  // 自动滚动到末尾
 	Invalidate();
 }
 

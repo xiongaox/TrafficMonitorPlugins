@@ -411,3 +411,37 @@ int CCommon::GetTradingMinute(time_t t)
 	localtime_s(&tm, &t);
 	return GetTradingMinute(tm.tm_hour, tm.tm_min);
 }
+
+bool CCommon::IsValidTimelineTime(const std::string& timeStr, bool isHK)
+{
+	if (timeStr.size() < 4) return false;
+	int hour = 0, minute = 0;
+	if (timeStr.find(':') != std::string::npos)
+	{
+		if (sscanf_s(timeStr.c_str(), "%d:%d", &hour, &minute) != 2) return false;
+	}
+	else if (timeStr.size() == 4)
+	{
+		if (sscanf_s(timeStr.c_str(), "%02d%02d", &hour, &minute) != 2) return false;
+	}
+	else
+	{
+		return false;
+	}
+
+	int minutes = hour * 60 + minute;
+	if (isHK)
+	{
+		// 港股交易时段：09:30-12:00, 13:00-16:10（含收盘竞价）
+		if (minutes >= 9 * 60 + 30 && minutes <= 12 * 60) return true;
+		if (minutes >= 13 * 60 && minutes <= 16 * 60 + 10) return true;
+		return false;
+	}
+	else
+	{
+		// A股交易时段：09:30-11:30, 13:00-15:00（过滤15:00之后的盘后固定价格交易及非交易时段数据）
+		if (minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30) return true;
+		if (minutes >= 13 * 60 && minutes <= 15 * 60) return true;
+		return false;
+	}
+}

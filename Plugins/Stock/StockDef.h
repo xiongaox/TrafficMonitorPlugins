@@ -618,6 +618,8 @@ namespace STOCK
 		// 添加分时数据点
 		void addTimelinePoint(const TimelinePoint& point)
 		{
+			bool isHK = (info.code.find(kHK) == 0);
+			if (!CCommon::IsValidTimelineTime(point.time, isHK)) return;
 			auto timelineData = MakesureHistoricalData<TimelineData>(Period::TIMELINE);
 			timelineData->data.push_back(point);
 		}

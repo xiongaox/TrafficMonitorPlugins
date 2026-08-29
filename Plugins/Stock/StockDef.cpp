@@ -1102,6 +1102,8 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 	std::string _json_data = CCommon::UnicodeToStr(json_data);
 	if (_json_data.empty()) return;
 
+	bool isHK = (info.code.find(kHK) == 0);
+
 	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
 	if (doc != nullptr)
 	{
@@ -1124,6 +1126,7 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 						{
 							TimelinePoint point = TimelinePoint();
 							point.time = utilities::JsonHelper::GetJsonString(item, "m");
+							if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
 							point.volume = GetJsonVolume(item, "v");
 							point.price = GetJsonPrice(item, "p");
 							point.averagePrice = GetJsonPrice(item, "avg_p");
@@ -1223,6 +1226,7 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 											pt.time = t.substr(0, 2) + ":" + t.substr(2, 2);
 										else
 											pt.time = t;
+										if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
 										pt.price = static_cast<Price>(atof(parts[1].c_str()));
 										if (parts.size() >= 3)
 										{
@@ -1274,6 +1278,7 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										pt.time = dt.substr(11, 5);
 									else
 										pt.time = dt;
+									if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
 									pt.price = static_cast<Price>(atof(parts[2].c_str()));
 									pt.volume = static_cast<Volume>(atof(parts[5].c_str()) * 100);
 									pt.amount = atof(parts[6].c_str());

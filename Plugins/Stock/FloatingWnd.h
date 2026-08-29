@@ -62,8 +62,6 @@ protected:
 	afx_msg void OnBnClickedCloseBtn();
 	afx_msg void OnBnClickedMABtn();
 	afx_msg void OnBnClickedBollBtn();
-	afx_msg void OnBnClickedZoomOutBtn();
-	afx_msg void OnBnClickedZoomInBtn();
 	afx_msg void OnBnClickedIndicatorMACDBtn();
 	afx_msg void OnBnClickedIndicatorMACDSignalBtn();
 	afx_msg void OnBnClickedIndicatorKDJBtn();
@@ -124,8 +122,6 @@ private:
 	CButton m_btnExpand;      // 放大按钮（隐藏副图，走势图占3/4）
 	CButton m_btnToggleStockList;  // 股票列表显示/隐藏按钮
 	CButton m_btnCallAuction;     // 集合竞价按钮
-	CButton m_btnZoomOut;  // 缩小按钮（显示240分钟）
-	CButton m_btnZoomIn;   // 放大按钮（显示60分钟）
 	CButton m_btnIndicatorCJL;  // CJL指标按钮
 	CButton m_btnIndicatorMACD;  // MACD信号按钮
 	CButton m_btnIndicatorKDJ;   // KDJ指标按钮
