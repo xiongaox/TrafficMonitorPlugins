@@ -641,17 +641,18 @@ void STOCK::StockInfo::UpdateDisplayFields()
 		CString priceStr = IsETF() ? CCommon::FormatETFPrice(currentPrice) : CCommon::FormatFloat(currentPrice);
 		displayPrice = std::wstring(priceStr.GetString());
 
-		char buff[32];
 		double diff = currentPrice - prevClosePrice;
 		double change = diff / prevClosePrice * 100;
+		CString diffStr;
 		if (diff > 0)
-			sprintf_s(buff, "(+%g) ", diff);
+			diffStr.Format(_T("【+%g】"), diff);
 		else
-			sprintf_s(buff, "(%g) ", diff);
-		displayFluctuationDiff = CCommon::StrToUnicode(buff);
+			diffStr.Format(_T("【%g】"), diff);
+		displayFluctuationDiff = std::wstring(diffStr.GetString());
 
-		sprintf_s(buff, "%.2f%%", std::fabs(change));
-		displayFluctuation = CCommon::StrToUnicode(buff);
+		CString changeStr;
+		changeStr.Format(_T("%.2f%%"), std::fabs(change));
+		displayFluctuation = std::wstring(changeStr.GetString());
 	}
 }
 

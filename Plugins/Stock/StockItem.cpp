@@ -57,11 +57,11 @@ int StockItem::GetItemWidthEx(void* hDC) const
 	int width;
 	if (g_data.m_setting_data.m_show_today_profit)
 	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%(+99.99万) ")).cx;
+		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%【+99.99万】 ")).cx;
 	}
 	else if (g_data.m_setting_data.m_show_fluctuation)
 	{
-		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%(15.55) ")).cx;
+		width = pDC->GetTextExtent(_T("股票:9999.99 +99.99%【15.55】 ")).cx;
 	}
 	else
 	{
@@ -157,11 +157,11 @@ void StockItem::DrawItem(void* hDC, int x, int y, int w, int h, bool dark_mode)
 		double todayProfit = (curPrice - data->info.prevClosePrice) * holdingCount;
 		CString strProfit;
 		if (todayProfit > 0.0001)
-			strProfit.Format(_T("(+%s)"), CCommon::FormatAmount(todayProfit).GetString());
+			strProfit.Format(_T("【+%s】"), CCommon::FormatAmount(todayProfit).GetString());
 		else if (todayProfit < -0.0001)
-			strProfit.Format(_T("(-%s)"), CCommon::FormatAmount(-todayProfit).GetString());
+			strProfit.Format(_T("【-%s】"), CCommon::FormatAmount(-todayProfit).GetString());
 		else
-			strProfit = _T("(0.00)");
+			strProfit = _T("【0.00】");
 
 		CRect rect_profit{ rect_value };
 		rect_profit.left = rect_diff.right;
