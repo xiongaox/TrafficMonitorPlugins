@@ -1931,7 +1931,8 @@ void CFlatHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 			dc.SetTextColor(COLOR_TEXT_MUTED);
 			CRect textRc = rc;
 			textRc.DeflateRect(g_data.DPI(8), 0);
-			dc.DrawText(buf, textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+			CString headerText(buf);
+			dc.DrawText(headerText, textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
 			dc.SelectObject(pOldFont);
 		}
 
