@@ -2027,7 +2027,8 @@ void CManagerDialog::DrawFlatButton(CDC& dc, const CRect& r, const CString& text
 	dc.SetBkMode(TRANSPARENT);
 	dc.SetTextColor(textCol);
 	CFont* pOldFont = dc.SelectObject(primary ? &m_font_bold : &m_font);
-	dc.DrawText(text, r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	CRect textRect(r); // DrawText 需要 LPRECT，传入可写副本
+	dc.DrawText(text, textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	dc.SelectObject(pOldFont);
 }
 
