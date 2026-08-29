@@ -5,6 +5,15 @@
 #include <string>
 #include <memory>
 
+// 平面化深色列表头（自绘，与浮动窗口暗色风格一致）
+class CFlatHeaderCtrl : public CHeaderCtrl
+{
+	DECLARE_MESSAGE_MAP()
+
+protected:
+	afx_msg void OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+};
+
 // CManagerDialog 对话框
 
 class CManagerDialog : public CDialog
@@ -49,6 +58,12 @@ private:
 	int m_hover_group_tab{ -1 };
 	bool m_tracking_mouse{ false };
 
+	// ===== 暗色主题自绘状态 =====
+	std::map<UINT, bool> m_checkStates; // 自绘复选框状态（控件为 BS_OWNERDRAW，勾选状态自行托管）
+	CFlatHeaderCtrl m_hdr_stock;        // 三个列表的平面化表头
+	CFlatHeaderCtrl m_hdr_pos;
+	CFlatHeaderCtrl m_hdr_custom;
+
 	// 控件对象
 	CListCtrl m_stock_listctrl;
 	CListCtrl m_pos_listctrl;
@@ -80,6 +95,16 @@ private:
 
 	// 内部辅助方法
 	std::wstring GetStockName(const std::wstring& code);
+
+	// ===== 暗色主题自绘辅助 =====
+	bool IsChecked(UINT nID) const;
+	void SetCheck(UINT nID, bool checked);
+	bool IsCheckCtrl(UINT nID) const;
+	bool IsPrimaryBtn(UINT nID) const;
+	bool IsDestructiveBtn(UINT nID) const;
+	void DrawFlatButton(CDC& dc, const CRect& rect, const CString& text, bool primary, bool destructive, bool hot, bool pressed);
+	void DrawControlBorder(Gdiplus::Graphics& g, UINT nID);
+	void DrawSectionTitle(Gdiplus::Graphics& g, int x, int y, const std::wstring& title);
 	void SwitchPage(PageIndex page);
 	void SwitchGroupTab(GroupSubTab tab);
 	void UpdateControlsLayout();
@@ -137,6 +162,8 @@ public:
 	afx_msg void OnBnClickedWebDavDownloadBtn();
 	afx_msg void OnBnClickedWebDavAutoSyncCheck();
 	afx_msg void OnBnClickedWebDavAutoBackupCheck();
+	afx_msg void OnEditFocusChanged();
+	afx_msg void OnListCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 
 	afx_msg void OnBnClickedOk();
 	afx_msg void OnBnClickedCancel();
