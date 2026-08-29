@@ -66,9 +66,11 @@ private:
 	CBrush m_card_brush;
 	CBrush m_edit_brush;
 	CFont m_font;
+	CFont m_font_bold;
+	CFont m_font_title;
 
 	// 布局与尺寸
-	int m_menu_width{ 140 };
+	int m_menu_width{ 145 };
 	std::vector<CRect> m_menu_rects;
 	std::vector<CRect> m_index_card_rects;
 	std::vector<CRect> m_ma_tag_rects;
@@ -102,6 +104,7 @@ public:
 	afx_msg void OnPaint();
 	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);

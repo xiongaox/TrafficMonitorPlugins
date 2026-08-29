@@ -9,14 +9,17 @@
 #include "StockFetchThread.h"
 #include "OptionsDlg.h"
 #include "WebDavSync.h"
+#include "ChartColors.h"
 #include <Windows.h>
 #include <gdiplus.h>
 #include <algorithm>
 #include <set>
 #include <shellapi.h>
 #include <ctime>
+#include <uxtheme.h>
 
 #pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "uxtheme.lib")
 
 // CManagerDialog 对话框
 
@@ -26,9 +29,9 @@ CManagerDialog::CManagerDialog(CWnd* pParent /*=nullptr*/)
 	: CDialog(IDD_MANAGER_DIALOG, pParent)
 {
 	m_menu_rects.resize(6);
-	m_dark_brush.CreateSolidBrush(RGB(15, 23, 42));   // #0F172A
-	m_card_brush.CreateSolidBrush(RGB(30, 41, 59));   // #1E293B
-	m_edit_brush.CreateSolidBrush(RGB(15, 23, 42));   // #0F172A
+	m_dark_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
+	m_card_brush.CreateSolidBrush(COLOR_BG_CARD);     // #181B22
+	m_edit_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
 }
 
 CManagerDialog::~CManagerDialog()
@@ -54,6 +57,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_WM_PAINT()
 	ON_WM_ERASEBKGND()
 	ON_WM_CTLCOLOR()
+	ON_WM_DRAWITEM()
 	ON_WM_SIZE()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONDOWN()
@@ -98,63 +102,101 @@ BOOL CManagerDialog::OnInitDialog()
 	SetIcon(hIcon, FALSE);
 
 	// 设置窗口默认大小和最小尺寸
-	int initWidth = g_data.DPI(740);
-	int initHeight = g_data.DPI(510);
-	m_min_size.cx = g_data.DPI(660);
-	m_min_size.cy = g_data.DPI(450);
+	int initWidth = g_data.DPI(760);
+	int initHeight = g_data.DPI(520);
+	m_min_size.cx = g_data.DPI(680);
+	m_min_size.cy = g_data.DPI(460);
 
 	CRect curRect;
 	GetWindowRect(curRect);
 	SetWindowPos(nullptr, curRect.left, curRect.top, initWidth, initHeight, SWP_NOMOVE | SWP_NOZORDER);
 
-	m_menu_width = g_data.DPI(135);
+	m_menu_width = g_data.DPI(140);
 
-	// 创建现代化微软雅黑统一字体
-	LOGFONT lf{};
-	GetObject(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONT), &lf);
-	wcscpy_s(lf.lfFaceName, L"微软雅黑");
-	lf.lfHeight = -g_data.DPI(12);
-	lf.lfWeight = FW_NORMAL;
-	m_font.CreateFontIndirect(&lf);
+	// 创建与走势图一致的微软雅黑字阶体系 (字号升级，清晰易读)
+	m_font.CreateFont(-g_data.RDPI(13), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
 
+	m_font_bold.CreateFont(-g_data.RDPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+
+	m_font_title.CreateFont(-g_data.RDPI(16), 0, 0, 0, FW_BOLD, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+
+	// 全局应用清晰字体
 	EnumChildWindows(m_hWnd, [](HWND hWnd, LPARAM lParam) -> BOOL {
 		::SendMessage(hWnd, WM_SETFONT, lParam, TRUE);
 		return TRUE;
 	}, (LPARAM)m_font.GetSafeHandle());
 
-	// 初始化列表深色背景与扩展属性
-	DWORD dwStyle = m_stock_listctrl.GetExtendedStyle();
-	dwStyle |= LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES;
+	// 禁用系统主题对 CheckBox 与 Edit 的冲突着色，强制受控于 OnCtlColor
+	const int themedControlIds[] = {
+		IDC_FULL_DAY_CHECK, IDC_SHOW_STOCK_NAME_CHECK, IDC_COLOR_WITH_PRICE_CHECK,
+		IDC_SHOW_FLUCTUATION_CHECK, IDC_USE_SOCKS5_PROXY_CHECK,
+		IDC_WEBDAV_AUTO_SYNC_CHECK, IDC_WEBDAV_AUTO_BACKUP_CHECK,
+		IDC_KLINE_WIDTH_EDIT, IDC_KLINE_HEIGHT_EDIT, IDC_SOCKS5_PROXY_EDIT,
+		IDC_WEBDAV_URL_EDIT, IDC_WEBDAV_USER_EDIT, IDC_WEBDAV_PWD_EDIT, IDC_WEBDAV_DIR_EDIT,
+		IDC_MA_INPUT_EDIT
+	};
+	for (int id : themedControlIds)
+	{
+		CWnd* pWnd = GetDlgItem(id);
+		if (pWnd && pWnd->GetSafeHwnd())
+			SetWindowTheme(pWnd->GetSafeHwnd(), L"", L"");
+	}
+
+	// 启用全部按钮自绘 (BS_OWNERDRAW)，彻底告别原生白底按钮
+	const int ownerDrawBtnIds[] = {
+		IDOK, IDCANCEL,
+		IDC_MGR_ADD_BTN, IDC_MGR_EDIT_BTN, IDC_MGR_DEL_BTN, IDC_MGR_MOVE_UP_BTN, IDC_MGR_MOVE_DOWN_BTN,
+		IDC_MA_ADD_BTN,
+		IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN
+	};
+	for (int id : ownerDrawBtnIds)
+	{
+		CWnd* pBtn = GetDlgItem(id);
+		if (pBtn && pBtn->GetSafeHwnd())
+			pBtn->ModifyStyle(0, BS_OWNERDRAW);
+	}
+
+	// 初始化列表深色背景与扩展属性 (不使用 LVS_EX_GRIDLINES，避免刺眼白网格)
+	DWORD dwStyle = LVS_EX_FULLROWSELECT;
 
 	auto setupListDarkTheme = [dwStyle](CListCtrl& list) {
 		list.SetExtendedStyle(dwStyle);
-		list.SetBkColor(RGB(15, 23, 42));
-		list.SetTextBkColor(RGB(15, 23, 42));
-		list.SetTextColor(RGB(241, 245, 249));
+		list.SetBkColor(COLOR_BG_PANEL);
+		list.SetTextBkColor(COLOR_BG_PANEL);
+		list.SetTextColor(COLOR_TEXT_PRIMARY);
+		HWND hHeader = list.GetHeaderCtrl()->GetSafeHwnd();
+		if (hHeader)
+			SetWindowTheme(hHeader, L"", L"");
 	};
 
 	setupListDarkTheme(m_stock_listctrl);
-	m_stock_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(75));
-	m_stock_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(90));
-	m_stock_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(75));
-	m_stock_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(75));
-	m_stock_listctrl.InsertColumn(4, L"状态栏显示", LVCFMT_CENTER, g_data.DPI(75));
+	m_stock_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(80));
+	m_stock_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(100));
+	m_stock_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(80));
+	m_stock_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(80));
+	m_stock_listctrl.InsertColumn(4, L"状态栏显示", LVCFMT_CENTER, g_data.DPI(80));
 
 	setupListDarkTheme(m_pos_listctrl);
-	m_pos_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(70));
-	m_pos_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(85));
-	m_pos_listctrl.InsertColumn(2, L"成本价", LVCFMT_RIGHT, g_data.DPI(65));
-	m_pos_listctrl.InsertColumn(3, L"持股数", LVCFMT_RIGHT, g_data.DPI(65));
-	m_pos_listctrl.InsertColumn(4, L"买入日期", LVCFMT_CENTER, g_data.DPI(80));
-	m_pos_listctrl.InsertColumn(5, L"成本总额", LVCFMT_RIGHT, g_data.DPI(75));
-	m_pos_listctrl.InsertColumn(6, L"当前价", LVCFMT_RIGHT, g_data.DPI(65));
-	m_pos_listctrl.InsertColumn(7, L"浮动盈亏", LVCFMT_RIGHT, g_data.DPI(75));
+	m_pos_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(75));
+	m_pos_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(90));
+	m_pos_listctrl.InsertColumn(2, L"成本价", LVCFMT_RIGHT, g_data.DPI(70));
+	m_pos_listctrl.InsertColumn(3, L"持股数", LVCFMT_RIGHT, g_data.DPI(70));
+	m_pos_listctrl.InsertColumn(4, L"买入日期", LVCFMT_CENTER, g_data.DPI(85));
+	m_pos_listctrl.InsertColumn(5, L"成本总额", LVCFMT_RIGHT, g_data.DPI(80));
+	m_pos_listctrl.InsertColumn(6, L"当前价", LVCFMT_RIGHT, g_data.DPI(70));
+	m_pos_listctrl.InsertColumn(7, L"浮动盈亏", LVCFMT_RIGHT, g_data.DPI(80));
 
 	setupListDarkTheme(m_custom_listctrl);
-	m_custom_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(80));
-	m_custom_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(100));
-	m_custom_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(75));
-	m_custom_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(75));
+	m_custom_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(85));
+	m_custom_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(110));
+	m_custom_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(80));
+	m_custom_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(80));
 
 	// 加载基础配置控件值
 	CheckDlgButton(IDC_FULL_DAY_CHECK, m_data.m_full_day ? BST_CHECKED : BST_UNCHECKED);
@@ -191,22 +233,17 @@ BOOL CManagerDialog::OnInitDialog()
 
 HBRUSH CManagerDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 {
-	if (nCtlColor == CTLCOLOR_STATIC)
+	if (nCtlColor == CTLCOLOR_STATIC || nCtlColor == CTLCOLOR_BTN)
 	{
 		pDC->SetBkMode(TRANSPARENT);
-		pDC->SetTextColor(RGB(241, 245, 249));
-		return (HBRUSH)m_dark_brush.GetSafeHandle();
+		pDC->SetTextColor(COLOR_TEXT_PRIMARY);
+		return (HBRUSH)m_card_brush.GetSafeHandle();
 	}
 	else if (nCtlColor == CTLCOLOR_EDIT || nCtlColor == CTLCOLOR_LISTBOX)
 	{
 		pDC->SetBkMode(OPAQUE);
-		pDC->SetBkColor(RGB(15, 23, 42));
-		pDC->SetTextColor(RGB(248, 250, 252));
-		return (HBRUSH)m_edit_brush.GetSafeHandle();
-	}
-	else if (nCtlColor == CTLCOLOR_BTN)
-	{
-		pDC->SetBkMode(TRANSPARENT);
+		pDC->SetBkColor(COLOR_BG_DARK);
+		pDC->SetTextColor(COLOR_TEXT_PRIMARY);
 		return (HBRUSH)m_dark_brush.GetSafeHandle();
 	}
 	else if (nCtlColor == CTLCOLOR_DLG)
@@ -214,6 +251,51 @@ HBRUSH CManagerDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		return (HBRUSH)m_dark_brush.GetSafeHandle();
 	}
 	return CDialog::OnCtlColor(pDC, pWnd, nCtlColor);
+}
+
+void CManagerDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
+{
+	if (lpDrawItemStruct->CtlType == ODT_BUTTON)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect r = lpDrawItemStruct->rcItem;
+
+		bool isPressed = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
+		bool isPrimary = (nIDCtl == IDOK || nIDCtl == IDC_MA_ADD_BTN);
+
+		COLORREF bgCol, borderCol, textCol;
+		if (isPrimary)
+		{
+			bgCol = isPressed ? RGB(29, 78, 216) : COLOR_ACCENT_BLUE; // #1D4ED8 : #2563EB
+			borderCol = RGB(59, 130, 246);
+			textCol = RGB(255, 255, 255);
+		}
+		else
+		{
+			bgCol = isPressed ? COLOR_BG_DARK : RGB(30, 41, 59);      // #12141A : #1E293B
+			borderCol = COLOR_DARK_GRAY_BORDER;
+			textCol = COLOR_TEXT_PRIMARY;
+		}
+
+		dc.FillSolidRect(r, bgCol);
+		dc.Draw3dRect(r, borderCol, borderCol);
+
+		CString text;
+		CWnd* pBtn = GetDlgItem(nIDCtl);
+		if (pBtn)
+			pBtn->GetWindowText(text);
+
+		dc.SetBkMode(TRANSPARENT);
+		dc.SetTextColor(textCol);
+		CFont* pOldFont = dc.SelectObject(&m_font);
+		dc.DrawText(text, r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		dc.SelectObject(pOldFont);
+
+		dc.Detach();
+		return;
+	}
+	CDialog::OnDrawItem(nIDCtl, lpDrawItemStruct);
 }
 
 std::wstring CManagerDialog::GetStockName(const std::wstring& code)
@@ -356,9 +438,9 @@ void CManagerDialog::UpdateControlsLayout()
 		return;
 
 	int rightLeft = m_menu_width + g_data.DPI(18);
-	int rightTop = g_data.DPI(65);
+	int rightTop = g_data.DPI(72);
 	int rightWidth = clientRect.Width() - rightLeft - g_data.DPI(18);
-	int rightBottom = clientRect.Height() - g_data.DPI(50);
+	int rightBottom = clientRect.Height() - g_data.DPI(52);
 
 	// 基础设置控件列表
 	const int basicControlIds[] = {
@@ -379,47 +461,47 @@ void CManagerDialog::UpdateControlsLayout()
 
 	if (isBasic)
 	{
-		// 卡片 1 内部控件布局 (行情与走势展示)
+		// 卡片 1: 行情与走势图展示
 		int card1Top = rightTop;
 		CWnd* pChk1 = GetDlgItem(IDC_FULL_DAY_CHECK);
 		CWnd* pChk2 = GetDlgItem(IDC_SHOW_STOCK_NAME_CHECK);
 		CWnd* pChk3 = GetDlgItem(IDC_COLOR_WITH_PRICE_CHECK);
 		CWnd* pChk4 = GetDlgItem(IDC_SHOW_FLUCTUATION_CHECK);
 
-		int chkW = g_data.DPI(135);
-		int chkH = g_data.DPI(20);
-		if (pChk1 && pChk1->GetSafeHwnd()) pChk1->MoveWindow(rightLeft + g_data.DPI(16), card1Top + g_data.DPI(30), chkW, chkH);
-		if (pChk2 && pChk2->GetSafeHwnd()) pChk2->MoveWindow(rightLeft + g_data.DPI(170), card1Top + g_data.DPI(30), chkW, chkH);
-		if (pChk3 && pChk3->GetSafeHwnd()) pChk3->MoveWindow(rightLeft + g_data.DPI(16), card1Top + g_data.DPI(56), chkW, chkH);
-		if (pChk4 && pChk4->GetSafeHwnd()) pChk4->MoveWindow(rightLeft + g_data.DPI(170), card1Top + g_data.DPI(56), chkW, chkH);
+		int chkW = g_data.DPI(145);
+		int chkH = g_data.DPI(22);
+		if (pChk1 && pChk1->GetSafeHwnd()) pChk1->MoveWindow(rightLeft + g_data.DPI(18), card1Top + g_data.DPI(34), chkW, chkH);
+		if (pChk2 && pChk2->GetSafeHwnd()) pChk2->MoveWindow(rightLeft + g_data.DPI(185), card1Top + g_data.DPI(34), chkW, chkH);
+		if (pChk3 && pChk3->GetSafeHwnd()) pChk3->MoveWindow(rightLeft + g_data.DPI(18), card1Top + g_data.DPI(64), chkW, chkH);
+		if (pChk4 && pChk4->GetSafeHwnd()) pChk4->MoveWindow(rightLeft + g_data.DPI(185), card1Top + g_data.DPI(64), chkW, chkH);
 
-		// 卡片 2 内部控件布局 (走势图尺寸)
-		int card2Top = card1Top + g_data.DPI(92);
+		// 卡片 2: 走势图尺寸配置
+		int card2Top = card1Top + g_data.DPI(102);
 		CWnd* pKWLbl = GetDlgItem(IDC_KLINE_WIDTH_STATIC);
 		CWnd* pKWEdit = GetDlgItem(IDC_KLINE_WIDTH_EDIT);
 		CWnd* pKHLbl = GetDlgItem(IDC_KLINE_HEIGHT_STATIC);
 		CWnd* pKHEdit = GetDlgItem(IDC_KLINE_HEIGHT_EDIT);
 
-		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(16), card2Top + g_data.DPI(33), g_data.DPI(85), g_data.DPI(18));
-		if (pKWEdit && pKWEdit->GetSafeHwnd()) pKWEdit->MoveWindow(rightLeft + g_data.DPI(105), card2Top + g_data.DPI(30), g_data.DPI(65), g_data.DPI(22));
-		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(195), card2Top + g_data.DPI(33), g_data.DPI(85), g_data.DPI(18));
-		if (pKHEdit && pKHEdit->GetSafeHwnd()) pKHEdit->MoveWindow(rightLeft + g_data.DPI(285), card2Top + g_data.DPI(30), g_data.DPI(65), g_data.DPI(22));
+		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(36), g_data.DPI(90), g_data.DPI(20));
+		if (pKWEdit && pKWEdit->GetSafeHwnd()) pKWEdit->MoveWindow(rightLeft + g_data.DPI(112), card2Top + g_data.DPI(33), g_data.DPI(70), g_data.DPI(24));
+		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(210), card2Top + g_data.DPI(36), g_data.DPI(90), g_data.DPI(20));
+		if (pKHEdit && pKHEdit->GetSafeHwnd()) pKHEdit->MoveWindow(rightLeft + g_data.DPI(304), card2Top + g_data.DPI(33), g_data.DPI(70), g_data.DPI(24));
 
-		// 卡片 3 内部控件布局 (SOCKS5 代理)
-		int card3Top = card2Top + g_data.DPI(72);
+		// 卡片 3: SOCKS5 代理网络
+		int card3Top = card2Top + g_data.DPI(76);
 		CWnd* pProxyChk = GetDlgItem(IDC_USE_SOCKS5_PROXY_CHECK);
 		CWnd* pProxyLbl = GetDlgItem(IDC_SOCKS5_PROXY_STATIC);
 		CWnd* pProxyEdit = GetDlgItem(IDC_SOCKS5_PROXY_EDIT);
 
-		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(16), card3Top + g_data.DPI(31), g_data.DPI(135), g_data.DPI(20));
-		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(160), card3Top + g_data.DPI(33), g_data.DPI(60), g_data.DPI(18));
-		if (pProxyEdit && pProxyEdit->GetSafeHwnd()) pProxyEdit->MoveWindow(rightLeft + g_data.DPI(225), card3Top + g_data.DPI(30), min(g_data.DPI(180), rightWidth - g_data.DPI(235)), g_data.DPI(22));
+		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), card3Top + g_data.DPI(34), g_data.DPI(140), g_data.DPI(22));
+		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(170), card3Top + g_data.DPI(36), g_data.DPI(65), g_data.DPI(20));
+		if (pProxyEdit && pProxyEdit->GetSafeHwnd()) pProxyEdit->MoveWindow(rightLeft + g_data.DPI(240), card3Top + g_data.DPI(33), min(g_data.DPI(190), rightWidth - g_data.DPI(250)), g_data.DPI(24));
 	}
 
 	// 分组管理控件布局
 	bool isGroup = (m_current_page == PAGE_GROUPS);
-	int listTop = rightTop + g_data.DPI(38);
-	int listHeight = rightBottom - listTop - g_data.DPI(40);
+	int listTop = rightTop + g_data.DPI(42);
+	int listHeight = rightBottom - listTop - g_data.DPI(44);
 
 	m_stock_listctrl.ShowWindow((isGroup && m_current_group_tab == TAB_WATCHLIST) ? SW_SHOW : SW_HIDE);
 	m_pos_listctrl.ShowWindow((isGroup && m_current_group_tab == TAB_POSITIONS) ? SW_SHOW : SW_HIDE);
@@ -435,9 +517,9 @@ void CManagerDialog::UpdateControlsLayout()
 		else if (m_current_group_tab == TAB_CUSTOM && m_custom_listctrl.GetSafeHwnd())
 			m_custom_listctrl.MoveWindow(listRect);
 
-		int btnTop = listTop + listHeight + g_data.DPI(8);
-		int btnW = g_data.DPI(65);
-		int btnH = g_data.DPI(25);
+		int btnTop = listTop + listHeight + g_data.DPI(10);
+		int btnW = g_data.DPI(72);
+		int btnH = g_data.DPI(26);
 		int btnGap = g_data.DPI(8);
 
 		m_mgr_add_btn.ShowWindow(SW_SHOW);
@@ -476,11 +558,11 @@ void CManagerDialog::UpdateControlsLayout()
 
 	if (isMa)
 	{
-		int maInputTop = rightTop + g_data.DPI(120);
+		int maInputTop = rightTop + g_data.DPI(130);
 		if (m_ma_input_edit.GetSafeHwnd())
-			m_ma_input_edit.MoveWindow(rightLeft + g_data.DPI(120), maInputTop, g_data.DPI(75), g_data.DPI(24));
+			m_ma_input_edit.MoveWindow(rightLeft + g_data.DPI(145), maInputTop, g_data.DPI(75), g_data.DPI(26));
 		if (m_ma_add_btn.GetSafeHwnd())
-			m_ma_add_btn.MoveWindow(rightLeft + g_data.DPI(205), maInputTop, g_data.DPI(75), g_data.DPI(24));
+			m_ma_add_btn.MoveWindow(rightLeft + g_data.DPI(230), maInputTop, g_data.DPI(80), g_data.DPI(26));
 	}
 
 	// WebDAV 云端备份控件布局
@@ -503,59 +585,59 @@ void CManagerDialog::UpdateControlsLayout()
 
 	if (isWebDav)
 	{
-		int wdTop = rightTop + g_data.DPI(28);
-		int lblW = g_data.DPI(80);
-		int editW = min(g_data.DPI(280), rightWidth - lblW - g_data.DPI(30));
-		int rowH = g_data.DPI(26);
+		int wdTop = rightTop + g_data.DPI(34);
+		int lblW = g_data.DPI(85);
+		int editW = min(g_data.DPI(300), rightWidth - lblW - g_data.DPI(36));
+		int rowH = g_data.DPI(28);
 
 		CWnd* pUrlLbl = GetDlgItem(IDC_WEBDAV_URL_STATIC);
 		CWnd* pUrlEdit = GetDlgItem(IDC_WEBDAV_URL_EDIT);
-		if (pUrlLbl && pUrlLbl->GetSafeHwnd()) pUrlLbl->MoveWindow(rightLeft + g_data.DPI(16), wdTop + g_data.DPI(3), lblW, g_data.DPI(18));
-		if (pUrlEdit && pUrlEdit->GetSafeHwnd()) pUrlEdit->MoveWindow(rightLeft + g_data.DPI(16) + lblW, wdTop, editW, g_data.DPI(22));
+		if (pUrlLbl && pUrlLbl->GetSafeHwnd()) pUrlLbl->MoveWindow(rightLeft + g_data.DPI(18), wdTop + g_data.DPI(3), lblW, g_data.DPI(20));
+		if (pUrlEdit && pUrlEdit->GetSafeHwnd()) pUrlEdit->MoveWindow(rightLeft + g_data.DPI(18) + lblW, wdTop, editW, g_data.DPI(24));
 		wdTop += rowH;
 
 		CWnd* pUsrLbl = GetDlgItem(IDC_WEBDAV_USER_STATIC);
 		CWnd* pUsrEdit = GetDlgItem(IDC_WEBDAV_USER_EDIT);
-		if (pUsrLbl && pUsrLbl->GetSafeHwnd()) pUsrLbl->MoveWindow(rightLeft + g_data.DPI(16), wdTop + g_data.DPI(3), lblW, g_data.DPI(18));
-		if (pUsrEdit && pUsrEdit->GetSafeHwnd()) pUsrEdit->MoveWindow(rightLeft + g_data.DPI(16) + lblW, wdTop, editW, g_data.DPI(22));
+		if (pUsrLbl && pUsrLbl->GetSafeHwnd()) pUsrLbl->MoveWindow(rightLeft + g_data.DPI(18), wdTop + g_data.DPI(3), lblW, g_data.DPI(20));
+		if (pUsrEdit && pUsrEdit->GetSafeHwnd()) pUsrEdit->MoveWindow(rightLeft + g_data.DPI(18) + lblW, wdTop, editW, g_data.DPI(24));
 		wdTop += rowH;
 
 		CWnd* pPwdLbl = GetDlgItem(IDC_WEBDAV_PWD_STATIC);
 		CWnd* pPwdEdit = GetDlgItem(IDC_WEBDAV_PWD_EDIT);
-		if (pPwdLbl && pPwdLbl->GetSafeHwnd()) pPwdLbl->MoveWindow(rightLeft + g_data.DPI(16), wdTop + g_data.DPI(3), lblW, g_data.DPI(18));
-		if (pPwdEdit && pPwdEdit->GetSafeHwnd()) pPwdEdit->MoveWindow(rightLeft + g_data.DPI(16) + lblW, wdTop, editW, g_data.DPI(22));
+		if (pPwdLbl && pPwdLbl->GetSafeHwnd()) pPwdLbl->MoveWindow(rightLeft + g_data.DPI(18), wdTop + g_data.DPI(3), lblW, g_data.DPI(20));
+		if (pPwdEdit && pPwdEdit->GetSafeHwnd()) pPwdEdit->MoveWindow(rightLeft + g_data.DPI(18) + lblW, wdTop, editW, g_data.DPI(24));
 		wdTop += rowH;
 
 		CWnd* pDirLbl = GetDlgItem(IDC_WEBDAV_DIR_STATIC);
 		CWnd* pDirEdit = GetDlgItem(IDC_WEBDAV_DIR_EDIT);
-		if (pDirLbl && pDirLbl->GetSafeHwnd()) pDirLbl->MoveWindow(rightLeft + g_data.DPI(16), wdTop + g_data.DPI(3), lblW, g_data.DPI(18));
-		if (pDirEdit && pDirEdit->GetSafeHwnd()) pDirEdit->MoveWindow(rightLeft + g_data.DPI(16) + lblW, wdTop, editW, g_data.DPI(22));
-		wdTop += rowH + g_data.DPI(16);
+		if (pDirLbl && pDirLbl->GetSafeHwnd()) pDirLbl->MoveWindow(rightLeft + g_data.DPI(18), wdTop + g_data.DPI(3), lblW, g_data.DPI(20));
+		if (pDirEdit && pDirEdit->GetSafeHwnd()) pDirEdit->MoveWindow(rightLeft + g_data.DPI(18) + lblW, wdTop, editW, g_data.DPI(24));
+		wdTop += rowH + g_data.DPI(26);
 
 		CWnd* pSyncChk = GetDlgItem(IDC_WEBDAV_AUTO_SYNC_CHECK);
 		CWnd* pBakChk = GetDlgItem(IDC_WEBDAV_AUTO_BACKUP_CHECK);
-		if (pSyncChk && pSyncChk->GetSafeHwnd()) pSyncChk->MoveWindow(rightLeft + g_data.DPI(16), wdTop, g_data.DPI(240), g_data.DPI(20));
-		wdTop += g_data.DPI(24);
-		if (pBakChk && pBakChk->GetSafeHwnd()) pBakChk->MoveWindow(rightLeft + g_data.DPI(16), wdTop, g_data.DPI(240), g_data.DPI(20));
-		wdTop += g_data.DPI(28);
+		if (pSyncChk && pSyncChk->GetSafeHwnd()) pSyncChk->MoveWindow(rightLeft + g_data.DPI(18), wdTop, g_data.DPI(260), g_data.DPI(22));
+		wdTop += g_data.DPI(26);
+		if (pBakChk && pBakChk->GetSafeHwnd()) pBakChk->MoveWindow(rightLeft + g_data.DPI(18), wdTop, g_data.DPI(260), g_data.DPI(22));
+		wdTop += g_data.DPI(30);
 
-		int wdBtnW = g_data.DPI(80);
-		int wdBtnH = g_data.DPI(26);
-		int wdGap = g_data.DPI(10);
+		int wdBtnW = g_data.DPI(85);
+		int wdBtnH = g_data.DPI(28);
+		int wdGap = g_data.DPI(12);
 		CWnd* pTestBtn = GetDlgItem(IDC_WEBDAV_TEST_BTN);
 		CWnd* pUpBtn = GetDlgItem(IDC_WEBDAV_UPLOAD_BTN);
 		CWnd* pDownBtn = GetDlgItem(IDC_WEBDAV_DOWNLOAD_BTN);
-		if (pTestBtn && pTestBtn->GetSafeHwnd()) pTestBtn->MoveWindow(rightLeft + g_data.DPI(16), wdTop, wdBtnW, wdBtnH);
-		if (pUpBtn && pUpBtn->GetSafeHwnd()) pUpBtn->MoveWindow(rightLeft + g_data.DPI(16) + wdBtnW + wdGap, wdTop, wdBtnW + g_data.DPI(15), wdBtnH);
-		if (pDownBtn && pDownBtn->GetSafeHwnd()) pDownBtn->MoveWindow(rightLeft + g_data.DPI(16) + (wdBtnW + wdGap) * 2 + g_data.DPI(15), wdTop, wdBtnW + g_data.DPI(15), wdBtnH);
+		if (pTestBtn && pTestBtn->GetSafeHwnd()) pTestBtn->MoveWindow(rightLeft + g_data.DPI(18), wdTop, wdBtnW, wdBtnH);
+		if (pUpBtn && pUpBtn->GetSafeHwnd()) pUpBtn->MoveWindow(rightLeft + g_data.DPI(18) + wdBtnW + wdGap, wdTop, wdBtnW + g_data.DPI(15), wdBtnH);
+		if (pDownBtn && pDownBtn->GetSafeHwnd()) pDownBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap) * 2 + g_data.DPI(15), wdTop, wdBtnW + g_data.DPI(15), wdBtnH);
 	}
 
 	// 底部确定与取消按钮
 	CWnd* pOkBtn = GetDlgItem(IDOK);
 	CWnd* pCancelBtn = GetDlgItem(IDCANCEL);
-	int okBtnW = g_data.DPI(72);
-	int okBtnH = g_data.DPI(26);
-	int btnY = clientRect.Height() - g_data.DPI(38);
+	int okBtnW = g_data.DPI(75);
+	int okBtnH = g_data.DPI(28);
+	int btnY = clientRect.Height() - g_data.DPI(40);
 
 	if (pCancelBtn && pCancelBtn->GetSafeHwnd())
 		pCancelBtn->MoveWindow(clientRect.Width() - okBtnW - g_data.DPI(18), btnY, okBtnW, okBtnH);
@@ -584,8 +666,8 @@ void CManagerDialog::OnPaint()
 	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 	g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
 
-	// 整体背景填充 (深邃科技黑 #0B0F19)
-	Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 11, 15, 25));
+	// 整体深色底 (#12141A)
+	Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 18, 20, 26));
 	g.FillRectangle(&bgBrush, 0, 0, clientRect.Width(), clientRect.Height());
 
 	// 绘制左侧导航菜单
@@ -594,7 +676,7 @@ void CManagerDialog::OnPaint()
 	// 绘制右侧内容头部
 	DrawHeader(g, clientRect);
 
-	CRect contentRect(m_menu_width + g_data.DPI(18), g_data.DPI(65), clientRect.Width() - g_data.DPI(18), clientRect.Height() - g_data.DPI(50));
+	CRect contentRect(m_menu_width + g_data.DPI(18), g_data.DPI(72), clientRect.Width() - g_data.DPI(18), clientRect.Height() - g_data.DPI(52));
 
 	switch (m_current_page)
 	{
@@ -626,31 +708,31 @@ void CManagerDialog::OnPaint()
 
 void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 {
-	// 侧边栏背景
-	Gdiplus::SolidBrush sideBrush(Gdiplus::Color(255, 17, 24, 39)); // Gray 900
+	// 侧边栏深色底 (#14161D)
+	Gdiplus::SolidBrush sideBrush(Gdiplus::Color(255, 20, 22, 29));
 	g.FillRectangle(&sideBrush, 0, 0, m_menu_width, clientRect.Height());
 
-	// 侧边栏右侧分割线
-	Gdiplus::Pen divPen(Gdiplus::Color(255, 31, 41, 55), 1.0f);
+	// 侧边栏右侧暗黑细线 (#262A36)
+	Gdiplus::Pen divPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 	g.DrawLine(&divPen, m_menu_width, 0, m_menu_width, clientRect.Height());
 
-	// 侧边栏顶部品牌图标与标题
-	Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 99, 102, 241)); // Indigo 500
-	g.FillEllipse(&dotBrush, g_data.DPI(16), g_data.DPI(18), g_data.DPI(10), g_data.DPI(10));
+	// 侧边栏顶部品牌标识
+	Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 37, 99, 235)); // Accent Blue
+	g.FillEllipse(&dotBrush, g_data.DPI(16), g_data.DPI(18), g_data.DPI(9), g_data.DPI(9));
 
-	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 248, 250, 252));
-	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(32)), static_cast<Gdiplus::REAL>(g_data.DPI(14))), &titleBrush);
+	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
+	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(14))), &titleBrush);
 
 	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"云端备份", L"关于插件" };
 	int menuCount = 6;
-	int itemH = g_data.DPI(34);
-	int itemTop = g_data.DPI(48);
-	int itemPadX = g_data.DPI(10);
+	int itemH = g_data.DPI(36);
+	int itemTop = g_data.DPI(50);
+	int itemPadX = g_data.DPI(8);
 	int itemW = m_menu_width - (itemPadX * 2);
 
-	Gdiplus::Font menuFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::Font menuActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font menuFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font menuActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	Gdiplus::StringFormat sf;
 	sf.SetAlignment(Gdiplus::StringAlignmentNear);
@@ -665,10 +747,10 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 
 		if (i == m_current_page)
 		{
-			Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 79, 70, 229)); // Vibrant Indigo
+			Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 28, 45, 75)); // #1C2D4B
 			g.FillRectangle(&activeBg, rf);
 
-			Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 165, 180, 252));
+			Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 37, 99, 235)); // Left Blue Accent
 			g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(r.left), static_cast<Gdiplus::REAL>(r.top), static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(r.Height()));
 
 			Gdiplus::SolidBrush txtBrush(Gdiplus::Color(255, 255, 255, 255));
@@ -679,11 +761,11 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 		{
 			if (i == m_hover_menu)
 			{
-				Gdiplus::SolidBrush hoverBg(Gdiplus::Color(255, 31, 41, 55));
+				Gdiplus::SolidBrush hoverBg(Gdiplus::Color(255, 24, 27, 34));
 				g.FillRectangle(&hoverBg, rf);
 			}
 
-			Gdiplus::SolidBrush txtBrush(i == m_hover_menu ? Gdiplus::Color(255, 226, 232, 240) : Gdiplus::Color(255, 156, 163, 175));
+			Gdiplus::SolidBrush txtBrush(i == m_hover_menu ? Gdiplus::Color(255, 241, 245, 249) : Gdiplus::Color(255, 148, 163, 184));
 			Gdiplus::RectF textRf(static_cast<Gdiplus::REAL>(r.left + g_data.DPI(14)), static_cast<Gdiplus::REAL>(r.top), static_cast<Gdiplus::REAL>(r.Width() - g_data.DPI(14)), static_cast<Gdiplus::REAL>(r.Height()));
 			g.DrawString(menuTitles[i], -1, &menuFont, textRf, &sf, &txtBrush);
 		}
@@ -699,35 +781,35 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 
 	const wchar_t* titles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"云端备份", L"关于插件" };
 	const wchar_t* subs[] = {
-		L"配置全天更新、代理网络及K线走势图尺寸",
-		L"点击选择展示的指数，前 5 个展示在首页顶部",
+		L"配置全天更新、代理网络及走势图尺寸参数",
+		L"点击卡片选择展示的指数，前 5 个展示在首页顶部",
 		L"管理自选股票列表、持仓配置与自定义分组",
-		L"自定义均线周期（最多 5 条；点标签删除；点添加新增）",
-		L"基于 WebDAV 协议在多台电脑间安全同步自选股与全部插件配置",
+		L"自定义均线周期（最多 5 条；点标签右上角 × 删除；在下方输入添加）",
+		L"基于 WebDAV 协议在多台电脑间安全备份与同步配置",
 		L"TrafficMonitor 专业级股票行情监控插件"
 	};
 
-	Gdiplus::Font headFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush headBrush(Gdiplus::Color(255, 248, 250, 252));
+	Gdiplus::Font headFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(14)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush headBrush(Gdiplus::Color(255, 241, 245, 249));
 	g.DrawString(titles[m_current_page], -1, &headFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(headerTop)), &headBrush);
 
-	Gdiplus::Font subFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font subFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush subBrush(Gdiplus::Color(255, 148, 163, 184));
 
 	std::wstring subText = subs[m_current_page];
 	if (m_current_page == PAGE_INDEX)
 	{
-		subText = L"点击选择展示的指数，前 5 个展示在首页顶部 (已选: " + std::to_wstring(m_data.m_selected_indices.size()) + L")";
+		subText = L"点击卡片选择展示的指数，前 5 个展示在首页顶部 (已选: " + std::to_wstring(m_data.m_selected_indices.size()) + L")";
 	}
 	else if (m_current_page == PAGE_MA)
 	{
-		subText = L"最多 5 条；点标签删除；点添加新增。已选 (" + std::to_wstring(m_data.m_ma_days.size()) + L"/5)";
+		subText = L"最多 5 条；点标签右上角 × 删除；在下方输入添加。已选 (" + std::to_wstring(m_data.m_ma_days.size()) + L"/5)";
 	}
 
-	g.DrawString(subText.c_str(), -1, &subFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(headerTop + g_data.DPI(22))), &subBrush);
+	g.DrawString(subText.c_str(), -1, &subFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(headerTop + g_data.DPI(24))), &subBrush);
 
-	Gdiplus::Pen divPen(Gdiplus::Color(255, 30, 41, 59), 1.0f);
-	g.DrawLine(&divPen, rightLeft, g_data.DPI(52), clientRect.Width() - g_data.DPI(18), g_data.DPI(52));
+	Gdiplus::Pen divPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+	g.DrawLine(&divPen, rightLeft, g_data.DPI(56), clientRect.Width() - g_data.DPI(18), g_data.DPI(56));
 }
 
 void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRect)
@@ -735,39 +817,39 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	int rightLeft = contentRect.left;
 	int rightWidth = contentRect.Width();
 
-	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 30, 41, 59));
-	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 51, 65, 85), 1.0f);
-	Gdiplus::Font cardTitleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));      // #181B22
+	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);   // #262A36
+	Gdiplus::Font cardTitleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
-	// 卡片 1: 走势与行情展示
+	// 卡片 1: 行情与走势展示
 	int card1Top = contentRect.top;
-	int card1H = g_data.DPI(84);
+	int card1H = g_data.DPI(92);
 	Gdiplus::RectF card1Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card1Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card1H));
 	g.FillRectangle(&cardBg, card1Rf);
 	g.DrawRectangle(&cardBorder, card1Rf);
 
-	Gdiplus::SolidBrush title1Brush(Gdiplus::Color(255, 56, 189, 248)); // Sky 400
-	g.DrawString(L"📈 行情与走势图展示", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(12)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(8))), &title1Brush);
+	Gdiplus::SolidBrush title1Brush(Gdiplus::Color(255, 56, 189, 248)); // Cyan Accent #38BDF8
+	g.DrawString(L"◆ 行情与走势图展示", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(14)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(10))), &title1Brush);
 
 	// 卡片 2: 走势图尺寸配置
 	int card2Top = card1Top + card1H + g_data.DPI(10);
-	int card2H = g_data.DPI(60);
+	int card2H = g_data.DPI(66);
 	Gdiplus::RectF card2Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card2Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card2H));
 	g.FillRectangle(&cardBg, card2Rf);
 	g.DrawRectangle(&cardBorder, card2Rf);
 
-	Gdiplus::SolidBrush title2Brush(Gdiplus::Color(255, 192, 132, 252)); // Purple 400
-	g.DrawString(L"📐 走势图高清尺寸 (像素)", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(12)), static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(8))), &title2Brush);
+	Gdiplus::SolidBrush title2Brush(Gdiplus::Color(255, 192, 132, 252)); // Purple Accent #C084FC
+	g.DrawString(L"◆ 走势图高清尺寸 (像素)", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(14)), static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(10))), &title2Brush);
 
-	// 卡片 3: 网络与代理设置
+	// 卡片 3: SOCKS5 代理网络
 	int card3Top = card2Top + card2H + g_data.DPI(10);
-	int card3H = g_data.DPI(60);
+	int card3H = g_data.DPI(66);
 	Gdiplus::RectF card3Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card3Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card3H));
 	g.FillRectangle(&cardBg, card3Rf);
 	g.DrawRectangle(&cardBorder, card3Rf);
 
-	Gdiplus::SolidBrush title3Brush(Gdiplus::Color(255, 52, 211, 153)); // Emerald 400
-	g.DrawString(L"🌐 SOCKS5 代理网络", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(12)), static_cast<Gdiplus::REAL>(card3Top + g_data.DPI(8))), &title3Brush);
+	Gdiplus::SolidBrush title3Brush(Gdiplus::Color(255, 14, 203, 129)); // Emerald Accent #0ECB81
+	g.DrawString(L"◆ SOCKS5 代理网络", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(14)), static_cast<Gdiplus::REAL>(card3Top + g_data.DPI(10))), &title3Brush);
 }
 
 void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect)
@@ -777,14 +859,14 @@ void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRec
 	m_index_card_rects.resize(presets.size());
 
 	int cols = 3;
-	int cardGapX = g_data.DPI(12);
-	int cardGapY = g_data.DPI(10);
+	int cardGapX = g_data.DPI(10);
+	int cardGapY = g_data.DPI(8);
 	int cardW = (contentRect.Width() - (cardGapX * (cols - 1))) / cols;
-	int cardH = g_data.DPI(44);
+	int cardH = g_data.DPI(46);
 
-	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::Font codeFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::Font rankFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font codeFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font rankFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	for (size_t i = 0; i < presets.size(); ++i)
 	{
@@ -804,45 +886,45 @@ void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRec
 
 		if (isSelected)
 		{
-			Gdiplus::SolidBrush selBg(Gdiplus::Color(255, 79, 70, 229));
+			Gdiplus::SolidBrush selBg(Gdiplus::Color(255, 28, 45, 75)); // #1C2D4B
 			g.FillRectangle(&selBg, rf);
 
-			Gdiplus::Pen borderPen(Gdiplus::Color(255, 165, 180, 252), 1.0f);
+			Gdiplus::Pen borderPen(Gdiplus::Color(255, 37, 99, 235), 1.2f); // #2563EB
 			g.DrawRectangle(&borderPen, rf);
 
 			if (rank <= 5)
 			{
-				Gdiplus::SolidBrush rankBg(Gdiplus::Color(255, 238, 242, 255));
-				g.FillEllipse(&rankBg, x + cardW - g_data.DPI(22), y + g_data.DPI(8), g_data.DPI(15), g_data.DPI(15));
+				Gdiplus::SolidBrush rankBg(Gdiplus::Color(255, 37, 99, 235));
+				g.FillEllipse(&rankBg, x + cardW - g_data.DPI(24), y + g_data.DPI(8), g_data.DPI(16), g_data.DPI(16));
 
-				Gdiplus::SolidBrush rankTxtBrush(Gdiplus::Color(255, 67, 56, 202));
+				Gdiplus::SolidBrush rankTxtBrush(Gdiplus::Color(255, 255, 255, 255));
 				Gdiplus::StringFormat sfRank;
 				sfRank.SetAlignment(Gdiplus::StringAlignmentCenter);
 				sfRank.SetLineAlignment(Gdiplus::StringAlignmentCenter);
 				std::wstring rankStr = std::to_wstring(rank);
-				Gdiplus::RectF rankRf(static_cast<Gdiplus::REAL>(x + cardW - g_data.DPI(22)), static_cast<Gdiplus::REAL>(y + g_data.DPI(8)), static_cast<Gdiplus::REAL>(g_data.DPI(15)), static_cast<Gdiplus::REAL>(g_data.DPI(15)));
+				Gdiplus::RectF rankRf(static_cast<Gdiplus::REAL>(x + cardW - g_data.DPI(24)), static_cast<Gdiplus::REAL>(y + g_data.DPI(8)), static_cast<Gdiplus::REAL>(g_data.DPI(16)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
 				g.DrawString(rankStr.c_str(), -1, &rankFont, rankRf, &sfRank, &rankTxtBrush);
 			}
 
 			Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 255, 255, 255));
 			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(7))), &nameBrush);
 
-			Gdiplus::SolidBrush codeBrush(Gdiplus::Color(255, 224, 231, 255));
-			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(24))), &codeBrush);
+			Gdiplus::SolidBrush codeBrush(Gdiplus::Color(255, 147, 197, 253));
+			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(25))), &codeBrush);
 		}
 		else
 		{
-			Gdiplus::SolidBrush unselBg(Gdiplus::Color(255, 30, 41, 59));
+			Gdiplus::SolidBrush unselBg(Gdiplus::Color(255, 24, 27, 34)); // #181B22
 			g.FillRectangle(&unselBg, rf);
 
-			Gdiplus::Pen borderPen(static_cast<int>(i) == m_hover_index_card ? Gdiplus::Color(255, 148, 163, 184) : Gdiplus::Color(255, 51, 65, 85), 1.0f);
+			Gdiplus::Pen borderPen(static_cast<int>(i) == m_hover_index_card ? Gdiplus::Color(255, 100, 116, 139) : Gdiplus::Color(255, 38, 42, 54), 1.0f);
 			g.DrawRectangle(&borderPen, rf);
 
 			Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 226, 232, 240));
 			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(7))), &nameBrush);
 
 			Gdiplus::SolidBrush codeBrush(Gdiplus::Color(255, 100, 116, 139));
-			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(24))), &codeBrush);
+			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(25))), &codeBrush);
 		}
 	}
 }
@@ -851,16 +933,16 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 {
 	const wchar_t* groupTabs[] = { L"自选股", L"持仓", L"自定义" };
 	int tabCount = 3;
-	int tabW = g_data.DPI(75);
-	int tabH = g_data.DPI(26);
+	int tabW = g_data.DPI(80);
+	int tabH = g_data.DPI(28);
 	int tabGap = g_data.DPI(6);
 	int tabTop = contentRect.top;
 
 	m_group_tab_rects.clear();
 	m_group_tab_rects.resize(tabCount);
 
-	Gdiplus::Font tabFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::Font tabActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font tabFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font tabActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	Gdiplus::StringFormat sf;
 	sf.SetAlignment(Gdiplus::StringAlignmentCenter);
@@ -876,7 +958,7 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 
 		if (i == m_current_group_tab)
 		{
-			Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 79, 70, 229));
+			Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 37, 99, 235)); // #2563EB
 			g.FillRectangle(&activeBg, rf);
 
 			Gdiplus::SolidBrush txtBrush(Gdiplus::Color(255, 255, 255, 255));
@@ -884,10 +966,10 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 		}
 		else
 		{
-			Gdiplus::SolidBrush unselBg(i == m_hover_group_tab ? Gdiplus::Color(255, 51, 65, 85) : Gdiplus::Color(255, 30, 41, 59));
+			Gdiplus::SolidBrush unselBg(i == m_hover_group_tab ? Gdiplus::Color(255, 38, 42, 54) : Gdiplus::Color(255, 24, 27, 34));
 			g.FillRectangle(&unselBg, rf);
 
-			Gdiplus::Pen borderPen(Gdiplus::Color(255, 51, 65, 85), 1.0f);
+			Gdiplus::Pen borderPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 			g.DrawRectangle(&borderPen, rf);
 
 			Gdiplus::SolidBrush txtBrush(Gdiplus::Color(255, 148, 163, 184));
@@ -903,37 +985,37 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 	m_ma_tag_rects.resize(m_data.m_ma_days.size());
 	m_ma_tag_del_rects.resize(m_data.m_ma_days.size());
 
-	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(g_data.DPI(100)));
-	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 30, 41, 59));
+	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(g_data.DPI(110)));
+	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 24, 27, 34));
 	g.FillRectangle(&panelBg, panelRf);
-	Gdiplus::Pen panelPen(Gdiplus::Color(255, 51, 65, 85), 1.0f);
+	Gdiplus::Pen panelPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 	g.DrawRectangle(&panelPen, panelRf);
 
-	Gdiplus::Font labelFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 226, 232, 240));
-	g.DrawString(L"当前均线周期：", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(contentRect.left + g_data.DPI(14)), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(14))), &labelBrush);
+	Gdiplus::Font labelFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 241, 245, 249));
+	g.DrawString(L"◆ 当前均线周期配置 (点击右上角 × 删除)", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(contentRect.left + g_data.DPI(14)), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(12))), &labelBrush);
 
 	int tagLeft = contentRect.left + g_data.DPI(14);
-	int tagTop = contentRect.top + g_data.DPI(42);
-	int tagH = g_data.DPI(30);
+	int tagTop = contentRect.top + g_data.DPI(46);
+	int tagH = g_data.DPI(32);
 	int tagGap = g_data.DPI(10);
 
-	Gdiplus::Font tagFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::Font delFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font tagFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font delFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	Gdiplus::Color tagColors[] = {
-		Gdiplus::Color(255, 217, 119, 6),   // Amber (MA5)
-		Gdiplus::Color(255, 124, 58, 237),  // Violet (MA17)
-		Gdiplus::Color(255, 16, 185, 129),  // Emerald (MA60)
-		Gdiplus::Color(255, 14, 165, 233),  // Sky Blue
-		Gdiplus::Color(255, 244, 63, 94)   // Rose
+		Gdiplus::Color(255, 245, 158, 11),  // Amber (MA5) #F59E0B
+		Gdiplus::Color(255, 124, 58, 237),  // Violet (MA17) #7C3AED
+		Gdiplus::Color(255, 14, 203, 129),  // Emerald (MA60) #0ECB81
+		Gdiplus::Color(255, 56, 189, 248),  // Sky Blue #38BDF8
+		Gdiplus::Color(255, 246, 70, 93)    // Rose Red #F6465D
 	};
 
 	for (size_t i = 0; i < m_data.m_ma_days.size(); ++i)
 	{
 		int day = m_data.m_ma_days[i];
 		std::wstring tagText = L"MA" + std::to_wstring(day);
-		int tagW = g_data.DPI(80);
+		int tagW = g_data.DPI(85);
 
 		CRect tagRect(tagLeft, tagTop, tagLeft + tagW, tagTop + tagH);
 		m_ma_tag_rects[i] = tagRect;
@@ -946,7 +1028,7 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 		g.DrawString(tagText.c_str(), -1, &tagFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(tagLeft + g_data.DPI(10)), static_cast<Gdiplus::REAL>(tagTop + g_data.DPI(6))), &tagTxtBrush);
 
 		int delBtnX = tagLeft + tagW - g_data.DPI(22);
-		int delBtnY = tagTop + g_data.DPI(6);
+		int delBtnY = tagTop + g_data.DPI(7);
 		CRect delRect(delBtnX, delBtnY, delBtnX + g_data.DPI(16), delBtnY + g_data.DPI(16));
 		m_ma_tag_del_rects[i] = delRect;
 
@@ -965,9 +1047,9 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 		tagLeft += tagW + tagGap;
 	}
 
-	Gdiplus::Font addPromptFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush promptBrush(Gdiplus::Color(255, 148, 163, 184));
-	g.DrawString(L"输入均线天数 (1~250)：", -1, &addPromptFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(124))), &promptBrush);
+	Gdiplus::Font addPromptFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush promptBrush(Gdiplus::Color(255, 241, 245, 249));
+	g.DrawString(L"输入均线天数 (1~250)：", -1, &addPromptFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(134))), &promptBrush);
 }
 
 void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRect)
@@ -975,42 +1057,42 @@ void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRe
 	int rightLeft = contentRect.left;
 	int rightWidth = contentRect.Width();
 
-	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 30, 41, 59));
-	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 51, 65, 85), 1.0f);
-	Gdiplus::Font cardTitleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));
+	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+	Gdiplus::Font cardTitleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	// 卡片 1: WebDAV 服务器参数
 	int card1Top = contentRect.top;
-	int card1H = g_data.DPI(135);
+	int card1H = g_data.DPI(148);
 	Gdiplus::RectF card1Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card1Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card1H));
 	g.FillRectangle(&cardBg, card1Rf);
 	g.DrawRectangle(&cardBorder, card1Rf);
 
-	Gdiplus::SolidBrush title1Brush(Gdiplus::Color(255, 96, 165, 250)); // Blue 400
-	g.DrawString(L"☁️ WebDAV 服务器参数", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(12)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(8))), &title1Brush);
+	Gdiplus::SolidBrush title1Brush(Gdiplus::Color(255, 56, 189, 248));
+	g.DrawString(L"◆ WebDAV 服务器参数", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(14)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(10))), &title1Brush);
 
-	// 卡片 2: 状态与说明
+	// 卡片 2: 同步与备份操作
 	int card2Top = card1Top + card1H + g_data.DPI(10);
-	int card2H = g_data.DPI(110);
+	int card2H = g_data.DPI(120);
 	Gdiplus::RectF card2Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card2Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card2H));
 	g.FillRectangle(&cardBg, card2Rf);
 	g.DrawRectangle(&cardBorder, card2Rf);
 
-	Gdiplus::SolidBrush title2Brush(Gdiplus::Color(255, 52, 211, 153)); // Emerald 400
-	g.DrawString(L"⚡ 同步与备份操作", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(12)), static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(8))), &title2Brush);
+	Gdiplus::SolidBrush title2Brush(Gdiplus::Color(255, 14, 203, 129));
+	g.DrawString(L"◆ 同步与备份操作", -1, &cardTitleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(14)), static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(10))), &title2Brush);
 
-	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184));
-	int textX = rightLeft + g_data.DPI(16);
-	int textY = card2Top + g_data.DPI(75);
+	int textX = rightLeft + g_data.DPI(18);
+	int textY = card2Top + g_data.DPI(86);
 
-	g.DrawString(L"💡 支持坚果云、Nextcloud、Alist、群晖NAS等标准 WebDAV 服务。", -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &tipBrush);
+	g.DrawString(L"提示：支持坚果云、Nextcloud、Alist、群晖 NAS 等标准 WebDAV 服务。", -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &tipBrush);
 
 	if (!m_data.m_webdav_last_sync_time.empty())
 	{
 		textY += g_data.DPI(16);
-		std::wstring timeStr = L"• 上次成功同步时间: " + m_data.m_webdav_last_sync_time;
-		Gdiplus::SolidBrush succBrush(Gdiplus::Color(255, 52, 211, 153));
+		std::wstring timeStr = L"上次同步成功时间: " + m_data.m_webdav_last_sync_time;
+		Gdiplus::SolidBrush succBrush(Gdiplus::Color(255, 14, 203, 129));
 		g.DrawString(timeStr.c_str(), -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &succBrush);
 	}
 }
@@ -1018,24 +1100,24 @@ void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRe
 void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
 	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(contentRect.Height()));
-	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 30, 41, 59));
+	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 24, 27, 34));
 	g.FillRectangle(&panelBg, panelRf);
-	Gdiplus::Pen panelPen(Gdiplus::Color(255, 51, 65, 85), 1.0f);
+	Gdiplus::Pen panelPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 	g.DrawRectangle(&panelPen, panelRf);
 
 	int textX = contentRect.left + g_data.DPI(24);
 	int textY = contentRect.top + g_data.DPI(24);
 
-	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 248, 250, 252));
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(14)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 241, 245, 249));
 	g.DrawString(L"TrafficMonitor 股票行情插件 (Stock Plugin)", -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &nameBrush);
 
-	textY += g_data.DPI(30);
-	Gdiplus::Font infoFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	textY += g_data.DPI(32);
+	Gdiplus::Font infoFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush infoBrush(Gdiplus::Color(255, 148, 163, 184));
 	g.DrawString(L"版本: v1.15   |   原作者: CListery   |   开发贡献: TrafficMonitor Community", -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
 
-	textY += g_data.DPI(28);
+	textY += g_data.DPI(30);
 	const wchar_t* features[] = {
 		L"• 全天候股票/基金行情实时监测，毫秒级状态栏高频刷新",
 		L"• 高清分时走势图与多周期K线（日K/周K/月K）自绘预览",
@@ -1046,18 +1128,18 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	for (const auto* feat : features)
 	{
 		g.DrawString(feat, -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
-		textY += g_data.DPI(22);
+		textY += g_data.DPI(24);
 	}
 
-	textY += g_data.DPI(16);
+	textY += g_data.DPI(18);
 	g.DrawString(L"项目开源主页 (点击访问)：", -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
 
-	textY += g_data.DPI(20);
+	textY += g_data.DPI(22);
 	const wchar_t* url = L"https://github.com/zhongyang219/TrafficMonitorPlugins";
-	Gdiplus::SolidBrush linkBrush(Gdiplus::Color(255, 96, 165, 250));
+	Gdiplus::SolidBrush linkBrush(Gdiplus::Color(255, 56, 189, 248));
 	g.DrawString(url, -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &linkBrush);
 
-	m_about_link_rect = CRect(textX, textY, textX + g_data.DPI(320), textY + g_data.DPI(20));
+	m_about_link_rect = CRect(textX, textY, textX + g_data.DPI(340), textY + g_data.DPI(22));
 }
 
 void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
