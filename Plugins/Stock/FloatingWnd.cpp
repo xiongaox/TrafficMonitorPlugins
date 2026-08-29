@@ -2047,51 +2047,74 @@ void CFloatingWnd::UpdatePeriodComboVisibility()
 
 BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
-	// 1. 如果在非总览模式且左侧股票列表显示时，鼠标悬停在左侧股票列表区域，则滚动股票列表
-	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
+	CRect clientRect;
+	GetClientRect(&clientRect);
+
+	// 获取真实的客户区坐标（优先使用当前实时光标位置，保证高DPI/多屏下坐标精准）
+	CPoint clientPt;
+	if (::GetCursorPos(&clientPt))
 	{
-		CRect clientRect;
-		GetClientRect(&clientRect);
-		CPoint clientPt = pt;
 		ScreenToClient(&clientPt);
-
-		const int headerHeight = g_data.RDPI(26);
-		const int relatedBarHeight = 0;
-		const int indexBarHeight = g_data.RDPI(20);
-		const int stockListWidth = g_data.RDPI(86);
-
-		if (clientPt.x >= 0 && clientPt.x < stockListWidth &&
-			clientPt.y >= headerHeight + relatedBarHeight &&
-			clientPt.y < clientRect.Height() - indexBarHeight)
-		{
-			std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
-			const int rowHeight = g_data.RDPI(36);
-			const int titleH = g_data.RDPI(18);
-			int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
-			int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
-			int maxOffset = max(0, totalH - listAreaH);
-
-			if (maxOffset > 0)
-			{
-				int newOffset = m_stockListScrollOffset;
-				if (zDelta > 0)
-					newOffset -= rowHeight;  // 向上滚
-				else
-					newOffset += rowHeight;  // 向下滚
-
-				newOffset = max(0, min(newOffset, maxOffset));
-				if (newOffset != m_stockListScrollOffset)
-				{
-					m_stockListScrollOffset = newOffset;
-					Invalidate();
-				}
-			}
-			return TRUE;
-		}
+	}
+	else
+	{
+		clientPt = pt;
+		ScreenToClient(&clientPt);
+	}
+	if (!clientRect.PtInRect(clientPt) && clientRect.PtInRect(m_mousePos))
+	{
+		clientPt = m_mousePos;
 	}
 
-	// 分时图模式/K线模式：滚轮缩放可见数据点数
-	if (m_viewMode != UI_VIEW_OVERVIEW)
+	const int headerHeight = g_data.RDPI(26);
+	const int relatedBarHeight = 0;
+	const int indexBarHeight = g_data.RDPI(20);
+	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
+	const int yAxisWidth = g_data.RDPI(50);
+	const int chartLeft = stockListWidth + yAxisWidth;
+
+	bool isIndex = (GetStockPriority(m_stock_id) < 200);
+	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
+	const int chartWidth = clientRect.Width() - orderBookWidth;
+
+	// 1. 如果在非总览模式且左侧股票列表显示时，鼠标在左侧面板区域（包括左侧列表与Y轴左边缘），则滚动股票列表
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList &&
+		clientPt.x < chartLeft &&
+		clientPt.y >= headerHeight + relatedBarHeight &&
+		clientPt.y < clientRect.Height() - indexBarHeight)
+	{
+		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+		const int rowHeight = g_data.RDPI(36);
+		const int titleH = g_data.RDPI(18);
+		int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
+		int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
+		int maxOffset = max(0, totalH - listAreaH);
+
+		if (maxOffset > 0)
+		{
+			int newOffset = m_stockListScrollOffset;
+			if (zDelta > 0)
+				newOffset -= rowHeight;  // 向上滚
+			else
+				newOffset += rowHeight;  // 向下滚
+
+			newOffset = max(0, min(newOffset, maxOffset));
+			if (newOffset != m_stockListScrollOffset)
+			{
+				m_stockListScrollOffset = newOffset;
+				Invalidate();
+			}
+		}
+		return TRUE;
+	}
+
+	// 2. 只有当鼠标位于中间图表区域时，才触发分时图/K线缩放
+	bool isInChart = (clientPt.x >= chartLeft && clientPt.x < chartWidth &&
+		clientPt.y >= headerHeight + relatedBarHeight &&
+		clientPt.y < clientRect.Height() - indexBarHeight);
+
+	if (m_viewMode != UI_VIEW_OVERVIEW && isInChart)
 	{
 		int minVisible;              // 最大放大倍率：与"+"按钮一致
 		int maxVisible;              // 最小缩放上限：根据模式不同
@@ -2162,16 +2185,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		}
 		if (newCount != m_timelineVisibleCount)
 		{
-			// 计算鼠标位置对应的全局数据索引（以鼠标为中心缩放）
-			CRect clientRect;
-			GetClientRect(&clientRect);
-			ScreenToClient(&pt);
-			const int yAxisWidth = g_data.RDPI(50);
-			const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
-			const int chartLeft = stockListWidth + yAxisWidth;
-			const int orderBookWidth = ORDER_BOOK_WIDTH;
-			int chartWidth = clientRect.Width() - orderBookWidth;
-			int adjX = pt.x - chartLeft;
+			int adjX = clientPt.x - chartLeft;
 			int effectiveWidth = chartWidth - chartLeft;
 
 			// 鼠标在可见区域中的比例位置
