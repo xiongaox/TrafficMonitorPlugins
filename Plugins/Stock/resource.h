@@ -44,6 +44,7 @@
 #define IDC_CHECK2                      1022
 #define IDC_COLOR_WITH_PRICE_CHECK      1022
 #define IDC_SHOW_FLUCTUATION_CHECK      1037
+#define IDC_SHOW_TODAY_PROFIT_CHECK     1085
 #define IDC_TAB1                        1023
 #define IDC_KLINE_WIDTH_EDIT            1026
 #define IDC_EDIT2                       1027

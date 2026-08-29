@@ -18,9 +18,10 @@ struct SettingData
 {
 	vector<std::wstring> m_stock_codes; // 代码
 	bool m_full_day{};                  // 全天更新
-	bool m_show_stock_name{};           // 显示股票名称
+	bool m_show_stock_name{ true };     // 显示股票名称（默认开启）
 	bool m_show_fluctuation{};          // 显示涨跌幅
-	bool m_color_with_price{};          // 涨跌颜色标识
+	bool m_show_today_profit{};         // 当天持仓收益
+	bool m_color_with_price{ true };    // 涨跌颜色标识（默认开启）
 	unsigned m_kline_width{ 450 };      // 走势图宽度
 	unsigned m_kline_height{ 210 };     // 走势图高度
 	bool m_use_socks5_proxy{};          // 是否启用 SOCKS5 代理

@@ -155,9 +155,8 @@ public:
 
 	// 基础设置事件
 	afx_msg void OnClickedFullDayCheck();
-	afx_msg void OnBnClickedShowStockNameCheck();
-	afx_msg void OnBnClickedColorWithPriceCheck();
 	afx_msg void OnBnClickedShowFluctuationCheck();
+	afx_msg void OnBnClickedShowTodayProfitCheck();
 	afx_msg void OnBnClickedUseSocks5ProxyCheck();
 
 	// 云端备份事件

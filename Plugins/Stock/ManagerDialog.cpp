@@ -84,9 +84,8 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_MA_ADD_BTN, &CManagerDialog::OnMaAddBtnClick)
 
 	ON_BN_CLICKED(IDC_FULL_DAY_CHECK, &CManagerDialog::OnClickedFullDayCheck)
-	ON_BN_CLICKED(IDC_SHOW_STOCK_NAME_CHECK, &CManagerDialog::OnBnClickedShowStockNameCheck)
-	ON_BN_CLICKED(IDC_COLOR_WITH_PRICE_CHECK, &CManagerDialog::OnBnClickedColorWithPriceCheck)
 	ON_BN_CLICKED(IDC_SHOW_FLUCTUATION_CHECK, &CManagerDialog::OnBnClickedShowFluctuationCheck)
+	ON_BN_CLICKED(IDC_SHOW_TODAY_PROFIT_CHECK, &CManagerDialog::OnBnClickedShowTodayProfitCheck)
 	ON_BN_CLICKED(IDC_USE_SOCKS5_PROXY_CHECK, &CManagerDialog::OnBnClickedUseSocks5ProxyCheck)
 
 	ON_BN_CLICKED(IDC_WEBDAV_TEST_BTN, &CManagerDialog::OnBnClickedWebDavTestBtn)
@@ -191,8 +190,8 @@ BOOL CManagerDialog::OnInitDialog()
 
 	// ===== 复选框：改为自绘按钮，勾选状态由 m_checkStates 托管（告别原生白底方块） =====
 	const int checkControlIds[] = {
-		IDC_FULL_DAY_CHECK, IDC_SHOW_STOCK_NAME_CHECK, IDC_COLOR_WITH_PRICE_CHECK,
-		IDC_SHOW_FLUCTUATION_CHECK, IDC_USE_SOCKS5_PROXY_CHECK,
+		IDC_FULL_DAY_CHECK, IDC_SHOW_FLUCTUATION_CHECK, IDC_SHOW_TODAY_PROFIT_CHECK,
+		IDC_USE_SOCKS5_PROXY_CHECK,
 		IDC_WEBDAV_AUTO_SYNC_CHECK, IDC_WEBDAV_AUTO_BACKUP_CHECK
 	};
 	for (int id : checkControlIds)
@@ -274,9 +273,8 @@ BOOL CManagerDialog::OnInitDialog()
 
 	// 加载基础配置控件值（自绘复选框状态）
 	SetCheck(IDC_FULL_DAY_CHECK, m_data.m_full_day);
-	SetCheck(IDC_SHOW_STOCK_NAME_CHECK, m_data.m_show_stock_name);
-	SetCheck(IDC_COLOR_WITH_PRICE_CHECK, m_data.m_color_with_price);
 	SetCheck(IDC_SHOW_FLUCTUATION_CHECK, m_data.m_show_fluctuation);
+	SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, m_data.m_show_today_profit);
 	SetCheck(IDC_USE_SOCKS5_PROXY_CHECK, m_data.m_use_socks5_proxy);
 	SetDlgItemText(IDC_SOCKS5_PROXY_EDIT, m_data.m_socks5_proxy.c_str());
 
@@ -540,8 +538,8 @@ void CManagerDialog::UpdateControlsLayout()
 
 	// 基础设置控件列表
 	const int basicControlIds[] = {
-		IDC_FULL_DAY_CHECK, IDC_SHOW_STOCK_NAME_CHECK, IDC_COLOR_WITH_PRICE_CHECK,
-		IDC_SHOW_FLUCTUATION_CHECK, IDC_USE_SOCKS5_PROXY_CHECK,
+		IDC_FULL_DAY_CHECK, IDC_SHOW_FLUCTUATION_CHECK, IDC_SHOW_TODAY_PROFIT_CHECK,
+		IDC_USE_SOCKS5_PROXY_CHECK,
 		IDC_SOCKS5_PROXY_STATIC, IDC_SOCKS5_PROXY_EDIT,
 		IDC_KLINE_WIDTH_STATIC, IDC_KLINE_WIDTH_EDIT,
 		IDC_KLINE_HEIGHT_STATIC, IDC_KLINE_HEIGHT_EDIT
@@ -557,23 +555,20 @@ void CManagerDialog::UpdateControlsLayout()
 
 	if (isBasic)
 	{
-		// 卡片 1: 行情与走势图展示（两列开关，位置与 DrawBasicPage 卡片严格对应）
+		// 卡片 1: 行情与走势图展示（位置与 DrawBasicPage 卡片严格对应）
 		int card1Top = rightTop;
-		const int chkIds[2][2] = {
-			{ IDC_FULL_DAY_CHECK, IDC_SHOW_STOCK_NAME_CHECK },
-			{ IDC_COLOR_WITH_PRICE_CHECK, IDC_SHOW_FLUCTUATION_CHECK }
-		};
-		int chkW = g_data.DPI(165);
 		int chkH = g_data.DPI(22);
-		for (int row = 0; row < 2; ++row)
-		{
-			for (int col = 0; col < 2; ++col)
-			{
-				CWnd* pChk = GetDlgItem(chkIds[row][col]);
-				if (pChk && pChk->GetSafeHwnd())
-					pChk->MoveWindow(rightLeft + g_data.DPI(18) + col * g_data.DPI(195), card1Top + g_data.DPI(40) + row * g_data.DPI(30), chkW, chkH);
-			}
-		}
+		CWnd* pFullDay = GetDlgItem(IDC_FULL_DAY_CHECK);
+		if (pFullDay && pFullDay->GetSafeHwnd())
+			pFullDay->MoveWindow(rightLeft + g_data.DPI(18), card1Top + g_data.DPI(40), g_data.DPI(165), chkH);
+
+		CWnd* pShowFluc = GetDlgItem(IDC_SHOW_FLUCTUATION_CHECK);
+		if (pShowFluc && pShowFluc->GetSafeHwnd())
+			pShowFluc->MoveWindow(rightLeft + g_data.DPI(18) + g_data.DPI(195), card1Top + g_data.DPI(40), g_data.DPI(165), chkH);
+
+		CWnd* pTodayProfit = GetDlgItem(IDC_SHOW_TODAY_PROFIT_CHECK);
+		if (pTodayProfit && pTodayProfit->GetSafeHwnd())
+			pTodayProfit->MoveWindow(rightLeft + g_data.DPI(18), card1Top + g_data.DPI(70), g_data.DPI(115), chkH);
 
 		// 卡片 2: 走势图尺寸配置
 		int card2Top = card1Top + g_data.DPI(110);
@@ -933,9 +928,16 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	};
 
 	// 卡片位置/高度与 UpdateControlsLayout 严格对应
-	drawCard(contentRect.top, g_data.DPI(100), L"行情与走势图展示");
+	int card1Top = contentRect.top;
+	drawCard(card1Top, g_data.DPI(100), L"行情与走势图展示");
 	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(72), L"走势图高清尺寸（像素）");
 	drawCard(contentRect.top + g_data.DPI(192), g_data.DPI(72), L"SOCKS5 代理网络");
+
+	// 绘制「当天持仓收益」说明文案
+	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184)); // #94A3B8
+	g.DrawString(L"（填写持仓后显示当天收益，未填写仍显示涨跌幅）", -1, &tipFont,
+		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(138)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(73))), &tipBrush);
 }
 
 void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect)
@@ -1678,16 +1680,10 @@ void CManagerDialog::OnClickedFullDayCheck()
 	m_data.m_full_day = IsChecked(IDC_FULL_DAY_CHECK);
 }
 
-void CManagerDialog::OnBnClickedShowStockNameCheck()
+void CManagerDialog::OnBnClickedShowTodayProfitCheck()
 {
-	SetCheck(IDC_SHOW_STOCK_NAME_CHECK, !IsChecked(IDC_SHOW_STOCK_NAME_CHECK));
-	m_data.m_show_stock_name = IsChecked(IDC_SHOW_STOCK_NAME_CHECK);
-}
-
-void CManagerDialog::OnBnClickedColorWithPriceCheck()
-{
-	SetCheck(IDC_COLOR_WITH_PRICE_CHECK, !IsChecked(IDC_COLOR_WITH_PRICE_CHECK));
-	m_data.m_color_with_price = IsChecked(IDC_COLOR_WITH_PRICE_CHECK);
+	SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, !IsChecked(IDC_SHOW_TODAY_PROFIT_CHECK));
+	m_data.m_show_today_profit = IsChecked(IDC_SHOW_TODAY_PROFIT_CHECK);
 }
 
 void CManagerDialog::OnBnClickedShowFluctuationCheck()
@@ -1799,9 +1795,8 @@ void CManagerDialog::OnBnClickedWebDavDownloadBtn()
 		m_data = g_data.m_setting_data;
 
 		SetCheck(IDC_FULL_DAY_CHECK, m_data.m_full_day);
-		SetCheck(IDC_SHOW_STOCK_NAME_CHECK, m_data.m_show_stock_name);
-		SetCheck(IDC_COLOR_WITH_PRICE_CHECK, m_data.m_color_with_price);
 		SetCheck(IDC_SHOW_FLUCTUATION_CHECK, m_data.m_show_fluctuation);
+		SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, m_data.m_show_today_profit);
 		SetCheck(IDC_USE_SOCKS5_PROXY_CHECK, m_data.m_use_socks5_proxy);
 		SetDlgItemText(IDC_SOCKS5_PROXY_EDIT, m_data.m_socks5_proxy.c_str());
 
@@ -1979,9 +1974,8 @@ bool CManagerDialog::IsCheckCtrl(UINT nID) const
 	switch (nID)
 	{
 	case IDC_FULL_DAY_CHECK:
-	case IDC_SHOW_STOCK_NAME_CHECK:
-	case IDC_COLOR_WITH_PRICE_CHECK:
 	case IDC_SHOW_FLUCTUATION_CHECK:
+	case IDC_SHOW_TODAY_PROFIT_CHECK:
 	case IDC_USE_SOCKS5_PROXY_CHECK:
 	case IDC_WEBDAV_AUTO_SYNC_CHECK:
 	case IDC_WEBDAV_AUTO_BACKUP_CHECK:

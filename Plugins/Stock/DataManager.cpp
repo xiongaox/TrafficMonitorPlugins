@@ -101,6 +101,7 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_full_day = ini.GetBool(L"config", L"full_day", true);
 	m_setting_data.m_show_stock_name = ini.GetBool(L"config", L"show_stock_name", true);
 	m_setting_data.m_show_fluctuation = ini.GetBool(L"config", L"show_fluctuation", true);
+	m_setting_data.m_show_today_profit = ini.GetBool(L"config", L"show_today_profit", false);
 	m_setting_data.m_color_with_price = ini.GetBool(L"config", L"color_with_price", true);
 	m_setting_data.m_kline_width = ini.GetInt(L"config", L"kline_width", 450);
 	m_setting_data.m_kline_height = ini.GetInt(L"config", L"kline_height", 210);
@@ -454,6 +455,7 @@ void CDataManager::SaveConfig()
 		ini.WriteBool(L"config", L"full_day", m_setting_data.m_full_day);
 		ini.WriteBool(L"config", L"show_stock_name", m_setting_data.m_show_stock_name);
 		ini.WriteBool(L"config", L"show_fluctuation", m_setting_data.m_show_fluctuation);
+		ini.WriteBool(L"config", L"show_today_profit", m_setting_data.m_show_today_profit);
 		ini.WriteBool(L"config", L"color_with_price", m_setting_data.m_color_with_price);
 		ini.WriteInt(L"config", L"kline_width", m_setting_data.m_kline_width);
 		ini.WriteInt(L"config", L"kline_height", m_setting_data.m_kline_height);
