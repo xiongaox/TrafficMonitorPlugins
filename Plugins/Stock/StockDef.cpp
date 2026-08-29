@@ -1092,6 +1092,14 @@ static Price GetJsonPrice(yyjson_val* obj, const char* key)
 	return 0.0F;
 }
 
+void STOCK::StockData::addTimelinePoint(const TimelinePoint& point)
+{
+	bool isHK = (info.code.find(kHK) == 0);
+	if (!CCommon::IsValidTimelineTime(point.time, isHK)) return;
+	auto timelineData = MakesureHistoricalData<TimelineData>(Period::TIMELINE);
+	timelineData->data.push_back(point);
+}
+
 void STOCK::StockData::addTimelinePoint(const CString& json_data)
 {
 	addTimelinePointTo(json_data, MakesureHistoricalData<TimelineData>(Period::TIMELINE)->data);

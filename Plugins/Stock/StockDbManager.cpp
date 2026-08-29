@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "StockDbManager.h"
+#include "Common.h"
+#include "Stock.h"
 #include <sstream>
 #include "sqlite3.h"
 #include "utilities/yyjson/yyjson.h"
