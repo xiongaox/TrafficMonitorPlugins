@@ -37,7 +37,7 @@ CManagerDialog::CManagerDialog(CWnd* pParent /*=nullptr*/)
 	m_menu_rects.resize(6);
 	m_dark_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
 	m_card_brush.CreateSolidBrush(COLOR_BG_CARD);     // #181B22
-	m_edit_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
+	m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));   // 输入框内嵌底色（略深于卡片，形成下沉观感）
 }
 
 CManagerDialog::~CManagerDialog()
@@ -169,6 +169,8 @@ BOOL CManagerDialog::OnInitDialog()
 	}, (LPARAM)m_font.GetSafeHandle());
 
 	// ===== 输入框：去掉系统边框与主题，背景/边框全部由 OnCtlColor/OnPaint 自绘 =====
+	// 注意：ModifyStyle 改样式位后默认不重算非客户区，WS_BORDER 白边会残留，
+	// 必须再发一次 SWP_FRAMECHANGED 才能真正摘掉原生边框。
 	const int editControlIds[] = {
 		IDC_KLINE_WIDTH_EDIT, IDC_KLINE_HEIGHT_EDIT, IDC_SOCKS5_PROXY_EDIT,
 		IDC_WEBDAV_URL_EDIT, IDC_WEBDAV_USER_EDIT, IDC_WEBDAV_PWD_EDIT, IDC_WEBDAV_DIR_EDIT,
@@ -182,6 +184,8 @@ BOOL CManagerDialog::OnInitDialog()
 			pWnd->ModifyStyle(WS_BORDER, 0);
 			pWnd->ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
 			SetWindowTheme(pWnd->GetSafeHwnd(), L"", L"");
+			::SetWindowPos(pWnd->GetSafeHwnd(), nullptr, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 		}
 	}
 
@@ -261,6 +265,8 @@ BOOL CManagerDialog::OnInitDialog()
 		list.SetExtendedStyle(list.GetExtendedStyle() | LVS_EX_DOUBLEBUFFER);
 		list.ModifyStyle(WS_BORDER, 0);
 		list.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowPos(list.GetSafeHwnd(), nullptr, 0, 0, 0, 0,
+			SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 	};
 	setupFlatHeader(m_stock_listctrl, m_hdr_stock);
 	setupFlatHeader(m_pos_listctrl, m_hdr_pos);
@@ -307,7 +313,14 @@ HBRUSH CManagerDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SetTextColor(COLOR_TEXT_PRIMARY);
 		return (HBRUSH)m_card_brush.GetSafeHandle();
 	}
-	else if (nCtlColor == CTLCOLOR_EDIT || nCtlColor == CTLCOLOR_LISTBOX)
+	else if (nCtlColor == CTLCOLOR_EDIT)
+	{
+		pDC->SetBkMode(OPAQUE);
+		pDC->SetBkColor(RGB(13, 15, 21));
+		pDC->SetTextColor(COLOR_TEXT_PRIMARY);
+		return (HBRUSH)m_edit_brush.GetSafeHandle();
+	}
+	else if (nCtlColor == CTLCOLOR_LISTBOX)
 	{
 		pDC->SetBkMode(OPAQUE);
 		pDC->SetBkColor(COLOR_BG_DARK);
@@ -807,19 +820,19 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 37, 99, 235)); // Accent Blue
 	g.FillEllipse(&dotBrush, g_data.DPI(16), g_data.DPI(18), g_data.DPI(9), g_data.DPI(9));
 
-	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
-	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(14))), &titleBrush);
+	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(13))), &titleBrush);
 
 	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"云端备份", L"关于插件" };
 	int menuCount = 6;
-	int itemH = g_data.DPI(36);
-	int itemTop = g_data.DPI(50);
+	int itemH = g_data.DPI(40);
+	int itemTop = g_data.DPI(54);
 	int itemPadX = g_data.DPI(8);
 	int itemW = m_menu_width - (itemPadX * 2);
 
-	Gdiplus::Font menuFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::Font menuActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font menuFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font menuActiveFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 
 	Gdiplus::StringFormat sf;
 	sf.SetAlignment(Gdiplus::StringAlignmentNear);
@@ -861,7 +874,7 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	}
 
 	// 侧边栏底部版本信息
-	Gdiplus::Font verFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font verFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush verBrush(Gdiplus::Color(255, 100, 116, 139));
 	g.DrawString(L"Stock Plugin v1.15", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(14)), static_cast<Gdiplus::REAL>(clientRect.Height() - g_data.DPI(28))), &verBrush);
 }
@@ -2052,7 +2065,7 @@ void CManagerDialog::DrawControlBorder(Gdiplus::Graphics& g, UINT nID)
 	ScreenToClient(&rc);
 	rc.InflateRect(1, 1);
 
-	Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 46, 51, 64), 1.0f);
+	Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
 	g.DrawRectangle(&pen, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
 		static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
 }
