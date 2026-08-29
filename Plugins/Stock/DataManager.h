@@ -58,8 +58,9 @@ private:
 public:
 	static CDataManager& Instance();
 
-	void LoadConfig(const std::wstring& config_dir);
+	void LoadConfig(const std::wstring& config_dir = L"");
 	void SaveConfig();
+	const std::wstring& GetConfigPath() const { return m_config_path; }
 	const CString& StringRes(UINT id); // 根据资源id获取一个字符串资源
 	int DPI(int pixel);
 	int RDPI(int pixel);

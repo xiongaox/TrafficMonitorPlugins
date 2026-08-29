@@ -167,8 +167,8 @@ bool CWebDavSync::TestConnection(const SettingData& settings, std::wstring& erro
 
 		if (!settings.m_webdav_username.empty() || !settings.m_webdav_password.empty())
 		{
-			std::string rawAuth = utilities::CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
-				utilities::CCommon::UnicodeToStr(settings.m_webdav_password);
+			std::string rawAuth = CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
+				CCommon::UnicodeToStr(settings.m_webdav_password);
 			std::string authHeader = "Authorization: Basic " + Base64Encode(rawAuth) + "\r\n";
 			pFile->AddRequestHeaders(CString(authHeader.c_str()));
 		}
@@ -238,7 +238,7 @@ bool CWebDavSync::UploadBackup(const SettingData& settings, std::wstring& errorM
 	g_data.SaveConfig();
 
 	// 读取当前 INI 文件作为备份内容
-	std::wstring configPath = g_data.m_config_path;
+	std::wstring configPath = g_data.GetConfigPath();
 	std::ifstream inFile(configPath, std::ios::binary);
 	if (!inFile.is_open())
 	{
@@ -289,8 +289,8 @@ bool CWebDavSync::UploadBackup(const SettingData& settings, std::wstring& errorM
 
 		if (!settings.m_webdav_username.empty() || !settings.m_webdav_password.empty())
 		{
-			std::string rawAuth = utilities::CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
-				utilities::CCommon::UnicodeToStr(settings.m_webdav_password);
+			std::string rawAuth = CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
+				CCommon::UnicodeToStr(settings.m_webdav_password);
 			std::string authHeader = "Authorization: Basic " + Base64Encode(rawAuth) + "\r\n";
 			pFile->AddRequestHeaders(CString(authHeader.c_str()));
 		}
@@ -396,8 +396,8 @@ bool CWebDavSync::DownloadBackup(const SettingData& settings, std::wstring& erro
 
 		if (!settings.m_webdav_username.empty() || !settings.m_webdav_password.empty())
 		{
-			std::string rawAuth = utilities::CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
-				utilities::CCommon::UnicodeToStr(settings.m_webdav_password);
+			std::string rawAuth = CCommon::UnicodeToStr(settings.m_webdav_username) + ":" +
+				CCommon::UnicodeToStr(settings.m_webdav_password);
 			std::string authHeader = "Authorization: Basic " + Base64Encode(rawAuth) + "\r\n";
 			pFile->AddRequestHeaders(CString(authHeader.c_str()));
 		}
@@ -443,7 +443,7 @@ bool CWebDavSync::DownloadBackup(const SettingData& settings, std::wstring& erro
 		}
 
 		// 写入本地 INI 配置文件
-		std::wstring configPath = g_data.m_config_path;
+		std::wstring configPath = g_data.GetConfigPath();
 		std::ofstream outFile(configPath, std::ios::binary | std::ios::trunc);
 		if (!outFile.is_open())
 		{
@@ -454,7 +454,7 @@ bool CWebDavSync::DownloadBackup(const SettingData& settings, std::wstring& erro
 		outFile.close();
 
 		// 重新加载配置
-		g_data.LoadConfig();
+		g_data.LoadConfig(L"");
 		Stock::Instance().SendStockInfoRequest();
 		return true;
 	}
