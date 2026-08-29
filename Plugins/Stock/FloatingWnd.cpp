@@ -339,6 +339,8 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	m_CTransparentWnd.SetLayeredWindowAttributes(0, 0, LWA_ALPHA);
 	m_CTransparentWnd.ShowWindow(SW_SHOW);
 
+	EnsureStockListVisible();
+
 	TRACE(L"Windows created successfully\n");
 	return TRUE;
 }
@@ -493,7 +495,7 @@ void CFloatingWnd::OnPaint()
 
 		// 左侧股票列表面板（无论分时数据是否加载都绘制）
 		if (m_showStockList)
-			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id);
+			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset);
 
 		// 集合竞价模式绘制（主图+副图各占一半）
 		if (m_viewMode == UI_VIEW_AUCTION)
@@ -1117,40 +1119,29 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		return;
 	}
 
-	// 左侧股票列表区域的单击切换
+	// 左侧股票列表区域的单击/拖动处理
 	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
 	{
-		const int stockListWidth = g_data.RDPI(65);
+		const int stockListWidth = g_data.RDPI(86);
 		const int headerHeight = g_data.RDPI(26);
 		const int relatedBarHeight = 0;  // 移除顶部关联股票栏
-		const int titleH = g_data.RDPI(16);
-		const int rowHeight = g_data.RDPI(35);
-		const int listTop = headerHeight + relatedBarHeight + titleH + g_data.RDPI(2);
+		const int titleH = g_data.RDPI(18);
+		const int listTop = headerHeight + relatedBarHeight + titleH;
+		CRect clRect;
+		GetClientRect(&clRect);
+		const int listBottom = clRect.Height() - g_data.RDPI(20);
 
-		if (point.x >= 0 && point.x < stockListWidth && point.y >= listTop)
+		if (point.x >= 0 && point.x < stockListWidth && point.y >= listTop && point.y < listBottom)
 		{
-			int rowIndex = (point.y - listTop) / rowHeight;
-			std::vector<std::wstring> stockCodes;
-			{
-				std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-				for (const auto& code : g_data.m_setting_data.m_stock_codes)
-				{
-					if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 与绘制一致，过滤指数和港股
-						stockCodes.push_back(code);
-				}
-			}
-			if (rowIndex >= 0 && rowIndex < (int)stockCodes.size())
-			{
-				const std::wstring& clickedCode = stockCodes[rowIndex];
-				if (clickedCode != m_stock_id)
-				{
-					SetStockId(clickedCode);
-					UpdateModeButtons();
-				}
-				return;
-			}
+			m_isStockListDragging = true;
+			m_isStockListDragMoved = false;
+			m_stockListDragStartPos = point;
+			m_stockListDragStartOffset = m_stockListScrollOffset;
+			SetCapture();
+			return;
 		}
 	}
+
 
 	// 底部系统状态栏指数点击切换（单行四个）
 	if (m_viewMode != UI_VIEW_OVERVIEW)
@@ -1255,7 +1246,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 
 		const int yAxisWidth = g_data.RDPI(50);
-		const int stockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
+		const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 		const int chartLeft = stockListWidth + yAxisWidth;
 
 		if (point.x >= chartLeft && point.x < chartWidth && point.y >= headerHeight + relatedBarHeight)
@@ -1339,7 +1330,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int dragOrderBookWidth = isIdxKLine ? 0 : ORDER_BOOK_WIDTH;
 		const int dragChartWidth = dragRect.Width() - dragOrderBookWidth;
 		const int dragYAxisWidth = g_data.RDPI(50);
-		const int dragStockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
+		const int dragStockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 		const int dragChartLeft = dragStockListWidth + dragYAxisWidth;
 		const int dragHeaderHeight = g_data.RDPI(26);  // 标题栏
 		const int dragIndexBarHeight = g_data.RDPI(20);
@@ -1372,6 +1363,41 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 
 void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 {
+	if (m_isStockListDragging)
+	{
+		m_isStockListDragging = false;
+		ReleaseCapture();
+
+		if (!m_isStockListDragMoved)
+		{
+			// 点击切换股票
+			const int headerHeight = g_data.RDPI(26);
+			const int relatedBarHeight = 0;
+			const int titleH = g_data.RDPI(18);
+			const int rowHeight = g_data.RDPI(36);
+			const int listTop = headerHeight + relatedBarHeight + titleH;
+
+			int contentY = (point.y - listTop) + m_stockListScrollOffset;
+			if (contentY >= 0)
+			{
+				int rowIndex = contentY / rowHeight;
+				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+				if (rowIndex >= 0 && rowIndex < static_cast<int>(stockCodes.size()))
+				{
+					const std::wstring& clickedCode = stockCodes[rowIndex];
+					if (clickedCode != m_stock_id)
+					{
+						SetStockId(clickedCode);
+						UpdateModeButtons();
+					}
+				}
+			}
+		}
+		Invalidate();
+		CWnd::OnLButtonUp(nFlags, point);
+		return;
+	}
+
 	bool wasDragging = m_isTimelineDragging || m_isKLineDragging;
 	m_isTimelineDragging = false;
 	m_isKLineDragging = false;
@@ -1423,6 +1449,38 @@ void CFloatingWnd::OnRButtonDown(UINT nFlags, CPoint point)
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 {
 	m_mousePos = point;
+
+	// 左侧股票列表拖动处理
+	if (m_isStockListDragging)
+	{
+		int dy = point.y - m_stockListDragStartPos.y;
+		if (abs(dy) > 3)
+		{
+			m_isStockListDragMoved = true;
+		}
+
+		CRect clRect;
+		GetClientRect(&clRect);
+		const int headerHeight = g_data.RDPI(26);
+		const int relatedBarHeight = 0;
+		const int indexBarHeight = g_data.RDPI(20);
+		const int titleH = g_data.RDPI(18);
+		int listAreaH = (clRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
+		const int rowHeight = g_data.RDPI(36);
+		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+		int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
+		int maxOffset = max(0, totalH - listAreaH);
+
+		int newOffset = m_stockListDragStartOffset - dy;
+		newOffset = max(0, min(newOffset, maxOffset));
+		if (newOffset != m_stockListScrollOffset)
+		{
+			m_stockListScrollOffset = newOffset;
+			Invalidate();
+		}
+		CWnd::OnMouseMove(nFlags, point);
+		return;
+	}
 
 	// 拖动滚动处理
 	if (m_isTimelineDragging || m_isKLineDragging)
@@ -1517,7 +1575,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = rect.Width() - orderBookWidth;
 	const int yAxisWidth = g_data.RDPI(50);
-	const int stockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
+	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 	const int chartLeft = stockListWidth + yAxisWidth;
 	const int headerHeight = g_data.RDPI(26);
 	const int xAxisLabelHeight = g_data.RDPI(20);
@@ -1872,6 +1930,7 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 	if (m_stock_id == stockId)
 		return;
 	m_stock_id = stockId;
+	EnsureStockListVisible();
 	// 通知获取线程切换关注股票，线程自动重置计时器并立即获取新股数据
 	CStockFetchThread::Instance().SetFocusStockId(m_stock_id);
 	m_timelineScrollOffset = -1;
@@ -1988,6 +2047,49 @@ void CFloatingWnd::UpdatePeriodComboVisibility()
 
 BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 {
+	// 1. 如果在非总览模式且左侧股票列表显示时，鼠标悬停在左侧股票列表区域，则滚动股票列表
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
+	{
+		CRect clientRect;
+		GetClientRect(&clientRect);
+		CPoint clientPt = pt;
+		ScreenToClient(&clientPt);
+
+		const int headerHeight = g_data.RDPI(26);
+		const int relatedBarHeight = 0;
+		const int indexBarHeight = g_data.RDPI(20);
+		const int stockListWidth = g_data.RDPI(86);
+
+		if (clientPt.x >= 0 && clientPt.x < stockListWidth &&
+			clientPt.y >= headerHeight + relatedBarHeight &&
+			clientPt.y < clientRect.Height() - indexBarHeight)
+		{
+			std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+			const int rowHeight = g_data.RDPI(36);
+			const int titleH = g_data.RDPI(18);
+			int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
+			int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
+			int maxOffset = max(0, totalH - listAreaH);
+
+			if (maxOffset > 0)
+			{
+				int newOffset = m_stockListScrollOffset;
+				if (zDelta > 0)
+					newOffset -= rowHeight;  // 向上滚
+				else
+					newOffset += rowHeight;  // 向下滚
+
+				newOffset = max(0, min(newOffset, maxOffset));
+				if (newOffset != m_stockListScrollOffset)
+				{
+					m_stockListScrollOffset = newOffset;
+					Invalidate();
+				}
+			}
+			return TRUE;
+		}
+	}
+
 	// 分时图模式/K线模式：滚轮缩放可见数据点数
 	if (m_viewMode != UI_VIEW_OVERVIEW)
 	{
@@ -2065,7 +2167,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 			GetClientRect(&clientRect);
 			ScreenToClient(&pt);
 			const int yAxisWidth = g_data.RDPI(50);
-			const int stockListWidth = m_showStockList ? g_data.RDPI(65) : 0;
+			const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 			const int chartLeft = stockListWidth + yAxisWidth;
 			const int orderBookWidth = ORDER_BOOK_WIDTH;
 			int chartWidth = clientRect.Width() - orderBookWidth;
@@ -2253,6 +2355,10 @@ void CFloatingWnd::OnBnClickedExpandBtn()
 void CFloatingWnd::OnBnClickedToggleStockListBtn()
 {
 	m_showStockList = !m_showStockList;
+	if (m_showStockList)
+	{
+		EnsureStockListVisible();
+	}
 	m_btnToggleStockList.SetWindowText(m_showStockList ? _T("|>") : _T("<|"));
 	SafeSetButtonStyle(m_btnToggleStockList, m_showStockList ? BS_FLAT : BS_DEFPUSHBUTTON);
 	UpdateModeButtons();
@@ -2795,4 +2901,46 @@ void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 			Invalidate();
 	}
 	CWnd::OnTimer(nIDEvent);
+}
+
+void CFloatingWnd::EnsureStockListVisible()
+{
+	if (!m_showStockList || !GetSafeHwnd())
+		return;
+
+	CRect clientRect;
+	GetClientRect(&clientRect);
+	const int headerHeight = g_data.RDPI(26);
+	const int relatedBarHeight = 0;
+	const int indexBarHeight = g_data.RDPI(20);
+	const int titleH = g_data.RDPI(18);
+	const int rowHeight = g_data.RDPI(36);
+	int listAreaH = clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight - titleH;
+	if (listAreaH <= 0)
+		return;
+
+	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+	int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
+	int maxOffset = max(0, totalH - listAreaH);
+
+	auto it = std::find(stockCodes.begin(), stockCodes.end(), m_stock_id);
+	if (it != stockCodes.end())
+	{
+		int idx = static_cast<int>(std::distance(stockCodes.begin(), it));
+		int itemTop = idx * rowHeight;
+		int itemBottom = itemTop + rowHeight;
+		if (itemTop < m_stockListScrollOffset)
+		{
+			m_stockListScrollOffset = itemTop;
+		}
+		else if (itemBottom > m_stockListScrollOffset + listAreaH)
+		{
+			m_stockListScrollOffset = itemBottom - listAreaH;
+		}
+		m_stockListScrollOffset = max(0, min(m_stockListScrollOffset, maxOffset));
+	}
+	else
+	{
+		m_stockListScrollOffset = max(0, min(m_stockListScrollOffset, maxOffset));
+	}
 }

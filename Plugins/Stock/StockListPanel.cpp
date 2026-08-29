@@ -7,7 +7,19 @@
 #include <mutex>
 #include <vector>
 
-void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId)
+std::vector<std::wstring> CStockListPanel::GetStockListCodes()
+{
+	std::vector<std::wstring> stockCodes;
+	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+	for (const auto& code : g_data.m_setting_data.m_stock_codes)
+	{
+		if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 只保留非指数、非港股股票
+			stockCodes.push_back(code);
+	}
+	return stockCodes;
+}
+
+void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset)
 {
 	// 绘制面板现代深色底 (#14161D)
 	memDC.FillSolidRect(x, y, w, h, COLOR_BG_PANEL);
@@ -33,16 +45,7 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	memDC.MoveTo(x, y + titleH);
 	memDC.LineTo(x + w, y + titleH);
 
-	// 获取所有股票列表（加锁访问，过滤掉大盘指数和港股）
-	std::vector<std::wstring> stockCodes;
-	{
-		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-		for (const auto& code : g_data.m_setting_data.m_stock_codes)
-		{
-			if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 只保留非指数、非港股股票
-				stockCodes.push_back(code);
-		}
-	}
+	std::vector<std::wstring> stockCodes = GetStockListCodes();
 
 	if (stockCodes.empty())
 	{
@@ -58,6 +61,12 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	const int nameHeight = g_data.RDPI(14);
 	const int codeHeight = g_data.RDPI(11);
 
+	int listTop = y + titleH;
+	int listAreaH = h - titleH;
+	int totalContentH = static_cast<int>(stockCodes.size()) * rowHeight;
+	int maxScrollOffset = max(0, totalContentH - listAreaH);
+	int effectiveScrollOffset = max(0, min(scrollOffset, maxScrollOffset));
+
 	CFont nameFont;
 	nameFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_NORMAL, 0, 0, 0,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -68,12 +77,20 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
 
+	// 裁剪区域：防止滚动时文字超出列表区域或覆盖标题栏
+	CRect listClipRect(x, listTop + 1, x + w, y + h);
+	int savedDC = memDC.SaveDC();
+	memDC.IntersectClipRect(&listClipRect);
+
 	// 绘制股票列表
-	int currentY = y + titleH + g_data.RDPI(2);
-	for (const auto& code : stockCodes)
+	for (size_t i = 0; i < stockCodes.size(); ++i)
 	{
-		if (currentY + rowHeight > y + h)
-			break;  // 超出区域
+		const auto& code = stockCodes[i];
+		int currentY = listTop - effectiveScrollOffset + static_cast<int>(i) * rowHeight;
+
+		// 超出可视区域跳过绘制
+		if (currentY + rowHeight <= listTop || currentY >= y + h)
+			continue;
 
 		// 获取股票名称与行情
 		std::wstring stockName = code;  // 默认使用代码作为名称
@@ -109,7 +126,8 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 		memDC.SetTextColor(isCurrent ? RGB(255, 255, 255) : COLOR_WHITE);
 		CFont* pOldFont = memDC.SelectObject(&nameFont);
 		int textLeft = x + g_data.RDPI(6);
-		CRect nameRect(textLeft, currentY + textOffsetY, x + w - g_data.RDPI(4), currentY + textOffsetY + nameHeight);
+		int textRight = x + w - (maxScrollOffset > 0 ? g_data.RDPI(7) : g_data.RDPI(4));
+		CRect nameRect(textLeft, currentY + textOffsetY, textRight, currentY + textOffsetY + nameHeight);
 		memDC.DrawText(stockName.c_str(), static_cast<int>(stockName.length()), &nameRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
 		// 绘制股票代码（下方，暗灰）
@@ -127,8 +145,8 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 				changeStr.Format(_T("%.2f%%"), diffPercent);
 
 			CSize changeSize = memDC.GetTextExtent(changeStr);
-			int changeX = x + w - changeSize.cx - g_data.RDPI(5);
-			if (changeX > textLeft + g_data.RDPI(32))
+			int changeX = textRight - changeSize.cx - g_data.RDPI(2);
+			if (changeX > textLeft + g_data.RDPI(30))
 			{
 				COLORREF badgeBg = (diffPercent >= 0) ? COLOR_BG_RED : COLOR_BG_GREEN;
 				CRect badgeRect(changeX - g_data.RDPI(2), currentY + textOffsetY + nameHeight - g_data.RDPI(1),
@@ -142,9 +160,26 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 		memDC.SelectObject(pOldFont);
 
 		// 绘制暗黑行分隔线
-		currentY += rowHeight;
-		memDC.MoveTo(x + g_data.RDPI(4), currentY);
-		memDC.LineTo(x + w - g_data.RDPI(4), currentY);
+		memDC.MoveTo(x + g_data.RDPI(4), currentY + rowHeight);
+		memDC.LineTo(x + w - g_data.RDPI(4), currentY + rowHeight);
+	}
+
+	memDC.RestoreDC(savedDC);
+
+	// 绘制右侧极简滚动条指示器（仅在超出高度时显示）
+	if (maxScrollOffset > 0 && listAreaH > g_data.RDPI(20))
+	{
+		int scrollBarW = g_data.RDPI(2);
+		int scrollBarX = x + w - scrollBarW - g_data.RDPI(1);
+		int trackY = listTop + g_data.RDPI(2);
+		int trackH = listAreaH - g_data.RDPI(4);
+		int minThumbH = g_data.RDPI(16);
+		int thumbH = max(minThumbH, trackH * listAreaH / totalContentH);
+		thumbH = min(thumbH, trackH);
+		int thumbY = trackY + (trackH - thumbH) * effectiveScrollOffset / maxScrollOffset;
+
+		CRect thumbRect(scrollBarX, thumbY, scrollBarX + scrollBarW, thumbY + thumbH);
+		memDC.FillSolidRect(&thumbRect, RGB(80, 85, 105));
 	}
 
 	nameFont.DeleteObject();

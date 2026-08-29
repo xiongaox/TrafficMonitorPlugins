@@ -102,6 +102,7 @@ private:
 	void UpdateIndicatorButtons();
 	void UpdatePeriodComboVisibility();
 	void ApplySignalColors(COLORREF bollColor, COLORREF macdColor, COLORREF kdjColor, COLORREF wrColor, COLORREF rsiColor, COLORREF maColor);
+	void EnsureStockListVisible();
 
 	CTransparentWnd m_CTransparentWnd;
 	CStockListPanel m_stockListPanel;
@@ -194,6 +195,11 @@ private:
 	bool m_showChipPeak{ false };
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
+	int m_stockListScrollOffset{ 0 };  // 左侧股票列表垂直滚动偏移
+	bool m_isStockListDragging{ false };  // 左侧股票列表是否正在拖动
+	bool m_isStockListDragMoved{ false };  // 左侧股票列表拖动是否产生了位移
+	CPoint m_stockListDragStartPos;       // 左侧股票列表拖动起点
+	int m_stockListDragStartOffset{ 0 };  // 左侧股票列表拖动起始偏移
 	bool m_showJZCurve{ false };  // 基金净值曲线
 	bool m_showMA{ false };
 	bool m_showBollBands{ true };
