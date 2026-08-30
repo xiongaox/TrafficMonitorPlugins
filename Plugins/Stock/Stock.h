@@ -71,7 +71,6 @@ public:
 
 private:
 	void LoadContextMenu();
-	void updateItems();
 
 private:
 	static Stock m_instance;

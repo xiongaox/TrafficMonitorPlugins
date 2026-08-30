@@ -7,11 +7,47 @@
 #include <mutex>
 #include <vector>
 
+int CStockListPanel::GetGroupTabCount()
+{
+	return 2 + static_cast<int>(g_data.m_setting_data.m_custom_groups.size());
+}
+
+int CStockListPanel::ClampGroupTab(int groupTab)
+{
+	if (groupTab < 0)
+		return 0;
+	int count = GetGroupTabCount();
+	return groupTab >= count ? count - 1 : groupTab;
+}
+
+std::wstring CStockListPanel::GetGroupTabName(int groupTab)
+{
+	groupTab = ClampGroupTab(groupTab);
+	if (groupTab == 0)
+		return L"自选股";
+	if (groupTab == 1)
+		return L"持仓";
+	return g_data.m_setting_data.m_custom_groups[groupTab - 2].name;
+}
+
 std::vector<std::wstring> CStockListPanel::GetStockListCodes()
 {
+	return GetStockListCodes(0);
+}
+
+std::vector<std::wstring> CStockListPanel::GetStockListCodes(int groupTab)
+{
+	groupTab = ClampGroupTab(groupTab);
 	std::vector<std::wstring> stockCodes;
 	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-	for (const auto& code : g_data.m_setting_data.m_stock_codes)
+	const std::vector<std::wstring>* src = nullptr;
+	if (groupTab == 0)
+		src = &g_data.m_setting_data.m_stock_codes;
+	else if (groupTab == 1)
+		src = &g_data.m_setting_data.m_position_codes;
+	else
+		src = &g_data.m_setting_data.m_custom_groups[groupTab - 2].codes;
+	for (const auto& code : *src)
 	{
 		if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 只保留非指数、非港股股票
 			stockCodes.push_back(code);
@@ -19,7 +55,105 @@ std::vector<std::wstring> CStockListPanel::GetStockListCodes()
 	return stockCodes;
 }
 
-void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset)
+std::vector<FloatingGroupTab> CStockListPanel::LayoutGroupTabs(CDC& memDC, int windowWidth, int headerHeight, int activeTab)
+{
+	std::vector<FloatingGroupTab> tabs;
+
+	const auto& customGroups = g_data.m_setting_data.m_custom_groups;
+	int tabCount = ClampGroupTab(activeTab);
+
+	// 三个固定标签位：自选股 / 持仓 / 第一个自定义分组；其余自定义分组折叠进“更多分组”
+	tabs.push_back({ L"自选股", 0, tabCount == 0, false, CRect(0, 0, 0, 0) });
+	tabs.push_back({ L"持仓", 1, tabCount == 1, false, CRect(0, 0, 0, 0) });
+	if (!customGroups.empty())
+		tabs.push_back({ customGroups[0].name, 2, tabCount == 2, false, CRect(0, 0, 0, 0) });
+	if (customGroups.size() >= 2)
+	{
+		std::wstring dropText = L"更多分组 ▾";
+		if (tabCount >= 3 && (tabCount - 2) < static_cast<int>(customGroups.size()))
+			dropText = customGroups[tabCount - 2].name + L" ▾";
+		tabs.push_back({ dropText, -1, tabCount >= 3, true, CRect(0, 0, 0, 0) });
+	}
+
+	// 布局：在标题栏内垂直居中，右侧预留窗口 40% 给居中的股票标题
+	CFont font;
+	font.CreateFont(-g_data.RDPI(9), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	HGDIOBJ oldFont = memDC.SelectObject(&font);
+
+	const int tabH = g_data.RDPI(18);
+	const int tabTop = max(1, (headerHeight - tabH) / 2);
+	const int gap = g_data.RDPI(3);
+	const int padX = g_data.RDPI(8);
+	const int maxTabW = g_data.RDPI(88);
+	const int stripLeft = g_data.RDPI(5);
+	const int maxStripRight = max(stripLeft + g_data.RDPI(60), min(g_data.RDPI(255), windowWidth * 6 / 10));
+
+	int curX = stripLeft;
+	for (auto& tab : tabs)
+	{
+		CString text(tab.name.c_str());
+		int textW = memDC.GetTextExtent(text).cx;
+		int tabW = min(maxTabW, textW + padX * 2);
+		// 超出标签条可用宽度时截断，避免盖住居中的股票标题
+		if (curX + tabW > maxStripRight)
+			tabW = max(g_data.RDPI(40), maxStripRight - curX);
+		tab.rect = CRect(curX, tabTop, curX + tabW, tabTop + tabH);
+		curX += tabW + gap;
+		if (curX >= maxStripRight)
+			break;
+	}
+
+	memDC.SelectObject(oldFont);
+	font.DeleteObject();
+	return tabs;
+}
+
+void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx)
+{
+	CFont font;
+	font.CreateFont(-g_data.RDPI(9), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont* pOldFont = memDC.SelectObject(&font);
+	int oldBk = memDC.SetBkMode(TRANSPARENT);
+
+	for (size_t i = 0; i < tabs.size(); ++i)
+	{
+		const auto& tab = tabs[i];
+		const CRect& r = tab.rect;
+		if (r.IsRectEmpty())
+			continue;
+
+		if (tab.isActive)
+		{
+			// 激活标签：品牌蓝实底 + 白字（与分组管理页激活标签一致）
+			memDC.FillSolidRect(r, COLOR_ACCENT_BLUE);
+			memDC.SetTextColor(RGB(255, 255, 255));
+		}
+		else
+		{
+			// 未激活标签：卡片底色 + 暗边框，悬停提亮
+			bool hovered = (static_cast<int>(i) == hoverIdx);
+			memDC.FillSolidRect(r, hovered ? RGB(30, 41, 59) : COLOR_BG_CARD);
+			CBrush borderBrush(hovered ? RGB(59, 130, 246) : COLOR_DARK_GRAY_BORDER);
+			memDC.FrameRect(r, &borderBrush);
+			memDC.SetTextColor(hovered ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED);
+		}
+
+		CString text(tab.name.c_str());
+		CRect textRect = r;
+		textRect.DeflateRect(g_data.RDPI(6), 0);
+		memDC.DrawText(text, textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+	}
+
+	memDC.SetBkMode(oldBk);
+	memDC.SelectObject(pOldFont);
+	font.DeleteObject();
+}
+
+void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset, int groupTab)
 {
 	// 绘制面板现代深色底 (#14161D)
 	memDC.FillSolidRect(x, y, w, h, COLOR_BG_PANEL);
@@ -30,12 +164,14 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	memDC.SetTextColor(COLOR_TEXT_MUTED);
 	memDC.SetBkMode(TRANSPARENT);
 
+	std::wstring groupTitle = GetGroupTabName(groupTab);
+
 	CFont titleFont;
 	titleFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
 	CFont* pOldBaseFont = memDC.SelectObject(&titleFont);
-	memDC.TextOut(x + g_data.RDPI(6), y + g_data.RDPI(2), _T("自选列表"));
+	memDC.TextOut(x + g_data.RDPI(6), y + g_data.RDPI(2), groupTitle.c_str());
 	memDC.SelectObject(pOldBaseFont);
 	titleFont.DeleteObject();
 
@@ -45,7 +181,7 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	memDC.MoveTo(x, y + titleH);
 	memDC.LineTo(x + w, y + titleH);
 
-	std::vector<std::wstring> stockCodes = GetStockListCodes();
+	std::vector<std::wstring> stockCodes = GetStockListCodes(groupTab);
 
 	if (stockCodes.empty())
 	{

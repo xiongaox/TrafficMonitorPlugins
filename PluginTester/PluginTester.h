@@ -55,6 +55,9 @@ public:
     const wchar_t* GetPluginConfigDir() const override;
     int GetDPI(ITrafficMonitor::DPIType type) const override;
     unsigned int GetThemeColor() const override;
+    const wchar_t* GetStringRes(const wchar_t* key, const wchar_t* section) override;
+    void* GetMainWindowHwnd() override;
+    void* GetTaskbarWindowHwnd() override;
 };
 
 extern CPluginTesterApp theApp;

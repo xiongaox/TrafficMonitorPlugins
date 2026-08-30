@@ -159,6 +159,8 @@ private:
 	int m_hover_menu{ -1 };
 	int m_hover_index_card{ -1 };
 	int m_hover_ma_tag_del{ -1 };
+	int m_hover_ma_slot{ -1 };
+	int m_hover_ma_preset{ -1 };
 	int m_hover_group_tab{ -1 };
 	int m_hover_index_mode{ -1 };
 	CRect m_index_mode_rects[3];
@@ -186,6 +188,7 @@ private:
 	CButton m_mgr_up_btn;
 	CButton m_mgr_down_btn;
 	CButton m_mgr_del_group_btn;
+	CButton m_group_sort_btn;   // 分组管理页右上角「分组排序」入口
 	CDarkComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
@@ -202,6 +205,8 @@ private:
 	std::vector<CRect> m_index_card_rects;
 	std::vector<CRect> m_ma_tag_rects;
 	std::vector<CRect> m_ma_tag_del_rects;
+	std::vector<CRect> m_ma_slot_rects;   // 均线页空槽位（点击聚焦输入框）
+	std::vector<CRect> m_ma_preset_rects; // 均线页常用周期快捷添加按钮
 	std::vector<CRect> m_group_tab_rects;
 	CRect m_about_link_rect;
 
@@ -220,6 +225,7 @@ private:
 	// 单行 EDIT 不支持垂直居中：控件实际高度缩为字段高-8 并居中放置，
 	// 字段整框（底色+边框）由 DrawControlBorder 绘制，文字自然居中
 	void PlaceEditInField(UINT nID, const CRect& fieldRect);
+	bool TryAddMaDay(int day); // 校验并添加均线周期，失败时弹出对应提示，返回是否成功
 	void SwitchPage(PageIndex page);
 	void SwitchGroupTab(int tab);
 	void UpdateControlsLayout();
@@ -272,6 +278,7 @@ public:
 	afx_msg void OnMoveUpBtnClick();
 	afx_msg void OnMoveDownBtnClick();
 	afx_msg void OnMaAddBtnClick();
+	afx_msg void OnGroupSortBtnClick();
 
 	// 基础设置事件
 	afx_msg void OnClickedFullDayCheck();
@@ -285,6 +292,12 @@ public:
 	afx_msg void OnBnClickedWebDavDownloadBtn();
 	afx_msg void OnBnClickedWebDavAutoSyncCheck();
 	afx_msg void OnBnClickedWebDavAutoBackupCheck();
+	afx_msg LRESULT OnWebDavResult(WPARAM wParam, LPARAM lParam);
+	bool m_webdav_busy{ false };  // 是否有 WebDAV 操作在后台执行（此时禁用操作按钮）
+	std::wstring m_webdav_restore_file; // 待恢复的云端备份文件名（在列表中选中后回填）
+	std::wstring m_webdav_restore_name; // 待恢复备份的展示名（用于确认与成功提示）
+	void StartWebDavAsync(int op);            // 投递 WebDAV 操作到取数线程
+	void ApplyWebDavRestore(const std::string& data, const std::wstring& backupName = L""); // 将云端备份内容应用到本地配置与界面
 	afx_msg void OnEditFocusChanged();
 	afx_msg void OnListCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 

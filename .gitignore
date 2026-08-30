@@ -351,3 +351,18 @@ MigrationBackup/
 
 # vscode
 .vscode/
+
+# Temporary test/debug files and logs
+webdav_root/
+webdav_log.txt
+*.out.txt
+demo_out.txt
+repair_out.txt
+verify_out.txt
+dbg_*.png
+tm_*.png
+vbl_*.png
+vgt_*.png
+*.py
+!Plugins/Stock/getPrice.py
+check_tm_crash.ps1

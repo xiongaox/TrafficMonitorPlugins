@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <cmath>
+#include <algorithm>
 
 #include "Stock.h"
 #include "DataManager.h"
@@ -73,14 +74,26 @@ int GetStockPriority(const std::wstring& code)
 	return 200;
 }
 
+// 需要行情/图表数据的全部代码：自选股 ∪ 持仓 ∪ 勾选了"状态栏显示"的代码（去重）
+static std::vector<std::wstring> GetAllDataCodes()
+{
+	std::vector<std::wstring> codes = g_data.m_setting_data.m_stock_codes;
+	auto addUnique = [&codes](const std::wstring& code) {
+		if (!code.empty() && std::find(codes.begin(), codes.end(), code) == codes.end())
+			codes.push_back(code);
+	};
+	for (const auto& code : g_data.m_setting_data.m_position_codes)
+		addUnique(code);
+	for (const auto& code : g_data.GetRegisteredStockCodes())
+		addUnique(code);
+	return codes;
+}
+
 Stock::Stock() : m_pFloatingWnd(NULL)
 {
-	m_items = vector<StockItem>(Stock_ITEM_MAX);
-	fill(m_items.begin(), m_items.end(), StockItem());
-	for (int index = 0; index < m_items.size(); index++)
-	{
-		m_items[index].index = index;
-	}
+	// 单一聚合显示项：所有勾选"状态栏显示"的股票都绘制在这一个条目内，
+	// 主程序显示设置列表中只出现一个"股票"条目，勾选一次永久生效
+	m_items = vector<StockItem>(1);
 }
 
 Stock::~Stock()
@@ -110,14 +123,10 @@ void Stock::LoadContextMenu()
 
 IPluginItem* Stock::GetItem(int index)
 {
-	size_t item_size = m_items.size();
-	if (g_data.m_setting_data.m_stock_codes.size() < item_size)
-		item_size = g_data.m_setting_data.m_stock_codes.size();
-	if (item_size == 0)
-		item_size = 1;
-	if (index >= item_size)
+	// 单一聚合显示项：只注册一个条目，主程序显示设置里只会有"股票"一项
+	if (index != 0)
 		return nullptr;
-	return &(m_items[index]);
+	return &(m_items[0]);
 }
 
 const wchar_t* Stock::GetTooltipInfo()
@@ -191,7 +200,6 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 	case ITMPlugin::EI_CONFIG_DIR:
 		// 从配置文件读取配置
 		g_data.LoadConfig(std::wstring(data));
-		updateItems();
 		// 重置价格关注弹窗状态（配置重载后所有弹窗状态清零）
 		{
 			std::lock_guard<std::mutex> lock(m_instance.m_alert_mutex);
@@ -216,7 +224,6 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 				std::wstring errMsg;
 				if (CWebDavSync::DownloadBackup(g_data.m_setting_data, errMsg))
 				{
-					Stock::Instance().updateItems();
 					Stock::Instance().SendStockInfoRequest();
 				}
 			});
@@ -261,25 +268,6 @@ void* Stock::GetPluginIcon()
 	return g_data.GetIcon(IDI_STOCK);
 }
 
-void Stock::updateItems()
-{
-	for (StockItem& item : m_items)
-	{
-		item.enable = FALSE;
-	}
-	size_t code_count = g_data.m_setting_data.m_stock_codes.size();
-	for (size_t index = 0; index < code_count; index++)
-	{
-		std::wstring key = g_data.m_setting_data.m_stock_codes[index];
-		if (index >= m_items.size())
-		{
-			m_items.push_back(StockItem());
-		}
-		m_items[index].enable = TRUE;
-		m_items[index].stock_id = key;
-	}
-}
-
 INT_PTR Stock::ShowStockManageDlg(CWnd* pWnd)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
@@ -291,7 +279,6 @@ INT_PTR Stock::ShowStockManageDlg(CWnd* pWnd)
 	if (rtn == IDOK)
 	{
 		g_data.m_setting_data = dlg.m_data;
-		updateItems();
 		g_data.SaveConfig();
 	}
 	return rtn;
@@ -302,7 +289,7 @@ void Stock::SendStockInfoRequest()
 	// 将数据获取任务投递到专用的后台线程执行，与 UI 交互完全分离
 	// 线程忙时本调用直接返回，避免请求堆积
 	CStockFetchThread::Instance().PostTask([]() {
-		if (g_data.m_setting_data.m_stock_codes.empty())
+		if (GetAllDataCodes().empty())
 		{
 			g_data.ResetText();
 			return;
@@ -392,7 +379,7 @@ void Stock::PreloadAllKLineData()
 		return;
 	m_kline_preloaded = true;
 
-	std::vector<std::wstring> codes = g_data.m_setting_data.m_stock_codes;
+	std::vector<std::wstring> codes = GetAllDataCodes();
 	if (codes.empty())
 		return;
 
@@ -412,7 +399,7 @@ void Stock::PreloadAllKLineData()
 
 void Stock::PreloadAllChipDistributionData()
 {
-	std::vector<std::wstring> codes = g_data.m_setting_data.m_stock_codes;
+	std::vector<std::wstring> codes = GetAllDataCodes();
 	if (codes.empty())
 		return;
 
@@ -426,7 +413,7 @@ void Stock::PreloadAllChipDistributionData()
 
 void Stock::PreloadAllStockBasicData()
 {
-	std::vector<std::wstring> codes = g_data.m_setting_data.m_stock_codes;
+	std::vector<std::wstring> codes = GetAllDataCodes();
 	if (codes.empty())
 		return;
 
@@ -1496,7 +1483,7 @@ void Stock::CheckT0AlertForStock(const std::wstring& code)
 void Stock::UpdateMacdCalcForAllStocks()
 {
 	time_t now = time(nullptr);
-	for (const auto& code : g_data.m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllDataCodes())
 	{
 		auto stock_data = g_data.GetStockData(code);
 		if (!stock_data || !stock_data->info.is_ok)
@@ -1594,7 +1581,7 @@ void Stock::UpdateMacdCalcForStock(const std::wstring& code)
 void Stock::JudgeMacdTrendForAllStocks()
 {
 	time_t now = time(nullptr);
-	for (const auto& code : g_data.m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllDataCodes())
 	{
 		auto stock_data = g_data.GetStockData(code);
 		if (!stock_data || !stock_data->info.is_ok)

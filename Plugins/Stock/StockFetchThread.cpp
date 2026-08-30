@@ -28,6 +28,21 @@ CStockFetchThread& CStockFetchThread::Instance()
 	return instance;
 }
 
+// 自定义分组代码列表（去重）。分组管理页展示名称/行情依赖这些代码的行情数据
+static std::vector<std::wstring> GetCustomGroupCodes()
+{
+	std::vector<std::wstring> result;
+	for (const auto& group : g_data.m_setting_data.m_custom_groups)
+	{
+		for (const auto& code : group.codes)
+		{
+			if (!code.empty() && std::find(result.begin(), result.end(), code) == result.end())
+				result.push_back(code);
+		}
+	}
+	return result;
+}
+
 CStockFetchThread::CStockFetchThread()
 {
 }
@@ -648,8 +663,12 @@ void CStockFetchThread::RunRealtime()
 			g_tdx_client.StartListening(g_data.m_log_path);
 		}
 
-		if (g_data.m_setting_data.m_stock_codes.empty())
-		{
+	// 自选股、持仓、勾选显示的代码均为空时才无需获取行情（持仓与自选股相互隔离）
+	if (g_data.m_setting_data.m_stock_codes.empty() &&
+		g_data.m_setting_data.m_position_codes.empty() &&
+		g_data.GetRegisteredStockCodes().empty() &&
+		GetCustomGroupCodes().empty())
+	{
 			// 无股票代码时重置文本
 			if (m_realtime_last_fetch != 0)
 			{
@@ -699,6 +718,17 @@ void CStockFetchThread::OnQuotesReceived(const std::vector<QuoteItem>& items)
 void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 {
 	auto codes = g_data.m_setting_data.m_stock_codes;
+	// 持仓分组与勾选了"状态栏显示"的代码（可能来自自定义分组）同样需要实时行情
+	for (const auto& code : g_data.m_setting_data.m_position_codes)
+	{
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+			codes.push_back(code);
+	}
+	for (const auto& code : g_data.GetRegisteredStockCodes())
+	{
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+			codes.push_back(code);
+	}
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
 	{
@@ -728,15 +758,38 @@ void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 		return;
 	}
 
+	// 内外盘只需要自选股/持仓/状态栏代码，分组代码不参与盘口统计
+	std::vector<std::wstring> innerOuterCodes = codes;
+
+	// 自定义分组代码同样需要行情数据（管理对话框分组页显示名称等）。
+	// 注意共享内存只覆盖自选股(stock_code)，分组代码不在其中，
+	// 即使共享内存已连接也必须始终走 HTTP 获取，不能被 onlyNonAG 过滤掉
+	std::vector<std::wstring> groupCodes = GetCustomGroupCodes();
+	for (const auto& code : groupCodes)
+	{
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+			codes.push_back(code);
+	}
+
 	// 实时行情（新浪）
+	std::vector<std::wstring> realtimeCodes = codes;
+	if (onlyNonAG)
+	{
+		// 与 FetchRealtimeHtml 内置过滤等价，但豁免自定义分组代码
+		realtimeCodes.erase(std::remove_if(realtimeCodes.begin(), realtimeCodes.end(),
+			[&groupCodes](const std::wstring& code) {
+				return CCommon::IsAGStockCode(code) && GetStockPriority(code) >= 200 &&
+					std::find(groupCodes.begin(), groupCodes.end(), code) == groupCodes.end();
+			}), realtimeCodes.end());
+	}
 	std::vector<std::wstring> outCodes;
 	std::string resp;
-	if (g_http_fetcher.FetchRealtimeHtml(codes, onlyNonAG, outCodes, resp))
+	if (g_http_fetcher.FetchRealtimeHtml(realtimeCodes, false, outCodes, resp))
 		g_data.ApplyRealtimeData(outCodes, resp);
 
 	// 内外盘（腾讯）：onlyNonAG=true 时 includeAG=false（仅非A股），反之含A股
 	std::string ioResp;
-	if (g_http_fetcher.FetchInnerOuterHtml(codes, !onlyNonAG, ioResp))
+	if (g_http_fetcher.FetchInnerOuterHtml(innerOuterCodes, !onlyNonAG, ioResp))
 		g_data.ApplyInnerOuterData(ioResp);
 
 	// 通知浮动窗口盘口数据更新
@@ -745,9 +798,16 @@ void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 
 void CStockFetchThread::FetchCallAuction()
 {
+	// 自选股之外的持仓/勾选显示代码同样需要竞价数据
+	std::vector<std::wstring> allCodes = g_data.m_setting_data.m_stock_codes;
+	for (const auto& code : g_data.m_setting_data.m_position_codes)
+	{
+		if (std::find(allCodes.begin(), allCodes.end(), code) == allCodes.end())
+			allCodes.push_back(code);
+	}
 	std::vector<std::wstring> outCodes;
 	std::string resp;
-	if (g_http_fetcher.FetchCallAuctionHtml(g_data.m_setting_data.m_stock_codes, outCodes, resp))
+	if (g_http_fetcher.FetchCallAuctionHtml(allCodes, outCodes, resp))
 		g_data.ApplyCallAuctionData(resp);
 }
 
@@ -803,7 +863,7 @@ void CStockFetchThread::FetchFundIOPV(const std::wstring& code)
 void CStockFetchThread::FetchAllFundsIOPV()
 {
 	// 收集所有基金代码，排除关注基金（关注基金由 CHART_IOPV 高频获取，这里只负责其余基金）
-	const auto& codes = g_data.m_setting_data.m_stock_codes;
+	const auto codes = g_data.GetAllKnownStockCodes();
 	std::wstring focusId = GetFocusStockId();
 	std::vector<std::wstring> fundCodes;
 	fundCodes.reserve(codes.size());
@@ -862,7 +922,7 @@ void CStockFetchThread::FetchAllData()
 	FetchCallAuction();
 
 	// 预加载所有股票的日K线、基础数据和筹码分布
-	for (const auto& code : g_data.m_setting_data.m_stock_codes)
+	for (const auto& code : g_data.GetAllKnownStockCodes())
 	{
 		if (m_stopping.load())
 			return;

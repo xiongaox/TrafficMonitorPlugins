@@ -17,11 +17,17 @@
 
 // ========== 滚动均价计算 ==========
 
-// 为每个分时/K线数据点计算MA5/MA17/MA60移动均价（简单移动平均SMA）
+// 为每个分时/K线数据点计算各周期移动均价（简单移动平均SMA），
+// 周期列表来自「均线日配置」页（g_data.m_setting_data.m_ma_days），写入 TimelinePoint::maValues
 void CStockIndicator::CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>& timelinePoint)
 {
 	int n = static_cast<int>(timelinePoint.size());
 	if (n == 0)
+		return;
+
+	const std::vector<int>& maDays = g_data.m_setting_data.m_ma_days;
+	const int maCount = static_cast<int>(maDays.size());
+	if (maCount == 0)
 		return;
 
 	// 前值填充：若某分钟数据缺失或为0，向前继承上一分钟有效价格与均价，消除断点
@@ -43,23 +49,18 @@ void CStockIndicator::CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>&
 	}
 
 	// 计算每个窗口的移动平均价（SMA），自适应扩展窗口确保早盘第1分钟起连续出线
-	auto calcWindow = [&](int windowSize, int fieldOffset) {
-		for (int i = 0; i < n; i++)
-		{
-			if (timelinePoint[i].price <= 0)
-			{
-				switch (fieldOffset)
-				{
-				case 5: timelinePoint[i].ma5 = 0; break;
-				case 17: timelinePoint[i].ma17 = 0; break;
-				case 60: timelinePoint[i].ma60 = 0; break;
-				}
-				continue;
-			}
+	for (int i = 0; i < n; i++)
+	{
+		auto& pt = timelinePoint[i];
+		pt.maValues.assign(maCount, 0);
+		if (pt.price <= 0)
+			continue;
 
+		for (int k = 0; k < maCount; k++)
+		{
 			double sumPrice = 0;
 			int count = 0;
-			for (int j = i; j >= 0 && count < windowSize; j--)
+			for (int j = i; j >= 0 && count < maDays[k]; j--)
 			{
 				if (timelinePoint[j].price > 0)
 				{
@@ -69,21 +70,9 @@ void CStockIndicator::CalcAllRollingAvgPrices(std::vector<STOCK::TimelinePoint>&
 			}
 
 			if (count > 0)
-			{
-				STOCK::Price maVal = sumPrice / count;
-				switch (fieldOffset)
-				{
-				case 5: timelinePoint[i].ma5 = maVal; break;
-				case 17: timelinePoint[i].ma17 = maVal; break;
-				case 60: timelinePoint[i].ma60 = maVal; break;
-				}
-			}
+				pt.maValues[k] = static_cast<STOCK::Price>(sumPrice / count);
 		}
-	};
-
-	calcWindow(5, 5);
-	calcWindow(17, 17);
-	calcWindow(60, 60);
+	}
 }
 
 // ========== Y轴整齐刻度计算（Nice Number算法） ==========

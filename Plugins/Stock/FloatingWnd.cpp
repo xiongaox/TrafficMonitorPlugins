@@ -16,6 +16,7 @@
 #include "ChartColors.h"
 #include "StockListPanel.h"
 #include "CallAuctionChart.h"
+#include "ManagerDialog.h"  // CDarkPopupMenu：顶栏“更多分组”暗色下拉菜单
 
 // 大盘指数优先级列表与 GetStockPriority 已移至 Stock.h/Stock.cpp，供各模块共享
 
@@ -113,6 +114,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_CREATE()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONUP()
+	ON_WM_MOUSELEAVE()
 	ON_WM_MOUSEWHEEL()
 	ON_WM_DESTROY()
 	ON_WM_TIMER()
@@ -512,7 +514,13 @@ void CFloatingWnd::OnPaint()
 
 		// 左侧股票列表面板（无论分时数据是否加载都绘制）
 		if (m_showStockList)
-			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset);
+		{
+			// 顶栏分组标签条（自选股/持仓/自定义分组 + 更多分组下拉），记录矩形供点击命中
+			const int activeGroupTab = CStockListPanel::ClampGroupTab(m_activeGroupTab);
+			m_groupTabs = CStockListPanel::LayoutGroupTabs(memDC, w, headerHeight, activeGroupTab);
+			CStockListPanel::DrawGroupTabs(memDC, m_groupTabs, m_hoverGroupTab);
+			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab);
+		}
 
 		// 集合竞价模式绘制（主图+副图各占一半）
 		if (m_viewMode == UI_VIEW_AUCTION)
@@ -593,10 +601,9 @@ void CFloatingWnd::OnPaint()
 			tlHover.isHoveringVolume = m_isHoveringVolume;
 			tlHover.hoveredBarIndex = m_hoveredBarIndex;
 			tlHover.hoveredData = m_hoveredData;
-			tlHover.hoverMa1 = m_hoverMa1; tlHover.hoverMa5 = m_hoverMa5;
-			tlHover.hoverMa17 = m_hoverMa17; tlHover.hoverMa60 = m_hoverMa60;
-			tlHover.hoverPrevMa1 = m_hoverPrevMa1; tlHover.hoverPrevMa5 = m_hoverPrevMa5;
-			tlHover.hoverPrevMa17 = m_hoverPrevMa17; tlHover.hoverPrevMa60 = m_hoverPrevMa60;
+			tlHover.hoverMa1 = m_hoverMa1;
+			tlHover.hoverMaValues = m_hoverMaValues;
+			tlHover.hoverPrevMa1 = m_hoverPrevMa1;
 			tlHover.hoverTip = m_hoverTip;
 			tlHover.timelinePriceTitleTip = m_timelinePriceTitleTip;
 			tlHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
@@ -749,18 +756,7 @@ void CFloatingWnd::OnPaint()
 			{
 				const auto& lastPt = subTimeline.back();
 				ctx.ma1 = lastPt.price;
-				ctx.ma5 = lastPt.ma5;
-				ctx.ma17 = lastPt.ma17;
-				ctx.ma60 = lastPt.ma60;
-				// 前一数据点用于箭头方向判断
-				if (subTimeline.size() >= 2)
-				{
-					const auto& prevPt = subTimeline[subTimeline.size() - 2];
-					ctx.prevMa1 = prevPt.price;
-					ctx.prevMa5 = prevPt.ma5;
-					ctx.prevMa17 = prevPt.ma17;
-					ctx.prevMa60 = prevPt.ma60;
-				}
+				ctx.maValues = lastPt.maValues;
 			}
 
 			// 计算整齐Y轴范围：先根据可见数据范围计算整齐步长，再扩展为整齐边界
@@ -802,20 +798,13 @@ void CFloatingWnd::OnPaint()
 				{
 					for (const auto& tp : subTimeline)
 					{
-						if (tp.ma5 > 0)
+						for (STOCK::Price maVal : tp.maValues)
 						{
-							visMax = (std::max)(visMax, tp.ma5);
-							visMin = (std::min)(visMin, tp.ma5);
-						}
-						if (tp.ma17 > 0)
-						{
-							visMax = (std::max)(visMax, tp.ma17);
-							visMin = (std::min)(visMin, tp.ma17);
-						}
-						if (tp.ma60 > 0)
-						{
-							visMax = (std::max)(visMax, tp.ma60);
-							visMin = (std::min)(visMin, tp.ma60);
+							if (maVal > 0)
+							{
+								visMax = (std::max)(visMax, maVal);
+								visMin = (std::min)(visMin, maVal);
+							}
 						}
 					}
 				}
@@ -894,10 +883,9 @@ void CFloatingWnd::OnPaint()
 			tlHover.isHoveringVolume = m_isHoveringVolume;
 			tlHover.hoveredBarIndex = m_hoveredBarIndex;
 			tlHover.hoveredData = m_hoveredData;
-			tlHover.hoverMa1 = m_hoverMa1; tlHover.hoverMa5 = m_hoverMa5;
-			tlHover.hoverMa17 = m_hoverMa17; tlHover.hoverMa60 = m_hoverMa60;
-			tlHover.hoverPrevMa1 = m_hoverPrevMa1; tlHover.hoverPrevMa5 = m_hoverPrevMa5;
-			tlHover.hoverPrevMa17 = m_hoverPrevMa17; tlHover.hoverPrevMa60 = m_hoverPrevMa60;
+			tlHover.hoverMa1 = m_hoverMa1;
+			tlHover.hoverMaValues = m_hoverMaValues;
+			tlHover.hoverPrevMa1 = m_hoverPrevMa1;
 			tlHover.hoverTip = m_hoverTip;
 			tlHover.timelinePriceTitleTip = m_timelinePriceTitleTip;
 			tlHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
@@ -1208,6 +1196,22 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 	m_lastClickTime = currentTime;
 	m_lastClickPos = point;
 
+	// 顶栏分组标签点击（切换分组 / 打开“更多分组”下拉）
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList && point.y < g_data.RDPI(26))
+	{
+		for (size_t i = 0; i < m_groupTabs.size(); ++i)
+		{
+			if (m_groupTabs[i].rect.PtInRect(point))
+			{
+				if (m_groupTabs[i].isDropdown)
+					ShowGroupDropdownMenu(m_groupTabs[i].rect);
+				else
+					SwitchFloatingGroup(m_groupTabs[i].tabIndex);
+				return;
+			}
+		}
+	}
+
 	// 单击：点击在按钮区域不处理（让按钮自己处理）
 	const int btnBarHeight = g_data.RDPI(2) + g_data.RDPI(22);  // 按钮y起始 + 按钮高度
 	if (point.y < btnBarHeight)
@@ -1478,7 +1482,7 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 			if (contentY >= 0)
 			{
 				int rowIndex = contentY / rowHeight;
-				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
 				if (rowIndex >= 0 && rowIndex < static_cast<int>(stockCodes.size()))
 				{
 					const std::wstring& clickedCode = stockCodes[rowIndex];
@@ -1547,6 +1551,15 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 {
 	m_mousePos = point;
 
+	// 顶栏分组标签悬停跟踪（进入时申请 WM_MOUSELEAVE）
+	if (!m_trackingTabHover)
+	{
+		TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, GetSafeHwnd(), 0 };
+		if (TrackMouseEvent(&tme))
+			m_trackingTabHover = true;
+	}
+	UpdateGroupTabHover(point);
+
 	// 左侧股票列表拖动处理
 	if (m_isStockListDragging)
 	{
@@ -1564,7 +1577,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 		const int titleH = g_data.RDPI(18);
 		int listAreaH = (clRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
 		const int rowHeight = g_data.RDPI(36);
-		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
 		int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
 		int maxOffset = max(0, totalH - listAreaH);
 
@@ -1903,17 +1916,12 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 
 				// 保存hover点的MA值
 				m_hoverMa1 = m_hoveredData.price;
-				m_hoverMa5 = m_hoveredData.ma5;
-				m_hoverMa17 = m_hoveredData.ma17;
-				m_hoverMa60 = m_hoveredData.ma60;
+				m_hoverMaValues = m_hoveredData.maValues;
 				// 保存前一点MA值（用于箭头方向）
-				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa17 = 0; m_hoverPrevMa60 = 0;
+				m_hoverPrevMa1 = 0;
 				if (relIndex > 0)
 				{
 					m_hoverPrevMa1 = subTimeline[relIndex - 1].price;
-					m_hoverPrevMa5 = subTimeline[relIndex - 1].ma5;
-					m_hoverPrevMa17 = subTimeline[relIndex - 1].ma17;
-					m_hoverPrevMa60 = subTimeline[relIndex - 1].ma60;
 				}
 
 				CString timeStr(m_hoveredData.time.c_str());
@@ -2007,8 +2015,8 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 				m_timelineKdjTitleTip.Empty();
 				m_timelineWrTitleTip.Empty();
 				m_timelineRsiTitleTip.Empty();
-				m_hoverMa1 = 0; m_hoverMa5 = 0; m_hoverMa17 = 0; m_hoverMa60 = 0;
-				m_hoverPrevMa1 = 0; m_hoverPrevMa5 = 0; m_hoverPrevMa17 = 0; m_hoverPrevMa60 = 0;
+				m_hoverMa1 = 0; m_hoverPrevMa1 = 0;
+				m_hoverMaValues.clear();
 			}
 
 			// 只在悬停状态变化时重绘图表区域，避免按钮闪烁
@@ -2173,7 +2181,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		clientPt.y >= headerHeight + relatedBarHeight &&
 		clientPt.y < clientRect.Height() - indexBarHeight)
 	{
-		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
 		const int rowHeight = g_data.RDPI(36);
 		const int titleH = g_data.RDPI(18);
 		int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
@@ -2969,7 +2977,7 @@ void CFloatingWnd::EnsureStockListVisible()
 	if (listAreaH <= 0)
 		return;
 
-	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes();
+	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
 	int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
 	int maxOffset = max(0, totalH - listAreaH);
 
@@ -2993,4 +3001,71 @@ void CFloatingWnd::EnsureStockListVisible()
 	{
 		m_stockListScrollOffset = max(0, min(m_stockListScrollOffset, maxOffset));
 	}
+}
+
+void CFloatingWnd::SwitchFloatingGroup(int groupTab)
+{
+	groupTab = CStockListPanel::ClampGroupTab(groupTab);
+	if (m_activeGroupTab == groupTab)
+		return;
+	m_activeGroupTab = groupTab;
+	m_stockListScrollOffset = 0;
+	Invalidate();
+}
+
+void CFloatingWnd::ShowGroupDropdownMenu(const CRect& dropdownRect)
+{
+	const auto& customGroups = g_data.m_setting_data.m_custom_groups;
+	if (customGroups.size() < 2)
+		return;
+
+	// 下拉列出第一个标签位装不下的自定义分组（自选股/持仓/自定义#1 在标签条上）
+	std::vector<CDarkPopupMenu::MenuItem> menuItems;
+	for (size_t k = 1; k < customGroups.size(); ++k)
+	{
+		menuItems.push_back({
+			static_cast<int>(1000 + k),
+			customGroups[k].name,
+			m_activeGroupTab == static_cast<int>(k + 2),
+			false,
+			false
+			});
+	}
+
+	CPoint pt(dropdownRect.left, dropdownRect.bottom + g_data.RDPI(2));
+	ClientToScreen(&pt);
+
+	CDarkPopupMenu menu;
+	menu.CreatePopup(this);
+	int cmd = menu.TrackMenu(pt, menuItems, dropdownRect.Width());
+	if (cmd >= 1001 && cmd < 1000 + static_cast<int>(customGroups.size()))
+		SwitchFloatingGroup(cmd - 1000 + 2);
+}
+
+void CFloatingWnd::UpdateGroupTabHover(const CPoint& point)
+{
+	int hover = -1;
+	if (m_showStockList && m_viewMode != UI_VIEW_OVERVIEW && point.y < g_data.RDPI(26))
+	{
+		for (size_t i = 0; i < m_groupTabs.size(); ++i)
+		{
+			if (m_groupTabs[i].rect.PtInRect(point))
+			{
+				hover = static_cast<int>(i);
+				break;
+			}
+		}
+	}
+	if (hover != m_hoverGroupTab)
+	{
+		m_hoverGroupTab = hover;
+		Invalidate();
+	}
+}
+
+void CFloatingWnd::OnMouseLeave()
+{
+	m_trackingTabHover = false;
+	UpdateGroupTabHover(CPoint(-1, -1));
+	CWnd::OnMouseLeave();
 }

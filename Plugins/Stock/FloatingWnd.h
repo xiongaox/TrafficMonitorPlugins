@@ -91,6 +91,7 @@ private:
 	// K线图绘制已移至CKLineChart
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnMouseLeave();
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
@@ -100,6 +101,10 @@ private:
 	void UpdatePeriodComboVisibility();
 	void ApplySignalColors(COLORREF bollColor, COLORREF macdColor, COLORREF kdjColor, COLORREF wrColor, COLORREF rsiColor, COLORREF maColor);
 	void EnsureStockListVisible();
+	// 左侧列表分组：切换 / “更多分组”下拉 / 顶栏标签悬停
+	void SwitchFloatingGroup(int groupTab);
+	void ShowGroupDropdownMenu(const CRect& dropdownRect);
+	void UpdateGroupTabHover(const CPoint& point);
 
 	CTransparentWnd m_CTransparentWnd;
 	CStockListPanel m_stockListPanel;
@@ -163,8 +168,8 @@ private:
 	int m_hoveredBarIndex{ -1 };
 	STOCK::TimelinePoint m_hoveredData;
 	// 悬停点的MA值及前一点MA值（用于箭头方向）
-	STOCK::Price m_hoverMa1{ 0 }, m_hoverMa5{ 0 }, m_hoverMa17{ 0 }, m_hoverMa60{ 0 };
-	STOCK::Price m_hoverPrevMa1{ 0 }, m_hoverPrevMa5{ 0 }, m_hoverPrevMa17{ 0 }, m_hoverPrevMa60{ 0 };
+	STOCK::Price m_hoverMa1{ 0 }, m_hoverPrevMa1{ 0 };
+	std::vector<STOCK::Price> m_hoverMaValues; // 悬停点各周期均线值，顺序同 SettingData::m_ma_days
 	CString m_hoverTip;
 	// 分时图标题栏悬停提示
 	CString m_timelinePriceTitleTip;   // 走势图标题栏：现价/均价/MA5/MA17/MA60...
@@ -190,6 +195,10 @@ private:
 	bool m_showChipPeak{ false };
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
+	int m_activeGroupTab{ 0 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
+	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
+	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）
+	bool m_trackingTabHover{ false };  // 是否已申请 WM_MOUSELEAVE 跟踪
 	int m_stockListScrollOffset{ 0 };  // 左侧股票列表垂直滚动偏移
 	bool m_isStockListDragging{ false };  // 左侧股票列表是否正在拖动
 	bool m_isStockListDragMoved{ false };  // 左侧股票列表拖动是否产生了位移

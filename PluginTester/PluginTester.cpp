@@ -208,3 +208,20 @@ unsigned int CPluginTesterApp::GetThemeColor() const
 {
     return RGB(0, 120, 215);
 }
+
+const wchar_t* CPluginTesterApp::GetStringRes(const wchar_t* key, const wchar_t* section)
+{
+    // 测试器暂不提供多语言资源，返回空字符串
+    return L"";
+}
+
+void* CPluginTesterApp::GetMainWindowHwnd()
+{
+    return GetMainWnd()->GetSafeHwnd();
+}
+
+void* CPluginTesterApp::GetTaskbarWindowHwnd()
+{
+    // 测试器没有任务栏窗口，返回主窗口
+    return GetMainWnd()->GetSafeHwnd();
+}

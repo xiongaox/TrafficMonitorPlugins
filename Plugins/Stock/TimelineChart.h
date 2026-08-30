@@ -15,8 +15,8 @@ public:
 		bool isHoveringVolume{ false };
 		int hoveredBarIndex{ -1 };
 		STOCK::TimelinePoint hoveredData;
-		STOCK::Price hoverMa1{ 0 }, hoverMa5{ 0 }, hoverMa17{ 0 }, hoverMa60{ 0 };
-		STOCK::Price hoverPrevMa1{ 0 }, hoverPrevMa5{ 0 }, hoverPrevMa17{ 0 }, hoverPrevMa60{ 0 };
+		STOCK::Price hoverMa1{ 0 }, hoverPrevMa1{ 0 };
+		std::vector<STOCK::Price> hoverMaValues; // 悬停点各周期均线值，顺序同 SettingData::m_ma_days
 		CString hoverTip;
 		CString timelinePriceTitleTip;
 		CString timelineVolumeTitleTip;

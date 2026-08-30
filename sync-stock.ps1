@@ -8,14 +8,15 @@ param(
 
 if (-not $PluginDir -or -not $AppPath) {
     $candidateDirs = @(
-        "D:\MyDir\soft\TrafficMonitor",
         "D:\Program Files (x86)\NIR\TrafficMonitor",
+        "D:\MyDir\soft\TrafficMonitor",
         "C:\Program Files (x86)\TrafficMonitor",
         "C:\Program Files\TrafficMonitor"
     )
     $foundDir = $null
     foreach ($cand in $candidateDirs) {
-        if (Test-Path $cand) {
+        # 以目录下存在 TrafficMonitor.exe 为准，避免误选残留的空目录
+        if (Test-Path (Join-Path $cand "TrafficMonitor.exe")) {
             $foundDir = $cand
             break
         }

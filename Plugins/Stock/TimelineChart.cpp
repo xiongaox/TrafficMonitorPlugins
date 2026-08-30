@@ -361,13 +361,14 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		}
 	}
 
-	// 4. MA均线点列（MA5/MA17/MA60）
-	std::vector<Gdiplus::PointF> ma5Points, ma17Points, ma60Points;
+	// 4. MA均线点列（周期来自「均线日配置」页，颜色与配置页标签一致）
+	std::vector<std::vector<Gdiplus::PointF>> maSeries;
 	if (hover.showMA)
 	{
-		ma5Points.reserve(totalPoints);
-		ma17Points.reserve(totalPoints);
-		ma60Points.reserve(totalPoints);
+		const std::vector<int>& maDays = g_data.m_setting_data.m_ma_days;
+		maSeries.resize(maDays.size());
+		for (auto& pts : maSeries)
+			pts.reserve(totalPoints);
 
 		for (int i = 0; i < totalPoints; i++)
 		{
@@ -378,9 +379,11 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				return (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
 			};
 
-			if (item.ma5 > 0) ma5Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma5)));
-			if (item.ma17 > 0) ma17Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma17)));
-			if (item.ma60 > 0) ma60Points.push_back(Gdiplus::PointF(pointX, calcPy(item.ma60)));
+			for (size_t k = 0; k < maDays.size() && k < item.maValues.size(); k++)
+			{
+				if (item.maValues[k] > 0)
+					maSeries[k].push_back(Gdiplus::PointF(pointX, calcPy(item.maValues[k])));
+			}
 		}
 	}
 
@@ -431,26 +434,18 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			graphics.DrawCurve(&lowerPen, lowerPoints.data(), static_cast<int>(lowerPoints.size()), 0.25f);
 		}
 
-		// (3) MA均线（平滑抗锯齿实线）
+		// (3) MA均线（平滑抗锯齿实线，周期/颜色来自配置）
 		if (hover.showMA)
 		{
-			if (ma5Points.size() >= 2)
+			for (size_t k = 0; k < maSeries.size(); k++)
 			{
-				Gdiplus::Pen ma5Pen(Gdiplus::Color(220, 251, 191, 36), 1.1f);
-				ma5Pen.SetLineJoin(Gdiplus::LineJoinRound);
-				graphics.DrawCurve(&ma5Pen, ma5Points.data(), static_cast<int>(ma5Points.size()), 0.25f);
-			}
-			if (ma17Points.size() >= 2)
-			{
-				Gdiplus::Pen ma17Pen(Gdiplus::Color(220, 56, 189, 248), 1.1f);
-				ma17Pen.SetLineJoin(Gdiplus::LineJoinRound);
-				graphics.DrawCurve(&ma17Pen, ma17Points.data(), static_cast<int>(ma17Points.size()), 0.25f);
-			}
-			if (ma60Points.size() >= 2)
-			{
-				Gdiplus::Pen ma60Pen(Gdiplus::Color(220, 192, 132, 252), 1.1f);
-				ma60Pen.SetLineJoin(Gdiplus::LineJoinRound);
-				graphics.DrawCurve(&ma60Pen, ma60Points.data(), static_cast<int>(ma60Points.size()), 0.25f);
+				const auto& pts = maSeries[k];
+				if (pts.size() < 2)
+					continue;
+				COLORREF lineColor = MaIndexColor(k);
+				Gdiplus::Pen maPen(Gdiplus::Color(220, GetRValue(lineColor), GetGValue(lineColor), GetBValue(lineColor)), 1.1f);
+				maPen.SetLineJoin(Gdiplus::LineJoinRound);
+				graphics.DrawCurve(&maPen, pts.data(), static_cast<int>(pts.size()), 0.25f);
 			}
 		}
 
@@ -1356,25 +1351,17 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 
 	if (hover.showMA)
 	{
-		// 日K线MA均线配色
-		const COLORREF ma5Color = RGB(240, 117, 40);
-		const COLORREF ma17Color = RGB(21, 101, 192);
-		const COLORREF ma60Color = RGB(128, 40, 149);
+		// 周期与颜色来自「均线日配置」页
+		const std::vector<int>& maDays = g_data.m_setting_data.m_ma_days;
 
-		auto drawMALine = [&](int fieldOffset, COLORREF color) {
-			CPen maPen(PS_SOLID, 1, color);
+		auto drawMALine = [&](size_t dayIdx) {
+			CPen maPen(PS_SOLID, 1, MaIndexColor(dayIdx));
 			memDC.SelectObject(&maPen);
 			bool first = true;
 			for (int i = 0; i < totalPoints; i++)
 			{
 				const auto& item = timelinePoint[i];
-				STOCK::Price maVal = 0;
-				switch (fieldOffset)
-				{
-				case 5: maVal = item.ma5; break;
-				case 17: maVal = item.ma17; break;
-				case 60: maVal = item.ma60; break;
-				}
+				STOCK::Price maVal = (dayIdx < item.maValues.size()) ? item.maValues[dayIdx] : 0;
 				if (maVal <= 0) { first = true; continue; }
 				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) / 2);
 				double yVal = (maVal - minPrice) * unitY;
@@ -1391,9 +1378,8 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 			}
 			};
 
-		drawMALine(5, ma5Color);
-		drawMALine(17, ma17Color);
-		drawMALine(60, ma60Color);
+		for (size_t k = 0; k < maDays.size(); k++)
+			drawMALine(k);
 	}
 
 	if (hover.showBollBands)
@@ -1745,17 +1731,29 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 
 		if (hover.showMA)
 		{
-			STOCK::Price dispMa5 = isHovering ? hover.hoverMa5 : ctx.ma5;
-			STOCK::Price dispMa17 = isHovering ? hover.hoverMa17 : ctx.ma17;
-			STOCK::Price dispMa60 = isHovering ? hover.hoverMa60 : ctx.ma60;
+			// 周期与颜色来自「均线日配置」页
+			const std::vector<int>& maDays = g_data.m_setting_data.m_ma_days;
 			std::vector<std::pair<CString, COLORREF>> items;
-			// 日/周/月K线MA均线配色
-			const COLORREF ma5TextColor = RGB(240, 117, 40);
-			const COLORREF ma17TextColor = RGB(21, 101, 192);
-			const COLORREF ma60TextColor = RGB(128, 40, 149);
-			if (dispMa5 > 0) items.push_back({ _T("MA5:") + formatPrice(dispMa5), ma5TextColor });
-			if (dispMa17 > 0) items.push_back({ _T("MA17:") + formatPrice(dispMa17), ma17TextColor });
-			if (dispMa60 > 0) items.push_back({ _T("MA60:") + formatPrice(dispMa60), ma60TextColor });
+			for (size_t k = 0; k < maDays.size(); k++)
+			{
+				STOCK::Price dispVal = 0;
+				if (isHovering)
+				{
+					if (k < hover.hoverMaValues.size())
+						dispVal = hover.hoverMaValues[k];
+				}
+				else if (k < ctx.maValues.size())
+				{
+					dispVal = ctx.maValues[k];
+				}
+
+				if (dispVal > 0)
+				{
+					CString maLabel;
+					maLabel.Format(_T("MA%d:"), maDays[k]);
+					items.push_back({ maLabel + formatPrice(dispVal), MaIndexColor(k) });
+				}
+			}
 			drawRightLabelValues(items);
 		}
 	}

@@ -82,16 +82,25 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	wchar_t path[MAX_PATH];
 	GetModuleFileNameW(hModule, path, MAX_PATH);
 	std::wstring module_path = path;
-	m_config_path = module_path;
-	m_log_path = module_path;
+
+	// 首次加载记住配置目录；后续重载（云端恢复/自动同步）不传目录时沿用，
+	// 否则会拼出 "Stock.dll.ini" 这类不存在的路径，把内存配置重置为默认值
 	if (!config_dir.empty())
+		m_config_dir = config_dir;
+
+	if (!m_config_dir.empty())
 	{
 		size_t index = module_path.find_last_of(L"\\/");
 		// 模块的文件名
 		std::wstring module_file_name = module_path.substr(index + 1);
 		module_file_name = module_file_name.substr(0, module_file_name.find_last_of(L"."));
-		m_config_path = config_dir + module_file_name;
-		m_log_path = config_dir + module_file_name;
+		m_config_path = m_config_dir + module_file_name;
+		m_log_path = m_config_dir + module_file_name;
+	}
+	else
+	{
+		m_config_path = module_path;
+		m_log_path = module_path;
 	}
 	m_config_path += L".ini";
 	m_log_path += L".log";
@@ -147,6 +156,9 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 		m_setting_data.m_custom_group_codes = m_setting_data.m_custom_groups[0].codes;
 	}
 
+	// 持仓分组独立代码列表（与自选股相互隔离）
+	ini.GetStringList(L"config", L"position_codes", m_setting_data.m_position_codes, std::vector<std::wstring>{});
+
 	// WebDAV 云端备份配置
 	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
 	m_setting_data.m_webdav_username = ini.GetString(L"webdav", L"username", L"");
@@ -164,7 +176,8 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_stock_statusbar.clear();
 	// 加载每个股票的关联股票配置
 	m_stock_related.clear();
-	for (const auto& code : m_setting_data.m_stock_codes)
+	// 遍历全部已知代码（自选股/持仓/自定义分组），保证各组代码的独立配置都能读写
+	for (const auto& code : GetAllKnownStockCodes())
 	{
 		std::wstring low_str = ini.GetString(code.c_str(), L"alert_low", L"");
 		std::wstring high_str = ini.GetString(code.c_str(), L"alert_high", L"");
@@ -187,6 +200,49 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 		ini.GetStringList(code.c_str(), L"related_stocks", related_codes, std::vector<std::wstring>{});
 		if (!related_codes.empty())
 			m_stock_related[code] = related_codes;
+	}
+
+	// 分组隔离迁移：老版本把持仓股票强制塞进自选股列表，这里一次性迁移到独立持仓列表。
+	// 注意：列表本身必须立即写回 ini，不能只写迁移标记——否则本次会话结束时若没有触发
+	// SaveConfig，重启后标记会挡住重新迁移，导致持仓列表丢失（v2 版本踩过的坑）
+	if (!ini.GetBool(L"config", L"migrated_group_v3", false))
+	{
+		bool legacy_v2 = ini.GetBool(L"config", L"migrated_group_v2", false);
+		std::vector<std::wstring> watchlist;
+		for (const auto& code : m_setting_data.m_stock_codes)
+		{
+			auto it = m_stock_positions.find(code);
+			bool hasPosition = (it != m_stock_positions.end()) &&
+				(std::get<0>(it->second) > 0 || std::get<1>(it->second) > 0);
+			if (hasPosition)
+			{
+				if (std::find(m_setting_data.m_position_codes.begin(), m_setting_data.m_position_codes.end(), code) == m_setting_data.m_position_codes.end())
+					m_setting_data.m_position_codes.push_back(code);
+			}
+			else
+			{
+				watchlist.push_back(code);
+			}
+		}
+		m_setting_data.m_stock_codes = watchlist;
+
+		// 老配置（v2 之前的）从未使用过"状态栏显示"标记时，默认全部注册，保持升级后任务栏显示不变
+		bool anyStatusFlag = false;
+		for (const auto& item : m_stock_statusbar)
+			anyStatusFlag = anyStatusFlag || item.second;
+		if (!anyStatusFlag && !legacy_v2)
+		{
+			for (const auto& code : m_setting_data.m_stock_codes)
+				m_stock_statusbar[code] = true;
+			for (const auto& code : m_setting_data.m_position_codes)
+				m_stock_statusbar[code] = true;
+		}
+
+		// 立即把迁移结果持久化
+		ini.WriteStringList(L"config", L"stock_code", m_setting_data.m_stock_codes);
+		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteBool(L"config", L"migrated_group_v3", true);
+		ini.Save();
 	}
 
 	m_db_mgr.Init(m_config_path);
@@ -503,6 +559,8 @@ void CDataManager::SaveConfig()
 		else
 			m_setting_data.m_custom_group_codes.clear();
 		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
+		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteBool(L"config", L"migrated_group_v3", true);
 
 		// 保存 WebDAV 云端备份配置
 		ini.WriteString(L"webdav", L"url", m_setting_data.m_webdav_url);
@@ -1093,11 +1151,21 @@ void CDataManager::SetPosition(const std::wstring& code, double cost, double cou
 		{
 			m_stock_positions[code] = std::make_tuple(cost, count, buy_date);
 		}
+		// 持仓分组与自选股隔离：写入持仓数据时自动加入独立持仓列表
+		if (cost > 0 || count > 0)
+		{
+			auto& codes = m_setting_data.m_position_codes;
+			if (std::find(codes.begin(), codes.end(), code) == codes.end())
+				codes.push_back(code);
+		}
 	}
 	else
 	{
 		// 保留记录为0值，确保SaveConfig时能写入空字符串覆盖ini中的旧值
 		m_stock_positions[code] = std::make_tuple(0.0, 0.0, L"");
+		// 清除持仓时从独立持仓列表移除
+		auto& codes = m_setting_data.m_position_codes;
+		codes.erase(std::remove(codes.begin(), codes.end(), code), codes.end());
 	}
 }
 
@@ -1126,6 +1194,50 @@ std::vector<std::wstring> CDataManager::GetStatusBarStockCodes()
 		auto it = m_stock_statusbar.find(code);
 		if (it != m_stock_statusbar.end() && it->second)
 			result.push_back(code);
+	}
+	return result;
+}
+
+std::vector<std::wstring> CDataManager::GetRegisteredStockCodes()
+{
+	std::vector<std::wstring> result;
+	auto addIfFlagged = [this, &result](const std::wstring& code) {
+		if (code.empty())
+			return;
+		if (std::find(result.begin(), result.end(), code) != result.end())
+			return;
+		if (GetShowInStatusBar(code))
+			result.push_back(code);
+	};
+	for (const auto& code : m_setting_data.m_stock_codes)
+		addIfFlagged(code);
+	for (const auto& code : m_setting_data.m_position_codes)
+		addIfFlagged(code);
+	for (const auto& group : m_setting_data.m_custom_groups)
+	{
+		for (const auto& code : group.codes)
+			addIfFlagged(code);
+	}
+	return result;
+}
+
+std::vector<std::wstring> CDataManager::GetAllKnownStockCodes()
+{
+	std::vector<std::wstring> result;
+	auto addUnique = [&result](const std::wstring& code) {
+		if (code.empty())
+			return;
+		if (std::find(result.begin(), result.end(), code) == result.end())
+			result.push_back(code);
+	};
+	for (const auto& code : m_setting_data.m_stock_codes)
+		addUnique(code);
+	for (const auto& code : m_setting_data.m_position_codes)
+		addUnique(code);
+	for (const auto& group : m_setting_data.m_custom_groups)
+	{
+		for (const auto& code : group.codes)
+			addUnique(code);
 	}
 	return result;
 }
@@ -1669,16 +1781,12 @@ bool CDataManager::AddStockToGroup(int groupIndex, const std::wstring& code)
 			return true;
 		}
 	}
-	else if (groupIndex == 1) // 持仓
+	else if (groupIndex == 1) // 持仓（独立列表，不同步到自选股）
 	{
-		auto& codes = m_setting_data.m_stock_codes;
+		auto& codes = m_setting_data.m_position_codes;
 		if (std::find(codes.begin(), codes.end(), code) == codes.end())
 		{
 			codes.push_back(code);
-		}
-		if (GetCostPrice(code) <= 0 && GetHoldingCount(code) <= 0)
-		{
-			SetPosition(code, 0.0, 0.0, L"");
 		}
 		SaveConfig();
 		return true;

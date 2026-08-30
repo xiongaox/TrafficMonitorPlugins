@@ -245,7 +245,7 @@ void CDrawScrollView::OnLButtonUp(UINT nFlags, CPoint point)
     if (m_plugin_item_clicked != nullptr)
     {
         CRect rc_item = m_plugin_item_rect[m_plugin_item_clicked->GetItemId()];
-        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_LCLICKED, point.x - rc_item.left, point.y - rc_item.top, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);
+        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_LCLICKED, point.x, point.y, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);  // 与主程序契约一致：传窗口客户区坐标;
         InvalidateRect(rc_item);
     }
     else
@@ -262,7 +262,7 @@ void CDrawScrollView::OnLButtonDblClk(UINT nFlags, CPoint point)
     if (m_plugin_item_clicked != nullptr)
     {
         CRect rc_item = m_plugin_item_rect[m_plugin_item_clicked->GetItemId()];
-        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_DBCLICKED, point.x - rc_item.left, point.y - rc_item.top, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);
+        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_DBCLICKED, point.x, point.y, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);  // 与主程序契约一致：传窗口客户区坐标;
         InvalidateRect(rc_item);
     }
     else
@@ -279,7 +279,7 @@ void CDrawScrollView::OnRButtonUp(UINT nFlags, CPoint point)
     if (m_plugin_item_clicked != nullptr)
     {
         CRect rc_item = m_plugin_item_rect[m_plugin_item_clicked->GetItemId()];
-        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_RCLICKED, point.x - rc_item.left, point.y - rc_item.top, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);
+        m_plugin_item_clicked->OnMouseEvent(IPluginItem::MT_RCLICKED, point.x, point.y, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);  // 与主程序契约一致：传窗口客户区坐标;
         InvalidateRect(rc_item);
     }
     else
@@ -346,7 +346,7 @@ BOOL CDrawScrollView::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
         else
             type = IPluginItem::MT_WHEEL_DOWN;
         CRect rc_item = m_plugin_item_rect[m_plugin_item_clicked->GetItemId()];
-        m_plugin_item_clicked->OnMouseEvent(type, point.x - rc_item.left, point.y - rc_item.top, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);
+        m_plugin_item_clicked->OnMouseEvent(type, point.x, point.y, GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND);  // 与主程序契约一致：传窗口客户区坐标;
         InvalidateRect(rc_item);
         return TRUE;
     }

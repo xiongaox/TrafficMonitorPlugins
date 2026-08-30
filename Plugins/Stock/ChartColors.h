@@ -52,3 +52,18 @@
 #define COLOR_BG_PURPLE           RGB(107, 33, 168)    // >= 10% 紫色背景
 #define COLOR_BG_GREEN            RGB(6, 95, 70)       // <= -5% 绿色背景
 #define COLOR_BG_DARK_GREEN       RGB(6, 78, 59)       // <= -10% 墨绿色背景
+
+// ===== 均线配置色板 =====
+// 第 i 条周期均线的颜色，与「均线日配置」页周期标签颜色一一对应；
+// K线图 / 分时图 / 配置页共用，改这里即全局生效
+inline COLORREF MaIndexColor(size_t index)
+{
+	static const COLORREF maColors[] = {
+		RGB(245, 158, 11),   // 琥珀 #F59E0B
+		RGB(124, 58, 237),   // 紫 #7C3AED
+		RGB(14, 203, 129),   // 翠绿 #0ECB81
+		RGB(56, 189, 248),   // 天蓝 #38BDF8
+		RGB(246, 70, 93),    // 玫红 #F6465D
+	};
+	return maColors[index % 5];
+}

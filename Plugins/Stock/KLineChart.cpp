@@ -203,34 +203,27 @@ void CKLineChart::DrawMAIndicators(CDC& memDC, const KLineDrawData& drawData, co
 {
 	if (!hover.showMA) return;
 
-	struct MAConfig {
-		int period;
-		COLORREF color;
-		int width;
-	};
-	const MAConfig maConfigs[] = {
-		{ 5, COLOR_GOLDEN, 1 },
-		{ 17, RGB(56, 189, 248), 1 },
-		{ 60, RGB(192, 132, 252), 1 },
-	};
-
+	// 周期列表来自「均线日配置」页（g_data.m_setting_data.m_ma_days），
+	// 颜色顺序与配置页的周期标签一一对应（见 ChartColors.h 的 MaIndexColor）
 	auto stockDataPtr = g_data.GetStockData(hover.stockId);
 	auto* klineObj = stockDataPtr ? stockDataPtr->getKLineData() : nullptr;
 
-	for (const auto& config : maConfigs)
+	const std::vector<int>& maDays = g_data.m_setting_data.m_ma_days;
+	for (size_t i = 0; i < maDays.size(); ++i)
 	{
-		double maValue = klineObj ? klineObj->CalculateMA(config.period) : 0;
+		const int period = maDays[i];
+		double maValue = klineObj ? klineObj->CalculateMA(period) : 0;
 		if (maValue > 0 && maValue >= drawData.minPrice && maValue <= drawData.maxPrice)
 		{
 			int maY = drawData.y + static_cast<int>((drawData.maxPrice - maValue) * drawData.unitY);
-			CPen maPen(PS_DOT, config.width, config.color);
+			CPen maPen(PS_DOT, 1, MaIndexColor(i));
 			memDC.SelectObject(&maPen);
 			memDC.MoveTo(drawData.x, maY);
 			memDC.LineTo(drawData.x + drawData.w, maY);
 
 			CString maLabel;
-			maLabel.Format(_T("MA%d"), config.period);
-			memDC.SetTextColor(config.color);
+			maLabel.Format(_T("MA%d"), period);
+			memDC.SetTextColor(MaIndexColor(i));
 			CSize labelSize = memDC.GetTextExtent(maLabel);
 			memDC.TextOut(drawData.x + drawData.w - labelSize.cx - g_data.RDPI(2), maY - labelSize.cy, maLabel);
 		}

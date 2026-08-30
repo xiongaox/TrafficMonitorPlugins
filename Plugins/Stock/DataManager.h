@@ -51,6 +51,7 @@ struct SettingData
 	std::vector<std::wstring> m_selected_indices; // 选中的指数列表
 	int m_index_display_mode{ INDEX_DISP_ALL };   // 指数状态栏显示模式 (0:全显, 1:数字, 2:百分比)
 	std::vector<int> m_ma_days;         // 均线日列表，例如 {5, 17, 60}
+	std::vector<std::wstring> m_position_codes; // 持仓分组代码列表（独立于自选股）
 	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表(向后兼容)
 	std::vector<CustomGroup> m_custom_groups; // 多自定义分组列表
 
@@ -154,6 +155,10 @@ public:
 	bool GetShowInStatusBar(const std::wstring& code);
 	void SetShowInStatusBar(const std::wstring& code, bool show);
 	std::vector<std::wstring> GetStatusBarStockCodes();
+	// 勾选了"状态栏显示"的全部代码（顺序：自选股→持仓→自定义分组，去重），用于绑定任务栏显示槽位
+	std::vector<std::wstring> GetRegisteredStockCodes();
+	// 全部已知代码（自选股∪持仓∪自定义分组，去重），用于加载每股票配置
+	std::vector<std::wstring> GetAllKnownStockCodes();
 
 	// 关联股票设置
 	std::vector<std::wstring> GetRelatedStocks(const std::wstring& code);
@@ -204,6 +209,7 @@ private:
 	static CDataManager m_instance;
 
 	std::wstring m_config_path;
+	std::wstring m_config_dir;   // 启动时由 EI_CONFIG_DIR 记住的配置目录，重载配置时沿用
 
 	std::map<UINT, CString> m_string_table;
 	std::map<UINT, HICON> m_icons;

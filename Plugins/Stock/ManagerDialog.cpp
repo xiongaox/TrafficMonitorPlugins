@@ -18,6 +18,7 @@
 #include <ctime>
 #include <uxtheme.h>
 #include <dwmapi.h>
+#include <fstream>
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -26,6 +27,51 @@
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "dwmapi.lib")
+
+// ===== 均线日配置页布局常量（单位: DPI 逻辑像素）=====
+// DrawMaPage（GDI+ 绘制卡片）与 UpdateControlsLayout（MoveWindow 摆控件）共用，
+// 卡片高度/字段位置改动必须以这里的常量为准，两处天然保持同步。
+namespace
+{
+	const int MA_CARD1_H = 116;  // 卡片1「当前均线周期」高度
+	const int MA_CARD_GAP = 14;  // 卡片间距
+	const int MA_CARD2_H = 118;  // 卡片2「添加均线周期」高度
+	const int MA_CARD3_H = 104;  // 卡片3「快捷添加常用周期」高度
+	const int MA_FIELD_Y = 48;   // 卡片2 输入框字段上缘（相对卡片）
+	const int MA_FIELD_X = 160;  // 卡片2 输入框字段左缘（相对卡片）
+	const int MA_FIELD_W = 140;  // 卡片2 输入框字段宽
+	const int MA_FIELD_H = 34;   // 卡片2 输入框/按钮高
+	const int MA_ADDBTN_W = 104; // 卡片2「添加周期」按钮宽
+	const int MA_PRESET_MAX = 5; // 均线周期上限
+	const int kMaPresetDays[] = { 5, 10, 20, 30, 60, 120, 250 }; // 快捷添加候选周期
+}
+
+// ===== 云端备份异步操作 =====
+// WebDAV 网络请求必须走取数线程：插件模块状态下宿主主线程没有 CWinThread，
+// MFC 等待光标/网络层在此线程会空指针崩溃（实测 mfc140u.dll 访问违例闪退）。
+// 操作完成后经 WM_APP_WEBDAV_RESULT 回到 UI 线程弹结果与刷新界面。
+namespace
+{
+	enum WebDavOp
+	{
+		WEBDAV_OP_TEST = 0,
+		WEBDAV_OP_UPLOAD = 1,
+		WEBDAV_OP_DOWNLOAD = 2,
+		WEBDAV_OP_LIST = 3,    // PROPFIND 拉取云端历史备份列表
+		WEBDAV_OP_RESTORE = 4  // 下载用户选中的某一份历史备份
+	};
+	const UINT WM_APP_WEBDAV_RESULT = WM_APP + 130;
+
+	struct WebDavAsyncResult
+	{
+		int op{ WEBDAV_OP_TEST };
+		bool ok{ false };
+		std::wstring errMsg;
+		std::string downloadedData;                 // 仅 WEBDAV_OP_RESTORE 使用
+		std::vector<WebDavBackupEntry> backups;     // 仅 WEBDAV_OP_LIST 使用
+		std::wstring remoteFile;                    // 仅 WEBDAV_OP_RESTORE：要下载的备份文件名
+	};
+}
 
 // 简易深色输入弹窗（用于新建/重命名分组）
 class CSimpleInputDialog : public CDialog
@@ -208,6 +254,291 @@ public:
 	}
 };
 
+// ===== 自定义分组排序对话框（拖动行或上下移按钮调整顺序；自选股/持仓固定不参与） =====
+class CGroupSortDlg : public CDialog
+{
+public:
+	std::vector<CustomGroup> m_groups;   // 传入并输出排序结果
+	CGroupSortDlg(const std::vector<CustomGroup>& groups, CWnd* pParent = nullptr)
+		: CDialog(), m_groups(groups), m_sel(-1), m_dragging(false)
+	{
+		m_dark_brush.CreateSolidBrush(RGB(24, 27, 34));   // #181B22
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		pDlg->style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 220;
+		pDlg->cy = 210;
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+protected:
+	CFont m_font;
+	CBrush m_dark_brush;
+	CButton m_btn_move_up;
+	CButton m_btn_move_down;
+	int m_sel;            // 当前选中行
+	bool m_dragging;      // 拖动中
+
+	CRect ListRect() const
+	{
+		CRect cr;
+		const_cast<CGroupSortDlg*>(this)->GetClientRect(&cr);
+		return CRect(g_data.DPI(18), g_data.DPI(46), cr.right - g_data.DPI(18), cr.bottom - g_data.DPI(56));
+	}
+
+	int RowHeight() const
+	{
+		CRect lr = ListRect();
+		int n = static_cast<int>(m_groups.size());
+		if (n <= 0) return g_data.DPI(34);
+		return min(g_data.DPI(38), lr.Height() / n);
+	}
+
+	void MoveGroup(int from, int to)
+	{
+		int n = static_cast<int>(m_groups.size());
+		if (from < 0 || from >= n || to < 0 || to >= n || from == to)
+			return;
+		CustomGroup g = m_groups[from];
+		m_groups.erase(m_groups.begin() + from);
+		m_groups.insert(m_groups.begin() + to, g);
+		m_sel = to;
+		InvalidateRect(nullptr, FALSE);
+	}
+
+	BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(L"调整分组排序");
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(90, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		// 按分组数量自适应高度并重新居中
+		CRect cr;
+		GetClientRect(&cr);
+		int n = max(1, static_cast<int>(m_groups.size()));
+		int rowH = min(g_data.DPI(38), max(g_data.DPI(30), g_data.DPI(320) / n));
+		int needH = g_data.DPI(46) + n * rowH + g_data.DPI(64);
+		CRect wr;
+		GetWindowRect(&wr);
+		int addH = needH - cr.Height();
+		::SetWindowPos(GetSafeHwnd(), nullptr, wr.left, max(10, wr.top - addH / 2), wr.Width(), cr.Height() + addH, SWP_NOZORDER | SWP_NOACTIVATE);
+		GetClientRect(&cr);
+
+		int btnW = g_data.DPI(60);
+		int btnH = g_data.DPI(26);
+		int btnY = cr.bottom - btnH - g_data.DPI(12);
+		m_btn_move_up.Create(_T("上移"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(g_data.DPI(18), btnY, g_data.DPI(18) + btnW, btnY + btnH), this, 1101);
+		m_btn_move_up.SetFont(&m_font);
+		m_btn_move_down.Create(_T("下移"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(g_data.DPI(18) + btnW + g_data.DPI(8), btnY, g_data.DPI(18) + btnW * 2 + g_data.DPI(8), btnY + btnH), this, 1102);
+		m_btn_move_down.SetFont(&m_font);
+
+		m_btn_ok.Create(_T("确定"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW * 2 - g_data.DPI(18), btnY, cr.right - btnW - g_data.DPI(18), btnY + btnH), this, IDOK);
+		m_btn_ok.SetFont(&m_font);
+		m_btn_cancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW - g_data.DPI(18), btnY, cr.right - g_data.DPI(18), btnY + btnH), this, IDCANCEL);
+		m_btn_cancel.SetFont(&m_font);
+
+		m_sel = m_groups.empty() ? -1 : 0;
+		return FALSE;
+	}
+
+	LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect cr;
+			GetClientRect(&cr);
+
+			CDC memDC;
+			memDC.CreateCompatibleDC(&dc);
+			CBitmap memBmp;
+			memBmp.CreateCompatibleBitmap(&dc, cr.Width(), cr.Height());
+			CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+			Gdiplus::Graphics g(memDC.GetSafeHdc());
+			g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+			Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&bgBrush, 0, 0, cr.Width(), cr.Height());
+
+			// 顶部提示
+			Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184));
+			g.DrawString(L"拖动行或使用按钮调整自定义分组顺序（自选股/持仓固定）", -1, &tipFont,
+				Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(18)), static_cast<Gdiplus::REAL>(g_data.DPI(14))), &tipBrush);
+
+			// 分组行（文字用 GDI DrawText(DT_VCENTER) 垂直居中，与 DrawMaPage 同一居中路径）
+			CRect lr = ListRect();
+			int rowH = RowHeight();
+
+			// GDI 文字工具
+			auto drawGdiText = [&g](const CRect& rc, const CString& text, CFont& font, COLORREF col, UINT fmt) {
+				HDC hdc = g.GetHDC();
+				CDC* pDC = CDC::FromHandle(hdc);
+				int oldBk = pDC->SetBkMode(TRANSPARENT);
+				COLORREF oldCol = pDC->SetTextColor(col);
+				CFont* pOld = pDC->SelectObject(&font);
+				CRect r(rc);
+				pDC->DrawText(text, r, fmt | DT_SINGLELINE | DT_NOPREFIX);
+				pDC->SelectObject(pOld);
+				pDC->SetTextColor(oldCol);
+				pDC->SetBkMode(oldBk);
+				g.ReleaseHDC(hdc);
+			};
+			CFont rowFont;
+			rowFont.CreateFont(-g_data.DPI(12), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+				OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+
+			for (size_t i = 0; i < m_groups.size(); ++i)
+			{
+				int y = lr.top + static_cast<int>(i) * rowH;
+				CRect rowRc(lr.left, y + g_data.DPI(3), lr.right, y + rowH - g_data.DPI(3));
+				bool selected = (static_cast<int>(i) == m_sel);
+
+				Gdiplus::SolidBrush rowBg(selected ? Gdiplus::Color(255, 28, 45, 75) : Gdiplus::Color(255, 20, 22, 29));
+				g.FillRectangle(&rowBg, rowRc.left, rowRc.top, rowRc.Width(), rowRc.Height());
+				Gdiplus::Pen rowPen(selected ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 38, 42, 54), selected ? 1.2f : 1.0f);
+				g.DrawRectangle(&rowPen, rowRc.left, rowRc.top, rowRc.Width(), rowRc.Height());
+
+				// 序号 + 名称（含股票数），垂直居中
+				wchar_t num[8];
+				swprintf_s(num, L"%zu", i + 1);
+				COLORREF numCol = RGB(100, 116, 139);
+				CRect numRc(rowRc.left + g_data.DPI(10), rowRc.top, rowRc.left + g_data.DPI(34), rowRc.bottom);
+				drawGdiText(numRc, num, rowFont, numCol, DT_LEFT | DT_VCENTER);
+
+				COLORREF nameCol = selected ? RGB(255, 255, 255) : RGB(226, 232, 240);
+				std::wstring text = m_groups[i].name + L"（" + std::to_wstring(m_groups[i].codes.size()) + L"）";
+				CRect nameRc(rowRc.left + g_data.DPI(40), rowRc.top, rowRc.right - g_data.DPI(10), rowRc.bottom);
+				drawGdiText(nameRc, text.c_str(), rowFont, nameCol, DT_LEFT | DT_VCENTER);
+			}
+
+			dc.BitBlt(0, 0, cr.Width(), cr.Height(), &memDC, 0, 0, SRCCOPY);
+			memDC.SelectObject(pOldBmp);
+			return 0;
+		}
+		else if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_LBUTTONDOWN)
+		{
+			CPoint pt(lParam);
+			CRect lr = ListRect();
+			int rowH = RowHeight();
+			if (pt.x >= lr.left && pt.x <= lr.right && pt.y >= lr.top && pt.y < lr.bottom && !m_groups.empty())
+			{
+				int idx = (pt.y - lr.top) / rowH;
+				if (idx >= 0 && idx < static_cast<int>(m_groups.size()))
+				{
+					m_sel = idx;
+					m_dragging = true;
+					SetCapture();
+					InvalidateRect(nullptr, FALSE);
+				}
+			}
+			return 0;
+		}
+		else if (message == WM_MOUSEMOVE)
+		{
+			if (m_dragging && (wParam & MK_LBUTTON))
+			{
+				CPoint pt(lParam);
+				CRect lr = ListRect();
+				int rowH = RowHeight();
+				int idx = (pt.y - lr.top) / rowH;
+				idx = max(0, min(idx, static_cast<int>(m_groups.size()) - 1));
+				if (idx != m_sel)
+					MoveGroup(m_sel, idx);
+			}
+			return 0;
+		}
+		else if (message == WM_LBUTTONUP)
+		{
+			if (m_dragging)
+			{
+				m_dragging = false;
+				if (GetCapture() == this)
+					ReleaseCapture();
+			}
+			return 0;
+		}
+		else if (message == WM_COMMAND)
+		{
+			WORD id = LOWORD(wParam);
+			if (HIWORD(wParam) == BN_CLICKED)
+			{
+				if (id == 1101)
+				{
+					MoveGroup(m_sel, m_sel - 1);
+					return 0;
+				}
+				if (id == 1102)
+				{
+					MoveGroup(m_sel, m_sel + 1);
+					return 0;
+				}
+			}
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(24, 27, 34));
+			return (LRESULT)(HBRUSH)m_dark_brush.GetSafeHandle();
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				CString text;
+				if (pDI->CtlID == 1101) text = _T("上移");
+				else if (pDI->CtlID == 1102) text = _T("下移");
+				else if (pDI->CtlID == IDOK) text = _T("确定");
+				else text = _T("取消");
+
+				// 上移/下移超出可用范围时灰显
+				bool disabled = (pDI->CtlID == 1101 && m_sel <= 0) ||
+					(pDI->CtlID == 1102 && (m_sel < 0 || m_sel >= static_cast<int>(m_groups.size()) - 1));
+
+				COLORREF bgColor = (pDI->CtlID == IDOK) ? RGB(37, 99, 235) : RGB(30, 35, 46);
+				if (pDI->itemState & ODS_SELECTED) bgColor = (pDI->CtlID == IDOK) ? RGB(29, 78, 216) : RGB(20, 25, 35);
+
+				dc.FillSolidRect(rect, bgColor);
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(disabled ? RGB(87, 96, 116) : RGB(255, 255, 255));
+				CFont* pOldFont = dc.SelectObject(&m_font);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+
+private:
+	CButton m_btn_ok;
+	CButton m_btn_cancel;
+};
+
 // 暗色主题通用确认弹窗 (替代原生 MessageBox)
 class CDarkConfirmDialog : public CDialog
 {
@@ -330,6 +661,245 @@ public:
 				dc.SetBkMode(TRANSPARENT);
 				dc.SetTextColor(RGB(255, 255, 255));
 				CFont* pOldFont = dc.SelectObject(isOk ? &m_font_bold : &m_font);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+};
+
+// 暗色主题云端备份选择弹窗：列出云端历史备份，选中一份后返回 IDOK
+class CBackupListDialog : public CDialog
+{
+public:
+	std::vector<WebDavBackupEntry> m_entries;
+	std::wstring m_selectedFile; // EndDialog(IDOK) 时有效：选中的远端文件名
+	std::wstring m_selectedName; // 选中的展示文本（备份时间）
+	CFont m_font;
+	CBrush m_dark_brush;
+	CBrush m_list_brush;
+	CStatic m_label;
+	CListCtrl m_list;
+	CFlatHeaderCtrl m_hdr; // 复用主界面的自绘扁平深色表头
+	CButton m_btnOk;
+	CButton m_btnCancel;
+
+	enum { IDC_BACKUP_LIST = 2100 };
+
+	CBackupListDialog(const std::vector<WebDavBackupEntry>& entries, CWnd* pParent = nullptr)
+		: CDialog(), m_entries(entries)
+	{
+		m_dark_brush.CreateSolidBrush(RGB(24, 27, 34));
+		m_list_brush.CreateSolidBrush(RGB(13, 15, 21));
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		// 必须带 WS_VISIBLE：宿主取数线程持续投递行情消息时模态循环长时间无空闲，
+		// 依赖 MLF_SHOWONIDLE 延迟显示会导致对话框一直不可见地模态挂着
+		pDlg->style = WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 260;
+		pDlg->cy = 160;
+
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+	virtual BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(L"选择要恢复的云端备份");
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(90, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		// 模板为固定 DLU 尺寸，高 DPI 下按缩放重设窗口，保证子控件布局充足
+		CRect rw, rc;
+		GetWindowRect(&rw);
+		GetClientRect(&rc);
+		int frameW = rw.Width() - rc.Width();
+		int frameH = rw.Height() - rc.Height();
+		SetWindowPos(nullptr, 0, 0, g_data.DPI(340) + frameW, g_data.DPI(230) + frameH, SWP_NOMOVE | SWP_NOZORDER);
+
+		GetClientRect(&rc);
+		int marginX = g_data.DPI(16);
+
+		wchar_t tip[96]{};
+		swprintf_s(tip, L"云端共有 %d 份备份，请选择要恢复到本地的一份：", static_cast<int>(m_entries.size()));
+		m_label.Create(tip, WS_CHILD | WS_VISIBLE | SS_LEFT, CRect(marginX, g_data.DPI(12), rc.right - marginX, g_data.DPI(28)), this);
+		m_label.SetFont(&m_font);
+
+		CRect listRect(marginX, g_data.DPI(34), rc.right - marginX, rc.bottom - g_data.DPI(46));
+		m_list.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER,
+			listRect, this, IDC_BACKUP_LIST);
+		m_list.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+		m_list.SetFont(&m_font);
+		m_list.SetBkColor(RGB(13, 15, 21));
+		m_list.SetTextBkColor(RGB(13, 15, 21));
+		m_list.SetTextColor(RGB(226, 232, 240));
+		SetWindowTheme(m_list.GetSafeHwnd(), L"DarkMode_Explorer", nullptr);
+		m_list.ModifyStyle(WS_BORDER, 0);
+		m_list.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		// 表头换为主界面同款自绘扁平深色样式，替代系统白色表头
+		HWND hHeader = m_list.GetHeaderCtrl() ? m_list.GetHeaderCtrl()->GetSafeHwnd() : nullptr;
+		if (hHeader && m_hdr.GetSafeHwnd() == nullptr)
+			m_hdr.SubclassWindow(hHeader);
+
+		// 列宽自适应：先窄占位避免灌条目时挤出横向滚动条，
+		// 条目灌完出现纵向滚动条后，再按实际客户区（已扣滚动条）定宽
+		int sizeW = g_data.DPI(56);
+		m_list.InsertColumn(0, L"备份时间", LVCFMT_LEFT, listRect.Width() - sizeW - g_data.DPI(40));
+		m_list.InsertColumn(1, L"大小", LVCFMT_RIGHT, sizeW);
+
+		for (size_t i = 0; i < m_entries.size(); ++i)
+		{
+			int idx = m_list.InsertItem(static_cast<int>(i), m_entries[i].displayName.c_str());
+			if (idx >= 0)
+			{
+				wchar_t sizeBuf[32]{};
+				unsigned long long n = m_entries[i].sizeBytes;
+				if (n >= 1024ULL * 1024ULL)
+					swprintf_s(sizeBuf, L"%.1f MB", n / (1024.0 * 1024.0));
+				else if (n >= 1024ULL)
+					swprintf_s(sizeBuf, L"%.1f KB", n / 1024.0);
+				else
+					swprintf_s(sizeBuf, L"%llu B", n);
+				m_list.SetItemText(idx, 1, sizeBuf);
+				m_list.SetItemData(idx, i);
+			}
+		}
+		// 按实际客户区（已扣除纵向滚动条）自适应列宽，任何份数下都不出横向滚动条
+		CRect listClient;
+		m_list.GetClientRect(&listClient);
+		m_list.SetColumnWidth(0, listClient.Width() - sizeW - g_data.DPI(2));
+		m_list.SetColumnWidth(1, sizeW);
+
+		// 默认选中最新一份
+		m_list.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+
+		int btnW = g_data.DPI(62);
+		int btnH = g_data.DPI(26);
+		int btnY = rc.bottom - btnH - g_data.DPI(12);
+		m_btnOk.Create(_T("恢复"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW,
+			CRect(rc.right - btnW * 2 - g_data.DPI(16), btnY, rc.right - btnW - g_data.DPI(16), btnY + btnH), this, IDOK);
+		m_btnOk.SetFont(&m_font);
+		m_btnCancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW,
+			CRect(rc.right - btnW - g_data.DPI(8), btnY, rc.right - g_data.DPI(8), btnY + btnH), this, IDCANCEL);
+		m_btnCancel.SetFont(&m_font);
+
+		m_list.SetFocus();
+		// 显式显示窗口：宿主取数线程消息流密集时模态循环的空闲显示（MLF_SHOWONIDLE）
+		// 可能长期不触发，会出现不可见却模态挂起的对话框
+		ShowWindow(SW_SHOWNORMAL);
+		return FALSE;
+	}
+
+	virtual void OnOK() override
+	{
+		// 回车/默认按钮与「恢复」按钮统一走选择逻辑
+		OnRestore();
+	}
+
+	void OnRestore()
+	{
+		int idx = m_list.GetNextItem(-1, LVNI_SELECTED);
+		if (idx < 0)
+		{
+			MessageBox(L"请先在列表中选择一份备份", L"提示", MB_ICONWARNING | MB_OK);
+			return;
+		}
+		const WebDavBackupEntry& entry = m_entries[static_cast<size_t>(m_list.GetItemData(idx))];
+		m_selectedFile = entry.fileName;
+		m_selectedName = entry.displayName;
+		EndDialog(IDOK);
+	}
+
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect clientRect;
+			GetClientRect(clientRect);
+			Gdiplus::Graphics g(dc.GetSafeHdc());
+			Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&bgBrush, 0, 0, clientRect.Width(), clientRect.Height());
+			return 0;
+		}
+		else if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(24, 27, 34));
+			return (LRESULT)(HBRUSH)m_dark_brush.GetSafeHandle();
+		}
+		else if (message == WM_COMMAND)
+		{
+			// 无消息映射的对话框：按钮点击在这里分发（「恢复」= IDOK，取消 = IDCANCEL）
+			if (HIWORD(wParam) == BN_CLICKED && lParam != 0)
+			{
+				if (LOWORD(wParam) == IDOK)
+				{
+					OnRestore();
+					return 0;
+				}
+				if (LOWORD(wParam) == IDCANCEL)
+				{
+					EndDialog(IDCANCEL);
+					return 0;
+				}
+			}
+		}
+		else if (message == WM_NOTIFY)
+		{
+			if ((int)wParam == IDC_BACKUP_LIST)
+			{
+				NMHDR* pNMHDR = (NMHDR*)lParam;
+				if (pNMHDR->code == NM_DBLCLK)
+				{
+					OnRestore();
+					return 0;
+				}
+			}
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				UINT state = pDI->itemState;
+				CString text = (pDI->CtlID == IDOK) ? _T("恢复") : _T("取消");
+
+				bool isOk = (pDI->CtlID == IDOK);
+				COLORREF bgColor;
+				if (isOk)
+					bgColor = (state & ODS_SELECTED) ? RGB(29, 78, 216) : RGB(37, 99, 235);
+				else
+					bgColor = (state & ODS_SELECTED) ? RGB(20, 25, 35) : RGB(30, 35, 46);
+
+				dc.FillSolidRect(rect, bgColor);
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(RGB(255, 255, 255));
+				CFont* pOldFont = dc.SelectObject(&m_font);
 				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 				dc.SelectObject(pOldFont);
 				dc.Detach();
@@ -995,6 +1565,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 
 	ON_EN_CHANGE(IDC_STOCK_SEARCH_EDIT, &CManagerDialog::OnSearchEditChange)
 	ON_NOTIFY(NM_CLICK, IDC_MGR_LIST, &CManagerDialog::OnListItemClick)
+	ON_NOTIFY(NM_CLICK, IDC_POS_LIST, &CManagerDialog::OnListItemClick)
 	ON_NOTIFY(NM_CLICK, IDC_CUSTOM_LIST, &CManagerDialog::OnListItemClick)
 	ON_NOTIFY(NM_DBLCLK, IDC_MGR_LIST, &CManagerDialog::OnLbnDblclkMgrList)
 	ON_NOTIFY(NM_DBLCLK, IDC_POS_LIST, &CManagerDialog::OnLbnDblclkPosList)
@@ -1007,6 +1578,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_MGR_MOVE_UP_BTN, &CManagerDialog::OnMoveUpBtnClick)
 	ON_BN_CLICKED(IDC_MGR_MOVE_DOWN_BTN, &CManagerDialog::OnMoveDownBtnClick)
 	ON_BN_CLICKED(IDC_MA_ADD_BTN, &CManagerDialog::OnMaAddBtnClick)
+	ON_BN_CLICKED(1198, &CManagerDialog::OnGroupSortBtnClick)
 
 	ON_BN_CLICKED(IDC_FULL_DAY_CHECK, &CManagerDialog::OnClickedFullDayCheck)
 	ON_BN_CLICKED(IDC_SHOW_FLUCTUATION_CHECK, &CManagerDialog::OnBnClickedShowFluctuationCheck)
@@ -1018,6 +1590,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_WEBDAV_DOWNLOAD_BTN, &CManagerDialog::OnBnClickedWebDavDownloadBtn)
 	ON_BN_CLICKED(IDC_WEBDAV_AUTO_SYNC_CHECK, &CManagerDialog::OnBnClickedWebDavAutoSyncCheck)
 	ON_BN_CLICKED(IDC_WEBDAV_AUTO_BACKUP_CHECK, &CManagerDialog::OnBnClickedWebDavAutoBackupCheck)
+	ON_MESSAGE(WM_APP_WEBDAV_RESULT, &CManagerDialog::OnWebDavResult)
 
 	// 列表行自绘（交替行底色/选中高亮）
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_MGR_LIST, &CManagerDialog::OnListCustomDraw)
@@ -1139,7 +1712,8 @@ BOOL CManagerDialog::OnInitDialog()
 		IDOK, IDCANCEL,
 		IDC_MGR_ADD_BTN, IDC_MGR_EDIT_BTN, IDC_MGR_DEL_BTN, IDC_MGR_MOVE_UP_BTN, IDC_MGR_MOVE_DOWN_BTN,
 		IDC_MA_ADD_BTN,
-		IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN
+		IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN,
+		1198, 1199
 	};
 	for (int id : ownerDrawBtnIds)
 	{
@@ -1158,6 +1732,10 @@ BOOL CManagerDialog::OnInitDialog()
 	m_mgr_del_group_btn.Create(_T("删除分组"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1199);
 	m_mgr_del_group_btn.SetFont(&m_font);
 
+	// 分组管理页右上角「分组排序」入口（自选股/持仓顺序固定，仅自定义分组可调）
+	m_group_sort_btn.Create(_T("分组排序"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1198);
+	m_group_sort_btn.SetFont(&m_font);
+
 	m_search_dropdown.CreatePopup(this);
 
 	m_search_dropdown.m_on_add_to_group = [this](const StockSearchResult& stock, int sel) {
@@ -1173,15 +1751,15 @@ BOOL CManagerDialog::OnInitDialog()
 		}
 		else if (sel == 3002)
 		{
-			if (std::find(m_data.m_stock_codes.begin(), m_data.m_stock_codes.end(), stock.fullCode) == m_data.m_stock_codes.end())
-			{
-				m_data.m_stock_codes.push_back(stock.fullCode);
-			}
+			// 持仓分组独立维护，不同步到自选股
 			CDarkPositionInputDlg dlg(stock.fullCode, stock.name, stock.exchange, this);
 			if (dlg.DoModal(this) == IDOK)
 			{
 				g_data.SetPosition(stock.fullCode, dlg.m_cost_price, dlg.m_holding_count);
+				if (std::find(m_data.m_position_codes.begin(), m_data.m_position_codes.end(), stock.fullCode) == m_data.m_position_codes.end())
+					m_data.m_position_codes.push_back(stock.fullCode);
 				g_data.m_setting_data.m_stock_codes = m_data.m_stock_codes;
+				g_data.m_setting_data.m_position_codes = m_data.m_position_codes;
 				g_data.SaveConfig();
 				RefreshStockList();
 				RefreshPositionList();
@@ -1264,7 +1842,8 @@ BOOL CManagerDialog::OnInitDialog()
 		{ L"代码", LVCFMT_CENTER, g_data.DPI(75) },
 		{ L"股票名称", LVCFMT_LEFT, g_data.DPI(130) },
 		{ L"成本价", LVCFMT_CENTER, g_data.DPI(80) },
-		{ L"持股数", LVCFMT_CENTER, g_data.DPI(80) }
+		{ L"持股数", LVCFMT_CENTER, g_data.DPI(80) },
+		{ L"状态栏显示", LVCFMT_CENTER, g_data.DPI(75) }
 	});
 
 	setupListDarkTheme(m_custom_listctrl);
@@ -1488,29 +2067,40 @@ void CManagerDialog::RefreshPositionList()
 {
 	m_pos_listctrl.DeleteAllItems();
 	int nItem = 0;
-	for (const auto& code : m_data.m_stock_codes)
+	// 持仓分组独立列表，列表成员即持仓成员（不再依赖自选股）
+	for (size_t i = 0; i < m_data.m_position_codes.size(); ++i)
 	{
+		const auto& code = m_data.m_position_codes[i];
 		double cost = g_data.GetCostPrice(code);
 		double count = g_data.GetHoldingCount(code);
-		if (cost > 0 || count > 0)
+
+		std::wstring exch = CCommon::GetExchangeName(code);
+		std::wstring pureCode = CCommon::GetPureCode(code);
+		std::wstring name = GetStockName(code);
+
+		m_pos_listctrl.InsertItem(nItem, exch.c_str());
+		m_pos_listctrl.SetItemData(nItem, i);
+
+		m_pos_listctrl.SetItemText(nItem, 1, pureCode.c_str());
+		m_pos_listctrl.SetItemText(nItem, 2, name.c_str());
+
+		CString strCost, strCount;
+		strCost.Format(_T("%.2f"), cost);
+		strCount.Format(_T("%.0f"), count);
+
+		m_pos_listctrl.SetItemText(nItem, 3, strCost);
+		m_pos_listctrl.SetItemText(nItem, 4, strCount);
+
+		if (g_data.GetShowInStatusBar(code))
 		{
-			std::wstring exch = CCommon::GetExchangeName(code);
-			std::wstring pureCode = CCommon::GetPureCode(code);
-			std::wstring name = GetStockName(code);
-
-			m_pos_listctrl.InsertItem(nItem, exch.c_str());
-			m_pos_listctrl.SetItemText(nItem, 1, pureCode.c_str());
-			m_pos_listctrl.SetItemText(nItem, 2, name.c_str());
-
-			CString strCost, strCount;
-			strCost.Format(_T("%.2f"), cost);
-			strCount.Format(_T("%.0f"), count);
-
-			m_pos_listctrl.SetItemText(nItem, 3, strCost);
-			m_pos_listctrl.SetItemText(nItem, 4, strCount);
-
-			nItem++;
+			m_pos_listctrl.SetItemText(nItem, 5, L"√");
 		}
+		else
+		{
+			m_pos_listctrl.SetItemText(nItem, 5, L"");
+		}
+
+		nItem++;
 	}
 	AdjustListColumns(m_pos_listctrl, 1);
 }
@@ -1569,20 +2159,22 @@ void CManagerDialog::AdjustListColumns(CListCtrl& list, int tabType)
 	int totalW = clientRc.Width();
 	if (totalW <= 0) return;
 
-	if (tabType == 1) // 持仓 (5 列: 交易所, 代码, 股票名称, 成本价, 持股数)
+	if (tabType == 1) // 持仓 (6 列: 交易所, 代码, 股票名称, 成本价, 持股数, 状态栏显示)
 	{
-		int w0 = max(g_data.DPI(55), totalW * 14 / 100);  // 交易所
-		int w1 = max(g_data.DPI(70), totalW * 16 / 100);  // 代码
-		int w2 = max(g_data.DPI(120), totalW * 38 / 100); // 股票名称
-		int w3 = max(g_data.DPI(65), totalW * 16 / 100);  // 成本价
-		int w4 = max(g_data.DPI(65), totalW - (w0 + w1 + w2 + w3)); // 持股数
-		if (w4 < g_data.DPI(50)) w4 = g_data.DPI(50);
+		int w0 = max(g_data.DPI(55), totalW * 12 / 100);  // 交易所
+		int w1 = max(g_data.DPI(70), totalW * 14 / 100);  // 代码
+		int w2 = max(g_data.DPI(110), totalW * 30 / 100); // 股票名称
+		int w3 = max(g_data.DPI(65), totalW * 14 / 100);  // 成本价
+		int w4 = max(g_data.DPI(65), totalW * 14 / 100);  // 持股数
+		int w5 = max(g_data.DPI(70), totalW - (w0 + w1 + w2 + w3 + w4)); // 状态栏显示
+		if (w5 < g_data.DPI(50)) w5 = g_data.DPI(50);
 
 		list.SetColumnWidth(0, w0);
 		list.SetColumnWidth(1, w1);
 		list.SetColumnWidth(2, w2);
 		list.SetColumnWidth(3, w3);
 		list.SetColumnWidth(4, w4);
+		list.SetColumnWidth(5, w5);
 	}
 	else // 自选股 / 自定义分组 (6 列)
 	{
@@ -1703,6 +2295,14 @@ void CManagerDialog::UpdateControlsLayout()
 	int listTop = rightTop + g_data.DPI(42);
 	int listHeight = rightBottom - listTop - g_data.DPI(44);
 
+	// 「分组排序」按钮：分组管理页头部右上角（红框位置），其他页面隐藏
+	if (m_group_sort_btn.GetSafeHwnd())
+	{
+		int sortW = g_data.DPI(78);
+		m_group_sort_btn.MoveWindow(rightLeft + rightWidth - sortW, g_data.DPI(14), sortW, g_data.DPI(28));
+		m_group_sort_btn.ShowWindow(isGroup ? SW_SHOW : SW_HIDE);
+	}
+
 	if (isGroup)
 	{
 		int searchW = min(g_data.DPI(150), rightWidth / 4);
@@ -1793,17 +2393,19 @@ void CManagerDialog::UpdateControlsLayout()
 			m_mgr_del_group_btn.ShowWindow(SW_HIDE);
 	}
 
-	// 均线日配置控件布局
+	// 均线日配置控件布局（卡片位置与 DrawMaPage 的 MA_* 常量严格对应）
 	bool isMa = (m_current_page == PAGE_MA);
 	m_ma_input_edit.ShowWindow(isMa ? SW_SHOW : SW_HIDE);
 	m_ma_add_btn.ShowWindow(isMa ? SW_SHOW : SW_HIDE);
 
 	if (isMa)
 	{
-		int maInputTop = rightTop + g_data.DPI(130);
-		PlaceEditInField(IDC_MA_INPUT_EDIT, CRect(rightLeft + g_data.DPI(155), maInputTop, rightLeft + g_data.DPI(239), maInputTop + g_data.DPI(26)));
+		int card2Top = rightTop + g_data.DPI(MA_CARD1_H + MA_CARD_GAP);
+		int fieldTop = card2Top + g_data.DPI(MA_FIELD_Y);
+		int fieldRight = rightLeft + g_data.DPI(MA_FIELD_X) + g_data.DPI(MA_FIELD_W);
+		PlaceEditInField(IDC_MA_INPUT_EDIT, CRect(fieldRight - g_data.DPI(MA_FIELD_W), fieldTop, fieldRight, fieldTop + g_data.DPI(MA_FIELD_H)));
 		if (m_ma_add_btn.GetSafeHwnd())
-			m_ma_add_btn.MoveWindow(rightLeft + g_data.DPI(249), maInputTop, g_data.DPI(88), g_data.DPI(26));
+			m_ma_add_btn.MoveWindow(fieldRight + g_data.DPI(12), fieldTop, g_data.DPI(MA_ADDBTN_W), g_data.DPI(MA_FIELD_H));
 	}
 
 	// WebDAV 云端备份控件布局
@@ -1826,12 +2428,12 @@ void CManagerDialog::UpdateControlsLayout()
 
 	if (isWebDav)
 	{
-		// 卡片 1: 四行参数输入，行高 30，与 DrawWebDavPage 卡片位置一致
+		// 卡片 1: 四行参数输入，行距 40（输入框高 26 + 14 间距），与 DrawWebDavPage 卡片位置一致
 		int card1Top = rightTop;
 		int lblW = g_data.DPI(80);
 		int editW = min(g_data.DPI(330), rightWidth - lblW - g_data.DPI(46));
-		int rowY0 = card1Top + g_data.DPI(40);
-		int rowStep = g_data.DPI(30);
+		int rowY0 = card1Top + g_data.DPI(44);
+		int rowStep = g_data.DPI(40);
 
 		const int wdLabelIds[] = { IDC_WEBDAV_URL_STATIC, IDC_WEBDAV_USER_STATIC, IDC_WEBDAV_PWD_STATIC, IDC_WEBDAV_DIR_STATIC };
 		const int wdEditIds[] = { IDC_WEBDAV_URL_EDIT, IDC_WEBDAV_USER_EDIT, IDC_WEBDAV_PWD_EDIT, IDC_WEBDAV_DIR_EDIT };
@@ -1843,11 +2445,12 @@ void CManagerDialog::UpdateControlsLayout()
 		}
 
 		// 卡片 2: 勾选项 / 操作按钮 / 提示文字分区排布，杜绝重叠
-		int card2Top = card1Top + g_data.DPI(178);
+		// （卡片1 高 206 + 卡片间距 10，与 DrawWebDavPage 严格对应）
+		int card2Top = card1Top + g_data.DPI(216);
 		CWnd* pSyncChk = GetDlgItem(IDC_WEBDAV_AUTO_SYNC_CHECK);
 		CWnd* pBakChk = GetDlgItem(IDC_WEBDAV_AUTO_BACKUP_CHECK);
-		if (pSyncChk && pSyncChk->GetSafeHwnd()) pSyncChk->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(38), g_data.DPI(300), g_data.DPI(22));
-		if (pBakChk && pBakChk->GetSafeHwnd()) pBakChk->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(66), g_data.DPI(300), g_data.DPI(22));
+		if (pSyncChk && pSyncChk->GetSafeHwnd()) pSyncChk->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(40), g_data.DPI(300), g_data.DPI(22));
+		if (pBakChk && pBakChk->GetSafeHwnd()) pBakChk->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(68), g_data.DPI(300), g_data.DPI(22));
 
 		int wdBtnW = g_data.DPI(88);
 		int wdBtnH = g_data.DPI(28);
@@ -1855,9 +2458,9 @@ void CManagerDialog::UpdateControlsLayout()
 		CWnd* pTestBtn = GetDlgItem(IDC_WEBDAV_TEST_BTN);
 		CWnd* pUpBtn = GetDlgItem(IDC_WEBDAV_UPLOAD_BTN);
 		CWnd* pDownBtn = GetDlgItem(IDC_WEBDAV_DOWNLOAD_BTN);
-		if (pTestBtn && pTestBtn->GetSafeHwnd()) pTestBtn->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(96), wdBtnW, wdBtnH);
-		if (pUpBtn && pUpBtn->GetSafeHwnd()) pUpBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap), card2Top + g_data.DPI(96), wdBtnW + g_data.DPI(16), wdBtnH);
-		if (pDownBtn && pDownBtn->GetSafeHwnd()) pDownBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap) * 2 + g_data.DPI(16), card2Top + g_data.DPI(96), wdBtnW + g_data.DPI(16), wdBtnH);
+		if (pTestBtn && pTestBtn->GetSafeHwnd()) pTestBtn->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(100), wdBtnW, wdBtnH);
+		if (pUpBtn && pUpBtn->GetSafeHwnd()) pUpBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap), card2Top + g_data.DPI(100), wdBtnW + g_data.DPI(16), wdBtnH);
+		if (pDownBtn && pDownBtn->GetSafeHwnd()) pDownBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap) * 2 + g_data.DPI(16), card2Top + g_data.DPI(100), wdBtnW + g_data.DPI(16), wdBtnH);
 	}
 
 	// 底部确定与取消按钮
@@ -2117,7 +2720,7 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 
 		if (m_current_page == PAGE_MA)
 		{
-			subText = L"最多 5 条；点标签右上角 × 删除；在下方输入添加。已选 (" + std::to_wstring(m_data.m_ma_days.size()) + L"/5)";
+			subText = L"自定义 K 线图叠加的均线周期，最多 5 条 (1~250)";
 		}
 	}
 
@@ -2391,76 +2994,234 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 	}
 }
 
+// 均线日配置页：三卡片布局（当前周期 / 添加周期 / 快捷添加）。
+// 卡片高度与内部字段位置全部来自文件头的 MA_* 常量，与 UpdateControlsLayout 严格对应。
+// 标签/按钮均为直角矩形，文字用 GDI DrawText(DT_VCENTER) 居中，与其它页面的按钮视觉一致。
 void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
 	m_ma_tag_rects.clear();
 	m_ma_tag_del_rects.clear();
 	m_ma_tag_rects.resize(m_data.m_ma_days.size());
 	m_ma_tag_del_rects.resize(m_data.m_ma_days.size());
+	m_ma_slot_rects.clear();
+	m_ma_preset_rects.clear();
 
-	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(g_data.DPI(110)));
-	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 24, 27, 34));
-	g.FillRectangle(&panelBg, panelRf);
-	Gdiplus::Pen panelPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
-	g.DrawRectangle(&panelPen, panelRf);
+	int rightLeft = contentRect.left;
+	int rightWidth = contentRect.Width();
 
-	DrawSectionTitle(g, contentRect.left + g_data.DPI(14), contentRect.top + g_data.DPI(12), L"当前均线周期配置");
+	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));
+	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 
-	int tagLeft = contentRect.left + g_data.DPI(14);
-	int tagTop = contentRect.top + g_data.DPI(46);
-	int tagH = g_data.DPI(32);
-	int tagGap = g_data.DPI(10);
-
-	Gdiplus::Font tagFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::Font delFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-
-	Gdiplus::Color tagColors[] = {
-		Gdiplus::Color(255, 245, 158, 11),  // Amber (MA5) #F59E0B
-		Gdiplus::Color(255, 124, 58, 237),  // Violet (MA17) #7C3AED
-		Gdiplus::Color(255, 14, 203, 129),  // Emerald (MA60) #0ECB81
-		Gdiplus::Color(255, 56, 189, 248),  // Sky Blue #38BDF8
-		Gdiplus::Color(255, 246, 70, 93)    // Rose Red #F6465D
+	// GDI 文字工具：与 DrawFlatButton 相同的 DrawText(DT_VCENTER) 居中方式
+	auto drawGdiText = [&g](const CRect& rc, const CString& text, CFont& font, COLORREF col, UINT fmt) {
+		HDC hdc = g.GetHDC();
+		CDC* pDC = CDC::FromHandle(hdc);
+		int oldBk = pDC->SetBkMode(TRANSPARENT);
+		COLORREF oldCol = pDC->SetTextColor(col);
+		CFont* pOld = pDC->SelectObject(&font);
+		CRect r(rc);
+		pDC->DrawText(text, r, fmt | DT_SINGLELINE | DT_NOPREFIX);
+		pDC->SelectObject(pOld);
+		pDC->SetTextColor(oldCol);
+		pDC->SetBkMode(oldBk);
+		g.ReleaseHDC(hdc);
 	};
+
+	CFont chipFont;   chipFont.CreateFont(-g_data.DPI(15), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont delFont;    delFont.CreateFont(-g_data.DPI(12), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont plusFont;   plusFont.CreateFont(-g_data.DPI(15), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont badgeFont;  badgeFont.CreateFont(-g_data.DPI(10), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont preFont;    preFont.CreateFont(-g_data.DPI(12), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont lblFont;    lblFont.CreateFont(-g_data.DPI(12), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+
+	// ===== 卡片 1: 当前均线周期 =====
+	int card1Top = contentRect.top;
+	Gdiplus::RectF card1Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card1Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(g_data.DPI(MA_CARD1_H)));
+	g.FillRectangle(&cardBg, card1Rf);
+	g.DrawRectangle(&cardBorder, card1Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card1Top + g_data.DPI(14), L"当前均线周期");
+
+	// 右上角「已选 n/5」计数徽章（配满时转为警示琥珀色）
+	{
+		CString cntText;
+		cntText.Format(L"已选 %d / %d", static_cast<int>(m_data.m_ma_days.size()), MA_PRESET_MAX);
+		int badgeW = g_data.DPI(76);
+		int badgeH = g_data.DPI(24);
+		CRect badgeRect(rightLeft + rightWidth - g_data.DPI(16) - badgeW, card1Top + g_data.DPI(10),
+			rightLeft + rightWidth - g_data.DPI(16), card1Top + g_data.DPI(10) + badgeH);
+		Gdiplus::SolidBrush badgeBg(Gdiplus::Color(255, 13, 15, 21));
+		g.FillRectangle(&badgeBg, Gdiplus::RectF(static_cast<Gdiplus::REAL>(badgeRect.left), static_cast<Gdiplus::REAL>(badgeRect.top),
+			static_cast<Gdiplus::REAL>(badgeRect.Width()), static_cast<Gdiplus::REAL>(badgeRect.Height())));
+		g.DrawRectangle(&cardBorder, Gdiplus::RectF(static_cast<Gdiplus::REAL>(badgeRect.left), static_cast<Gdiplus::REAL>(badgeRect.top),
+			static_cast<Gdiplus::REAL>(badgeRect.Width()), static_cast<Gdiplus::REAL>(badgeRect.Height())));
+
+		bool full = (static_cast<int>(m_data.m_ma_days.size()) >= MA_PRESET_MAX);
+		drawGdiText(badgeRect, cntText, badgeFont, full ? RGB(245, 158, 11) : RGB(148, 163, 184), DT_CENTER | DT_VCENTER);
+	}
+
+	// 周期标签行：直角色块，宽度按文字自适应，右侧方形 × 删除区
+	int tagLeft = rightLeft + g_data.DPI(18);
+	int tagTop = card1Top + g_data.DPI(54);
+	int tagH = g_data.DPI(42);
+	int tagGap = g_data.DPI(12);
+
+	Gdiplus::Color tagColors[5];
+	for (int k = 0; k < 5; k++)
+	{
+		COLORREF c = MaIndexColor(k);
+		tagColors[k] = Gdiplus::Color(255, GetRValue(c), GetGValue(c), GetBValue(c));
+	}
 
 	for (size_t i = 0; i < m_data.m_ma_days.size(); ++i)
 	{
 		int day = m_data.m_ma_days[i];
-		std::wstring tagText = L"MA" + std::to_wstring(day);
-		int tagW = g_data.DPI(85);
+		CString tagText;
+		tagText.Format(L"MA%d", day);
+
+		// 与绘制同源的 GDI 测宽，保证标签宽度与文字一致
+		int textW = 0;
+		{
+			HDC hdc = g.GetHDC();
+			CDC* pDC = CDC::FromHandle(hdc);
+			CFont* pOld = pDC->SelectObject(&chipFont);
+			textW = pDC->GetTextExtent(tagText).cx;
+			pDC->SelectObject(pOld);
+			g.ReleaseHDC(hdc);
+		}
+		int tagW = g_data.DPI(12) + textW + g_data.DPI(4) + g_data.DPI(16) + g_data.DPI(6);
 
 		CRect tagRect(tagLeft, tagTop, tagLeft + tagW, tagTop + tagH);
 		m_ma_tag_rects[i] = tagRect;
 
-		Gdiplus::RectF tagRf(static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop), static_cast<Gdiplus::REAL>(tagW), static_cast<Gdiplus::REAL>(tagH));
+		Gdiplus::RectF tagRf(static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
+			static_cast<Gdiplus::REAL>(tagW), static_cast<Gdiplus::REAL>(tagH));
 		Gdiplus::SolidBrush tagBg(tagColors[i % 5]);
 		g.FillRectangle(&tagBg, tagRf);
 
-		Gdiplus::SolidBrush tagTxtBrush(Gdiplus::Color(255, 255, 255, 255));
-		g.DrawString(tagText.c_str(), -1, &tagFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(tagLeft + g_data.DPI(10)), static_cast<Gdiplus::REAL>(tagTop + g_data.DPI(6))), &tagTxtBrush);
-
-		int delBtnX = tagLeft + tagW - g_data.DPI(22);
-		int delBtnY = tagTop + g_data.DPI(7);
-		CRect delRect(delBtnX, delBtnY, delBtnX + g_data.DPI(16), delBtnY + g_data.DPI(16));
+		// 右侧 × 删除区：紧跟文字留 4px，距色块右缘留 6px，悬停深红底
+		int delCx = tagLeft + tagW - g_data.DPI(14);
+		int delCy = tagTop + tagH / 2;
+		int delR = g_data.DPI(8);
+		CRect delRect(delCx - delR - g_data.DPI(2), delCy - delR - g_data.DPI(2),
+			delCx + delR + g_data.DPI(2), delCy + delR + g_data.DPI(2));
 		m_ma_tag_del_rects[i] = delRect;
 
 		if (static_cast<int>(i) == m_hover_ma_tag_del)
 		{
-			Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 239, 68, 68));
-			g.FillEllipse(&delHoverBrush, delBtnX, delBtnY, g_data.DPI(16), g_data.DPI(16));
+			Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
+			g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
 		}
+		drawGdiText(CRect(delCx - delR, delCy - delR, delCx + delR, delCy + delR), L"×", delFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
 
-		Gdiplus::StringFormat sfDel;
-		sfDel.SetAlignment(Gdiplus::StringAlignmentCenter);
-		sfDel.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-		Gdiplus::RectF delRf(static_cast<Gdiplus::REAL>(delBtnX), static_cast<Gdiplus::REAL>(delBtnY), static_cast<Gdiplus::REAL>(g_data.DPI(16)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
-		g.DrawString(L"×", -1, &delFont, delRf, &sfDel, &tagTxtBrush);
+		drawGdiText(CRect(tagLeft + g_data.DPI(12), tagTop, delRect.left - g_data.DPI(2), tagTop + tagH),
+			tagText, chipFont, RGB(255, 255, 255), DT_LEFT | DT_VCENTER);
 
 		tagLeft += tagW + tagGap;
 	}
 
-	Gdiplus::Font addPromptFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush promptBrush(Gdiplus::Color(255, 148, 163, 184));
-	g.DrawString(L"输入均线天数 (1~250)：", -1, &addPromptFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(135))), &promptBrush);
+	// 空槽位：虚线直角框 + “+”，提示剩余容量，点击聚焦输入框
+	if (static_cast<int>(m_data.m_ma_days.size()) < MA_PRESET_MAX)
+	{
+		int slotW = g_data.DPI(64);
+		int slotIdx = 0;
+		for (int s = static_cast<int>(m_data.m_ma_days.size()); s < MA_PRESET_MAX; ++s, ++slotIdx)
+		{
+			CRect slotRect(tagLeft, tagTop, tagLeft + slotW, tagTop + tagH);
+			m_ma_slot_rects.push_back(slotRect);
+
+			bool slotHover = (slotIdx == m_hover_ma_slot);
+			Gdiplus::Pen slotPen(slotHover ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 58, 65, 82), 1.0f);
+			slotPen.SetDashStyle(Gdiplus::DashStyleDash);
+			g.DrawRectangle(&slotPen, static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
+				static_cast<Gdiplus::REAL>(slotW), static_cast<Gdiplus::REAL>(tagH));
+
+			drawGdiText(slotRect, L"+", plusFont, slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99), DT_CENTER | DT_VCENTER);
+
+			tagLeft += slotW + tagGap;
+		}
+	}
+
+	// ===== 卡片 2: 添加均线周期 =====
+	int card2Top = card1Top + g_data.DPI(MA_CARD1_H + MA_CARD_GAP);
+	Gdiplus::RectF card2Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card2Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(g_data.DPI(MA_CARD2_H)));
+	g.FillRectangle(&cardBg, card2Rf);
+	g.DrawRectangle(&cardBorder, card2Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card2Top + g_data.DPI(14), L"添加均线周期");
+
+	int fieldTop = card2Top + g_data.DPI(MA_FIELD_Y);
+	drawGdiText(CRect(rightLeft + g_data.DPI(18), fieldTop, rightLeft + g_data.DPI(MA_FIELD_X) - g_data.DPI(10), fieldTop + g_data.DPI(MA_FIELD_H)),
+		L"均线天数 (1~250)：", lblFont, RGB(148, 163, 184), DT_LEFT | DT_VCENTER);
+
+	Gdiplus::Font hintFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush hintBrush(Gdiplus::Color(255, 110, 124, 147));
+	g.DrawString(L"输入后点击「添加周期」或直接按回车；最多 5 条，重复周期会自动提示。", -1, &hintFont,
+		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(18)),
+			static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(94))), &hintBrush);
+
+	// ===== 卡片 3: 快捷添加常用周期 =====
+	int card3Top = card1Top + g_data.DPI(MA_CARD1_H + MA_CARD_GAP + MA_CARD2_H + MA_CARD_GAP);
+	Gdiplus::RectF card3Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card3Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(g_data.DPI(MA_CARD3_H)));
+	g.FillRectangle(&cardBg, card3Rf);
+	g.DrawRectangle(&cardBorder, card3Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card3Top + g_data.DPI(14), L"快捷添加常用周期");
+
+	int preTop = card3Top + g_data.DPI(50);
+	int preH = g_data.DPI(34);
+	int preGap = g_data.DPI(8);
+	int preLeft = rightLeft + g_data.DPI(18);
+
+	for (int preIdx = 0; preIdx < static_cast<int>(_countof(kMaPresetDays)); ++preIdx)
+	{
+		int day = kMaPresetDays[preIdx];
+		bool added = std::find(m_data.m_ma_days.begin(), m_data.m_ma_days.end(), day) != m_data.m_ma_days.end();
+		CString preText;
+		preText.Format(L"MA%d%s", day, added ? L" ✓" : L"");
+
+		int textW = 0;
+		{
+			HDC hdc = g.GetHDC();
+			CDC* pDC = CDC::FromHandle(hdc);
+			CFont* pOld = pDC->SelectObject(&preFont);
+			textW = pDC->GetTextExtent(preText).cx;
+			pDC->SelectObject(pOld);
+			g.ReleaseHDC(hdc);
+		}
+		int preW = g_data.DPI(16) + textW;
+
+		CRect preRect(preLeft, preTop, preLeft + preW, preTop + preH);
+		m_ma_preset_rects.push_back(preRect);
+
+		Gdiplus::RectF preRf(static_cast<Gdiplus::REAL>(preLeft), static_cast<Gdiplus::REAL>(preTop),
+			static_cast<Gdiplus::REAL>(preW), static_cast<Gdiplus::REAL>(preH));
+
+		bool hot = (!added && preIdx == m_hover_ma_preset);
+		if (hot)
+		{
+			Gdiplus::SolidBrush preHotBg(Gdiplus::Color(255, 30, 41, 59));
+			g.FillRectangle(&preHotBg, preRf);
+			Gdiplus::Pen preHotPen(Gdiplus::Color(255, 37, 99, 235), 1.0f);
+			g.DrawRectangle(&preHotPen, preRf);
+			drawGdiText(preRect, preText, preFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+		}
+		else
+		{
+			Gdiplus::SolidBrush preBg(Gdiplus::Color(255, 13, 15, 21));
+			g.FillRectangle(&preBg, preRf);
+			g.DrawRectangle(&cardBorder, preRf);
+			drawGdiText(preRect, preText, preFont, added ? RGB(110, 120, 138) : RGB(148, 163, 184), DT_CENTER | DT_VCENTER);
+		}
+
+		preLeft += preW + preGap;
+	}
 }
 
 void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRect)
@@ -2473,33 +3234,35 @@ void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRe
 
 	// 卡片 1: WebDAV 服务器参数（高度与 UpdateControlsLayout 的四行输入严格对应）
 	int card1Top = contentRect.top;
-	int card1H = g_data.DPI(168);
+	int card1H = g_data.DPI(206);
 	Gdiplus::RectF card1Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card1Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card1H));
 	g.FillRectangle(&cardBg, card1Rf);
 	g.DrawRectangle(&cardBorder, card1Rf);
 	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card1Top + g_data.DPI(12), L"WebDAV 服务器参数");
 
 	// 卡片 2: 同步与备份操作（勾选项/操作按钮/提示文字分区块排布，互不重叠）
-	int card2Top = card1Top + g_data.DPI(178);
-	int card2H = g_data.DPI(152);
+	int card2Top = card1Top + g_data.DPI(216);
+	int card2H = g_data.DPI(172);
 	Gdiplus::RectF card2Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card2Top), static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card2H));
 	g.FillRectangle(&cardBg, card2Rf);
 	g.DrawRectangle(&cardBorder, card2Rf);
 	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card2Top + g_data.DPI(12), L"同步与备份操作");
 
-	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	// 提示文字与基础设置页说明文案同字号（12px）
+	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184));
-	int tipY = card2Top + g_data.DPI(132);
+	int tipY = card2Top + g_data.DPI(140);
 
-	g.DrawString(L"提示：支持坚果云、Nextcloud、Alist、群晖 NAS 等标准 WebDAV 服务。", -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(18)), static_cast<Gdiplus::REAL>(tipY)), &tipBrush);
+	g.DrawString(L"提示：每次备份以时间戳独立存档（云端保留最近 30 份），恢复时可在历史备份列表中任选一份。", -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(18)), static_cast<Gdiplus::REAL>(tipY)), &tipBrush);
 
+	// 上次同步时间放在卡片 2 标题行右端，避免与左侧提示文字挤在同一行
 	if (!m_data.m_webdav_last_sync_time.empty())
 	{
 		std::wstring timeStr = L"上次同步: " + m_data.m_webdav_last_sync_time;
 		Gdiplus::SolidBrush succBrush(Gdiplus::Color(255, 14, 203, 129));
 		Gdiplus::RectF bounds;
 		g.MeasureString(timeStr.c_str(), -1, &tipFont, Gdiplus::PointF(0, 0), &bounds);
-		g.DrawString(timeStr.c_str(), -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + rightWidth - g_data.DPI(14) - bounds.Width), static_cast<Gdiplus::REAL>(tipY)), &succBrush);
+		g.DrawString(timeStr.c_str(), -1, &tipFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + rightWidth - g_data.DPI(18) - bounds.Width), static_cast<Gdiplus::REAL>(card2Top + g_data.DPI(12))), &succBrush);
 	}
 }
 
@@ -2563,6 +3326,8 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	int oldHoverMenu = m_hover_menu;
 	int oldHoverCard = m_hover_index_card;
 	int oldHoverMa = m_hover_ma_tag_del;
+	int oldHoverMaSlot = m_hover_ma_slot;
+	int oldHoverMaPreset = m_hover_ma_preset;
 	int oldHoverTab = m_hover_group_tab;
 	int oldHoverMode = m_hover_index_mode;
 
@@ -2600,6 +3365,8 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	}
 
 	m_hover_ma_tag_del = -1;
+	m_hover_ma_slot = -1;
+	m_hover_ma_preset = -1;
 	if (m_current_page == PAGE_MA)
 	{
 		for (size_t i = 0; i < m_ma_tag_del_rects.size(); ++i)
@@ -2607,6 +3374,24 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 			if (m_ma_tag_del_rects[i].PtInRect(point))
 			{
 				m_hover_ma_tag_del = static_cast<int>(i);
+				break;
+			}
+		}
+
+		for (size_t i = 0; i < m_ma_slot_rects.size(); ++i)
+		{
+			if (m_ma_slot_rects[i].PtInRect(point))
+			{
+				m_hover_ma_slot = static_cast<int>(i);
+				break;
+			}
+		}
+
+		for (size_t i = 0; i < m_ma_preset_rects.size(); ++i)
+		{
+			if (m_ma_preset_rects[i].PtInRect(point))
+			{
+				m_hover_ma_preset = static_cast<int>(i);
 				break;
 			}
 		}
@@ -2626,7 +3411,8 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	}
 
 	if (oldHoverMenu != m_hover_menu || oldHoverCard != m_hover_index_card ||
-		oldHoverMa != m_hover_ma_tag_del || oldHoverTab != m_hover_group_tab ||
+		oldHoverMa != m_hover_ma_tag_del || oldHoverMaSlot != m_hover_ma_slot ||
+		oldHoverMaPreset != m_hover_ma_preset || oldHoverTab != m_hover_group_tab ||
 		oldHoverMode != m_hover_index_mode)
 	{
 		Invalidate();
@@ -2641,6 +3427,8 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_menu = -1;
 	m_hover_index_card = -1;
 	m_hover_ma_tag_del = -1;
+	m_hover_ma_slot = -1;
+	m_hover_ma_preset = -1;
 	m_hover_group_tab = -1;
 	m_hover_index_mode = -1;
 	Invalidate();
@@ -2654,6 +3442,7 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 	ScreenToClient(&pt);
 
 	if (m_hover_menu >= 0 || m_hover_index_card >= 0 || m_hover_ma_tag_del >= 0 ||
+		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
 		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
@@ -2791,6 +3580,27 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 				{
 					MessageBox(L"至少保留 1 个均线周期！", L"提示", MB_ICONINFORMATION);
 				}
+				return;
+			}
+		}
+
+		// 空槽位：把焦点交给天数输入框，方便连续录入
+		for (size_t i = 0; i < m_ma_slot_rects.size(); ++i)
+		{
+			if (m_ma_slot_rects[i].PtInRect(point))
+			{
+				m_ma_input_edit.SetFocus();
+				return;
+			}
+		}
+
+		// 快捷添加候选周期
+		for (size_t i = 0; i < m_ma_preset_rects.size() && i < _countof(kMaPresetDays); ++i)
+		{
+			if (m_ma_preset_rects[i].PtInRect(point))
+			{
+				if (TryAddMaDay(kMaPresetDays[i]))
+					Invalidate();
 				return;
 			}
 		}
@@ -2971,6 +3781,20 @@ BOOL CManagerDialog::PreTranslateMessage(MSG* pMsg)
 		}
 	}
 
+	// 均线天数输入框内按回车 = 添加周期，而不是触发「确定」关闭对话框
+	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_RETURN)
+	{
+		if (m_ma_input_edit.GetSafeHwnd() && m_ma_input_edit.IsWindowVisible())
+		{
+			CWnd* pFocus = GetFocus();
+			if (pFocus && pFocus->GetSafeHwnd() == m_ma_input_edit.GetSafeHwnd())
+			{
+				OnMaAddBtnClick();
+				return TRUE;
+			}
+		}
+	}
+
 	if (pMsg->message == WM_LBUTTONDOWN || pMsg->message == WM_RBUTTONDOWN ||
 		pMsg->message == WM_NCLBUTTONDOWN || pMsg->message == WM_NCRBUTTONDOWN)
 	{
@@ -3059,6 +3883,17 @@ void CManagerDialog::OnListItemClick(NMHDR* pNMHDR, LRESULT* pResult)
 					m_stock_listctrl.SetItemText(nItem, 5, (!cur) ? L"√" : L"");
 				}
 			}
+			else if (m_current_group_tab == 1) // 持仓
+			{
+				DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(nItem);
+				if (codeIdx < m_data.m_position_codes.size())
+				{
+					const auto& code = m_data.m_position_codes[codeIdx];
+					bool cur = g_data.GetShowInStatusBar(code);
+					g_data.SetShowInStatusBar(code, !cur);
+					m_pos_listctrl.SetItemText(nItem, 5, (!cur) ? L"√" : L"");
+				}
+			}
 			else if (m_current_group_tab >= 2) // 自定义分组
 			{
 				size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
@@ -3102,13 +3937,14 @@ void CManagerDialog::OnLbnDblclkPosList(NMHDR* pNMHDR, LRESULT* pResult)
 	if (index >= 0)
 	{
 		DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(index);
-		if (codeIdx < m_data.m_stock_codes.size())
+		if (codeIdx < m_data.m_position_codes.size())
 		{
-			const auto& code = m_data.m_stock_codes[codeIdx];
+			const auto& code = m_data.m_position_codes[codeIdx];
 			CDarkPositionInputDlg dlg(code, L"", L"", this);
 			if (dlg.DoModal(this) == IDOK)
 			{
 				g_data.SetPosition(code, dlg.m_cost_price, dlg.m_holding_count);
+				g_data.m_setting_data.m_position_codes = m_data.m_position_codes;
 				g_data.SaveConfig();
 				RefreshPositionList();
 			}
@@ -3143,13 +3979,18 @@ void CManagerDialog::OnAddBtnClick()
 {
 	if (m_current_group_tab == 1)
 	{
+		// 编辑持仓：优先编辑选中行；否则依次取持仓列表、自选列表中的第一个代码作为候选
 		int curSel = m_pos_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		std::wstring code;
 		if (curSel >= 0)
 		{
 			DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(curSel);
-			if (codeIdx < m_data.m_stock_codes.size())
-				code = m_data.m_stock_codes[codeIdx];
+			if (codeIdx < m_data.m_position_codes.size())
+				code = m_data.m_position_codes[codeIdx];
+		}
+		else if (!m_data.m_position_codes.empty())
+		{
+			code = m_data.m_position_codes[0];
 		}
 		else if (!m_data.m_stock_codes.empty())
 		{
@@ -3162,6 +4003,9 @@ void CManagerDialog::OnAddBtnClick()
 			if (dlg.DoModal(this) == IDOK)
 			{
 				g_data.SetPosition(code, dlg.m_cost_price, dlg.m_holding_count);
+				if (std::find(m_data.m_position_codes.begin(), m_data.m_position_codes.end(), code) == m_data.m_position_codes.end())
+					m_data.m_position_codes.push_back(code);
+				g_data.m_setting_data.m_position_codes = m_data.m_position_codes;
 				g_data.SaveConfig();
 				RefreshPositionList();
 			}
@@ -3230,14 +4074,18 @@ void CManagerDialog::OnDelBtnClick()
 	}
 	else if (m_current_group_tab == 1)
 	{
+		// 清除持仓：清零持仓数据并从独立持仓列表移除（不影响自选股）
 		int curSel = m_pos_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		if (curSel >= 0)
 		{
 			DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(curSel);
-			if (codeIdx < m_data.m_stock_codes.size())
+			if (codeIdx < m_data.m_position_codes.size())
 			{
-				const auto& code = m_data.m_stock_codes[codeIdx];
+				const auto& code = m_data.m_position_codes[codeIdx];
 				g_data.SetPosition(code, 0.0, 0.0, L"");
+				m_data.m_position_codes.erase(std::remove(m_data.m_position_codes.begin(), m_data.m_position_codes.end(), code), m_data.m_position_codes.end());
+				g_data.m_setting_data.m_position_codes = m_data.m_position_codes;
+				g_data.SaveConfig();
 				RefreshPositionList();
 			}
 		}
@@ -3335,33 +4183,78 @@ void CManagerDialog::OnMoveDownBtnClick()
 	}
 }
 
+void CManagerDialog::OnGroupSortBtnClick()
+{
+	if (m_data.m_custom_groups.empty())
+	{
+		MessageBox(L"暂无自定义分组", L"提示", MB_ICONINFORMATION | MB_OK);
+		return;
+	}
+
+	// 记录当前选中的分组名，排序后让标签跟随它的新位置
+	std::wstring currentName;
+	if (m_current_group_tab >= 2 && (m_current_group_tab - 2) < static_cast<int>(m_data.m_custom_groups.size()))
+		currentName = m_data.m_custom_groups[m_current_group_tab - 2].name;
+
+	CGroupSortDlg dlg(m_data.m_custom_groups, this);
+	if (dlg.DoModal() != IDOK)
+		return;
+
+	m_data.m_custom_groups = dlg.m_groups;
+	g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+	g_data.SaveConfig();
+
+	if (!currentName.empty())
+	{
+		for (size_t i = 0; i < m_data.m_custom_groups.size(); ++i)
+		{
+			if (m_data.m_custom_groups[i].name == currentName)
+			{
+				m_current_group_tab = static_cast<int>(i) + 2;
+				break;
+			}
+		}
+	}
+	RefreshCustomList();
+	Invalidate();
+}
+
 void CManagerDialog::OnMaAddBtnClick()
 {
 	CString valStr;
 	m_ma_input_edit.GetWindowText(valStr);
-	int val = _ttoi(valStr);
+	if (TryAddMaDay(_ttoi(valStr)))
+	{
+		m_ma_input_edit.SetWindowText(L"");
+		m_ma_input_edit.SetFocus();
+		Invalidate();
+	}
+}
+
+// 校验并添加均线周期；失败时弹出与原逻辑一致的提示，返回是否添加成功
+bool CManagerDialog::TryAddMaDay(int val)
+{
 	if (val < 1 || val > 250)
 	{
 		MessageBox(L"均线周期请输入 1 到 250 之间的整数！", L"提示", MB_ICONWARNING);
-		return;
+		return false;
 	}
 
-	if (m_data.m_ma_days.size() >= 5)
+	if (static_cast<int>(m_data.m_ma_days.size()) >= MA_PRESET_MAX)
 	{
 		MessageBox(L"均线周期最多配置 5 条！请先删除已有周期后再添加。", L"提示", MB_ICONINFORMATION);
-		return;
+		return false;
 	}
 
 	if (std::find(m_data.m_ma_days.begin(), m_data.m_ma_days.end(), val) != m_data.m_ma_days.end())
 	{
 		MessageBox(L"该均线周期已存在！", L"提示", MB_ICONINFORMATION);
-		return;
+		return false;
 	}
 
 	m_data.m_ma_days.push_back(val);
 	std::sort(m_data.m_ma_days.begin(), m_data.m_ma_days.end());
-	m_ma_input_edit.SetWindowText(L"");
-	Invalidate();
+	return true;
 }
 
 void CManagerDialog::OnClickedFullDayCheck()
@@ -3400,71 +4293,9 @@ void CManagerDialog::OnBnClickedWebDavAutoBackupCheck()
 	m_data.m_webdav_auto_backup = IsChecked(IDC_WEBDAV_AUTO_BACKUP_CHECK);
 }
 
-void CManagerDialog::OnBnClickedWebDavTestBtn()
+void CManagerDialog::StartWebDavAsync(int op)
 {
-	CString urlStr, userStr, pwdStr, dirStr;
-	GetDlgItemText(IDC_WEBDAV_URL_EDIT, urlStr);
-	GetDlgItemText(IDC_WEBDAV_USER_EDIT, userStr);
-	GetDlgItemText(IDC_WEBDAV_PWD_EDIT, pwdStr);
-	GetDlgItemText(IDC_WEBDAV_DIR_EDIT, dirStr);
-
-	SettingData testData = m_data;
-	testData.m_webdav_url = urlStr.GetString();
-	testData.m_webdav_username = userStr.GetString();
-	testData.m_webdav_password = pwdStr.GetString();
-	testData.m_webdav_dir = dirStr.GetString();
-
-	std::wstring errMsg;
-	CWaitCursor wait;
-	if (CWebDavSync::TestConnection(testData, errMsg))
-	{
-		MessageBox(L"WebDAV 云端服务器连接与认证成功！", L"连接成功", MB_ICONINFORMATION | MB_OK);
-	}
-	else
-	{
-		MessageBox((L"WebDAV 连接失败：\n" + errMsg).c_str(), L"连接失败", MB_ICONERROR | MB_OK);
-	}
-}
-
-void CManagerDialog::OnBnClickedWebDavUploadBtn()
-{
-	CString urlStr, userStr, pwdStr, dirStr;
-	GetDlgItemText(IDC_WEBDAV_URL_EDIT, urlStr);
-	GetDlgItemText(IDC_WEBDAV_USER_EDIT, userStr);
-	GetDlgItemText(IDC_WEBDAV_PWD_EDIT, pwdStr);
-	GetDlgItemText(IDC_WEBDAV_DIR_EDIT, dirStr);
-
-	m_data.m_webdav_url = urlStr.GetString();
-	m_data.m_webdav_username = userStr.GetString();
-	m_data.m_webdav_password = pwdStr.GetString();
-	m_data.m_webdav_dir = dirStr.GetString();
-
-	std::wstring errMsg;
-	CWaitCursor wait;
-	if (CWebDavSync::UploadBackup(m_data, errMsg))
-	{
-		time_t now = time(nullptr);
-		tm t;
-		localtime_s(&t, &now);
-		wchar_t timeBuf[64];
-		wcsftime(timeBuf, 64, L"%Y-%m-%d %H:%M:%S", &t);
-		m_data.m_webdav_last_sync_time = timeBuf;
-
-		g_data.m_setting_data = m_data;
-		g_data.SaveConfig();
-
-		Invalidate();
-		MessageBox(L"已成功将全部配置与自选股备份至 WebDAV 云端！", L"备份成功", MB_ICONINFORMATION | MB_OK);
-	}
-	else
-	{
-		MessageBox((L"上传备份失败：\n" + errMsg).c_str(), L"备份失败", MB_ICONERROR | MB_OK);
-	}
-}
-
-void CManagerDialog::OnBnClickedWebDavDownloadBtn()
-{
-	if (MessageBox(L"从云端恢复将覆盖本地当前的股票列表与全部配置，是否继续？", L"确认恢复", MB_ICONQUESTION | MB_YESNO) != IDYES)
+	if (m_webdav_busy)
 		return;
 
 	CString urlStr, userStr, pwdStr, dirStr;
@@ -3478,47 +4309,241 @@ void CManagerDialog::OnBnClickedWebDavDownloadBtn()
 	m_data.m_webdav_password = pwdStr.GetString();
 	m_data.m_webdav_dir = dirStr.GetString();
 
-	std::wstring errMsg;
-	CWaitCursor wait;
-	if (CWebDavSync::DownloadBackup(m_data, errMsg))
+	if (m_data.m_webdav_url.empty())
 	{
-		m_data = g_data.m_setting_data;
-
-		SetCheck(IDC_FULL_DAY_CHECK, m_data.m_full_day);
-		SetCheck(IDC_SHOW_FLUCTUATION_CHECK, m_data.m_show_fluctuation);
-		SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, m_data.m_show_today_profit);
-		SetCheck(IDC_USE_SOCKS5_PROXY_CHECK, m_data.m_use_socks5_proxy);
-		SetDlgItemText(IDC_SOCKS5_PROXY_EDIT, m_data.m_socks5_proxy.c_str());
-
-		CString strKlineW, strKlineH;
-		strKlineW.Format(_T("%d"), static_cast<int>(m_data.m_kline_width));
-		SetDlgItemText(IDC_KLINE_WIDTH_EDIT, strKlineW);
-		strKlineH.Format(_T("%d"), static_cast<int>(m_data.m_kline_height));
-		SetDlgItemText(IDC_KLINE_HEIGHT_EDIT, strKlineH);
-
-		int selArea = m_data.m_display_area;
-		if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
-			selArea = AREA_RIGHT_BOTTOM;
-		m_display_area_combo.SetCurSel(selArea);
-
-		SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
-		SetDlgItemText(IDC_WEBDAV_USER_EDIT, m_data.m_webdav_username.c_str());
-		SetDlgItemText(IDC_WEBDAV_PWD_EDIT, m_data.m_webdav_password.c_str());
-		SetDlgItemText(IDC_WEBDAV_DIR_EDIT, m_data.m_webdav_dir.c_str());
-		SetCheck(IDC_WEBDAV_AUTO_SYNC_CHECK, m_data.m_webdav_auto_sync);
-		SetCheck(IDC_WEBDAV_AUTO_BACKUP_CHECK, m_data.m_webdav_auto_backup);
-
-		RefreshStockList();
-		RefreshPositionList();
-		RefreshCustomList();
-		Invalidate();
-
-		MessageBox(L"已成功从 WebDAV 云端恢复最新配置并加载！", L"恢复成功", MB_ICONINFORMATION | MB_OK);
+		MessageBox(L"请先填写 WebDAV 服务器地址", L"提示", MB_ICONWARNING | MB_OK);
+		return;
 	}
+
+	// 上传前把对话框当前值固化到本地 ini，保证备份内容与界面一致
+	if (op == WEBDAV_OP_UPLOAD)
+	{
+		g_data.m_setting_data = m_data;
+		g_data.SaveConfig();
+	}
+
+	auto* result = new WebDavAsyncResult();
+	result->op = op;
+	result->remoteFile = m_webdav_restore_file; // 仅 WEBDAV_OP_RESTORE 使用
+	HWND hWnd = GetSafeHwnd();
+	SettingData data = m_data;
+
+	CStockFetchThread::Instance().PostBackgroundTask([hWnd, result, data]() {
+		switch (result->op)
+		{
+		case WEBDAV_OP_TEST:
+			result->ok = CWebDavSync::TestConnection(data, result->errMsg);
+			break;
+		case WEBDAV_OP_UPLOAD:
+			result->ok = CWebDavSync::UploadBackup(data, result->errMsg);
+			break;
+		case WEBDAV_OP_LIST:
+			result->ok = CWebDavSync::ListBackups(data, result->backups, result->errMsg);
+			break;
+		case WEBDAV_OP_RESTORE:
+			result->ok = CWebDavSync::DownloadBackupData(data, result->remoteFile, result->downloadedData, result->errMsg);
+			break;
+		default:
+			break;
+		}
+		if (!::PostMessage(hWnd, WM_APP_WEBDAV_RESULT, 0, (LPARAM)result))
+			delete result; // 对话框已关闭，结果无人接收
+		});
+
+	// 后台执行期间禁用操作按钮并显示进行中状态
+	m_webdav_busy = true;
+	const UINT btnIds[] = { IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN };
+	for (UINT id : btnIds)
+	{
+		CWnd* pBtn = GetDlgItem(id);
+		if (pBtn && pBtn->GetSafeHwnd())
+			pBtn->EnableWindow(FALSE);
+	}
+	UINT targetBtn = IDC_WEBDAV_TEST_BTN;
+	const wchar_t* busyText = L"连接中...";
+	if (op == WEBDAV_OP_UPLOAD)
+	{
+		targetBtn = IDC_WEBDAV_UPLOAD_BTN;
+		busyText = L"上传中...";
+	}
+	else if (op == WEBDAV_OP_LIST)
+	{
+		targetBtn = IDC_WEBDAV_DOWNLOAD_BTN;
+		busyText = L"获取列表...";
+	}
+	else if (op == WEBDAV_OP_RESTORE)
+	{
+		targetBtn = IDC_WEBDAV_DOWNLOAD_BTN;
+		busyText = L"恢复中...";
+	}
+	CWnd* pOpBtn = GetDlgItem(targetBtn);
+	if (pOpBtn && pOpBtn->GetSafeHwnd())
+		pOpBtn->SetWindowText(busyText);
+}
+
+LRESULT CManagerDialog::OnWebDavResult(WPARAM, LPARAM lParam)
+{
+	std::unique_ptr<WebDavAsyncResult> result(reinterpret_cast<WebDavAsyncResult*>(lParam));
+	if (!result)
+		return 0;
+
+	m_webdav_busy = false;
+	const UINT btnIds[] = { IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN };
+	for (UINT id : btnIds)
+	{
+		CWnd* pBtn = GetDlgItem(id);
+		if (pBtn && pBtn->GetSafeHwnd())
+			pBtn->EnableWindow(TRUE);
+	}
+	SetDlgItemText(IDC_WEBDAV_TEST_BTN, L"测试连接");
+	SetDlgItemText(IDC_WEBDAV_UPLOAD_BTN, L"立即上传备份");
+	SetDlgItemText(IDC_WEBDAV_DOWNLOAD_BTN, L"从云端恢复");
+	Invalidate();
+
+	switch (result->op)
+	{
+	case WEBDAV_OP_TEST:
+		if (result->ok)
+			MessageBox(L"WebDAV 云端服务器连接与认证成功！", L"连接成功", MB_ICONINFORMATION | MB_OK);
+		else
+			MessageBox((L"WebDAV 连接失败：\n" + result->errMsg).c_str(), L"连接失败", MB_ICONERROR | MB_OK);
+		break;
+
+	case WEBDAV_OP_UPLOAD:
+		if (result->ok)
+		{
+			time_t now = time(nullptr);
+			tm t{};
+			localtime_s(&t, &now);
+			wchar_t timeBuf[64]{};
+			wcsftime(timeBuf, 64, L"%Y-%m-%d %H:%M:%S", &t);
+			m_data.m_webdav_last_sync_time = timeBuf;
+
+			g_data.m_setting_data = m_data;
+			g_data.SaveConfig();
+
+			Invalidate();
+			MessageBox(L"已成功将全部配置与自选股备份至 WebDAV 云端（本次以时间戳独立存档）！", L"备份成功", MB_ICONINFORMATION | MB_OK);
+		}
+		else
+		{
+			MessageBox((L"上传备份失败：\n" + result->errMsg).c_str(), L"备份失败", MB_ICONERROR | MB_OK);
+		}
+		break;
+
+	case WEBDAV_OP_LIST:
+		if (!result->ok)
+		{
+			MessageBox((L"获取云端备份列表失败：\n" + result->errMsg).c_str(), L"获取失败", MB_ICONERROR | MB_OK);
+			break;
+		}
+		if (result->backups.empty())
+		{
+			MessageBox(L"云端暂无历史备份，请先点击「立即上传备份」。", L"云端备份列表为空", MB_ICONINFORMATION | MB_OK);
+			break;
+		}
+
+		// 弹出备份选择列表，选中并确认覆盖后再下载应用
+		{
+			CBackupListDialog dlg(result->backups, this);
+			if (dlg.DoModal(this) == IDOK && !dlg.m_selectedFile.empty())
+			{
+				CString confirmMsg;
+				confirmMsg.Format(_T("已选择备份：%s\n恢复将覆盖本地当前的股票列表与全部配置，是否继续？"),
+					dlg.m_selectedName.c_str());
+				if (MessageBox(confirmMsg, L"确认恢复", MB_ICONQUESTION | MB_YESNO) != IDYES)
+					break;
+				m_webdav_restore_file = dlg.m_selectedFile;
+				m_webdav_restore_name = dlg.m_selectedName;
+				StartWebDavAsync(WEBDAV_OP_RESTORE);
+			}
+		}
+		break;
+
+	case WEBDAV_OP_RESTORE:
+		if (result->ok)
+			ApplyWebDavRestore(result->downloadedData, m_webdav_restore_name);
+		else
+			MessageBox((L"从云端恢复失败：\n" + result->errMsg).c_str(), L"恢复失败", MB_ICONERROR | MB_OK);
+		m_webdav_restore_file.clear();
+		m_webdav_restore_name.clear();
+		break;
+	}
+	return 0;
+}
+
+void CManagerDialog::ApplyWebDavRestore(const std::string& data, const std::wstring& backupName)
+{
+	// 将云端备份内容写入本地 INI 并重载配置
+	std::wstring configPath = g_data.GetConfigPath();
+	std::ofstream outFile(configPath, std::ios::binary | std::ios::trunc);
+	if (!outFile.is_open())
+	{
+		MessageBox((L"无法写入本地配置文件: " + configPath).c_str(), L"恢复失败", MB_ICONERROR | MB_OK);
+		return;
+	}
+	outFile.write(data.data(), static_cast<std::streamsize>(data.size()));
+	outFile.close();
+
+	g_data.LoadConfig(L"");
+	Stock::Instance().SendStockInfoRequest();
+
+	m_data = g_data.m_setting_data;
+
+	SetCheck(IDC_FULL_DAY_CHECK, m_data.m_full_day);
+	SetCheck(IDC_SHOW_FLUCTUATION_CHECK, m_data.m_show_fluctuation);
+	SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, m_data.m_show_today_profit);
+	SetCheck(IDC_USE_SOCKS5_PROXY_CHECK, m_data.m_use_socks5_proxy);
+	SetDlgItemText(IDC_SOCKS5_PROXY_EDIT, m_data.m_socks5_proxy.c_str());
+
+	CString strKlineW, strKlineH;
+	strKlineW.Format(_T("%d"), static_cast<int>(m_data.m_kline_width));
+	SetDlgItemText(IDC_KLINE_WIDTH_EDIT, strKlineW);
+	strKlineH.Format(_T("%d"), static_cast<int>(m_data.m_kline_height));
+	SetDlgItemText(IDC_KLINE_HEIGHT_EDIT, strKlineH);
+
+	int selArea = m_data.m_display_area;
+	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
+		selArea = AREA_RIGHT_BOTTOM;
+	m_display_area_combo.SetCurSel(selArea);
+
+	SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
+	SetDlgItemText(IDC_WEBDAV_USER_EDIT, m_data.m_webdav_username.c_str());
+	SetDlgItemText(IDC_WEBDAV_PWD_EDIT, m_data.m_webdav_password.c_str());
+	SetDlgItemText(IDC_WEBDAV_DIR_EDIT, m_data.m_webdav_dir.c_str());
+	SetCheck(IDC_WEBDAV_AUTO_SYNC_CHECK, m_data.m_webdav_auto_sync);
+	SetCheck(IDC_WEBDAV_AUTO_BACKUP_CHECK, m_data.m_webdav_auto_backup);
+
+	RefreshStockList();
+	RefreshPositionList();
+	RefreshCustomList();
+	Invalidate();
+
+	CString okMsg;
+	if (backupName.empty())
+		okMsg = L"已成功从 WebDAV 云端恢复配置并加载！";
 	else
-	{
-		MessageBox((L"从云端恢复失败：\n" + errMsg).c_str(), L"恢复失败", MB_ICONERROR | MB_OK);
-	}
+		okMsg.Format(_T("已成功恢复 %s 的云端备份并加载！"), backupName.c_str());
+	MessageBox(okMsg, L"恢复成功", MB_ICONINFORMATION | MB_OK);
+}
+
+void CManagerDialog::OnBnClickedWebDavTestBtn()
+{
+	// 网络操作在取数线程异步执行，避免阻塞 UI（宿主主线程上等待光标等
+	// MFC 设施会因插件模块状态缺失直接崩溃，详见文件头说明）
+	StartWebDavAsync(WEBDAV_OP_TEST);
+}
+
+void CManagerDialog::OnBnClickedWebDavUploadBtn()
+{
+	StartWebDavAsync(WEBDAV_OP_UPLOAD);
+}
+
+void CManagerDialog::OnBnClickedWebDavDownloadBtn()
+{
+	// 先拉取云端历史备份列表，用户在弹出的列表中选择要恢复的一份，
+	// 选中并确认覆盖后才下载应用（见 OnWebDavResult 的 WEBDAV_OP_LIST 分支）
+	StartWebDavAsync(WEBDAV_OP_LIST);
 }
 
 void CManagerDialog::OnBnClickedOk()
@@ -3797,10 +4822,18 @@ int CDarkPopupMenu::TrackMenu(const CPoint& screenPt, const std::vector<MenuItem
 	{
 		if (msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN || msg.message == WM_NCLBUTTONDOWN)
 		{
-			CPoint pt = msg.pt;
-			CRect rc;
-			GetWindowRect(rc);
-			if (!rc.PtInRect(pt))
+			// 只有点击落在菜单窗口客户区内才交给 OnLButtonUp 按 hover 项处理，
+			// 其余情况（点击其他窗口，或 SetCapture 捕获到的菜单外点击）视为在
+			// 菜单外，关闭菜单。（不能用 msg.pt 判断：PostMessage 合成消息的 pt 不可靠）
+			bool insidePopup = false;
+			if (msg.hwnd == GetSafeHwnd())
+			{
+				CPoint pt((DWORD)msg.lParam);
+				CRect rcClient;
+				GetClientRect(&rcClient);
+				insidePopup = rcClient.PtInRect(pt);
+			}
+			if (!insidePopup)
 			{
 				m_is_open = false;
 				break;
