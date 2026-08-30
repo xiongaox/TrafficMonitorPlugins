@@ -712,6 +712,16 @@ void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 		}
 	}
 
+	// 始终包含全部预置主流指数，保证指数编辑界面与状态栏均能实时获取数据
+	const auto& presets = GetPresetIndices();
+	for (const auto& p : presets)
+	{
+		if (std::find(codes.begin(), codes.end(), p.code) == codes.end())
+		{
+			codes.push_back(p.code);
+		}
+	}
+
 	if (codes.empty())
 	{
 		g_data.ResetText();

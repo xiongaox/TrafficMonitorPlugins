@@ -94,6 +94,7 @@ bool CStockHttpFetcher::FetchRealtimeHtml(const std::vector<std::wstring>& allCo
 		return false;
 
 	// 1. 主数据源：腾讯证券 (qt.gtimg.cn)
+	std::vector<std::wstring> missingCodes;
 	{
 		std::vector<std::wstring> txCodes = outCodes;
 		for (auto& code : txCodes)
@@ -106,26 +107,46 @@ bool CStockHttpFetcher::FetchRealtimeHtml(const std::vector<std::wstring>& allCo
 		CString strHeaders = _T("Referer: https://finance.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("v_") != std::string::npos)
 		{
-			return true;
+			// 检查腾讯未能返回数据的代码（例如 r_hkHSHCI, r_hkHSHBI 等）
+			for (const auto& code : outCodes)
+			{
+				std::string codeA = CCommon::UnicodeToStr(code.c_str());
+				std::string txKey = "v_" + codeA;
+				if (code.find(kHK) == 0)
+					txKey = "v_r_" + codeA.substr(2);
+				if (outResp.find(txKey) == std::string::npos)
+				{
+					missingCodes.push_back(code);
+				}
+			}
+		}
+		else
+		{
+			missingCodes = outCodes;
 		}
 	}
 
-	// 2. 一级保底：新浪财经 (hq.sinajs.cn)
+	// 2. 对腾讯未返回的代码（或腾讯失败时），从新浪财经 (hq.sinajs.cn) 补充获取
+	if (!missingCodes.empty())
 	{
 		std::wstring url{ L"https://hq.sinajs.cn/?" };
 		std::vector<std::wstring> params;
 		params.push_back(L"_=" + std::to_wstring(generateRandomDouble()));
-		params.push_back(L"list=" + CCommon::vectorJoinString(outCodes, L","));
+		params.push_back(L"list=" + CCommon::vectorJoinString(missingCodes, L","));
 		url += CCommon::vectorJoinString(params, L"&");
 
 		CString strHeaders = _T("Referer: https://finance.sina.com.cn");
-		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("hq_str_") != std::string::npos)
+		std::string sinaResp;
+		if (CCommon::GetURL(url, sinaResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !sinaResp.empty() && sinaResp.find("hq_str_") != std::string::npos)
 		{
-			return true;
+			if (!outResp.empty())
+				outResp += "\n" + sinaResp;
+			else
+				outResp = sinaResp;
 		}
 	}
 
-	return false;
+	return !outResp.empty();
 }
 
 bool CStockHttpFetcher::FetchInnerOuterHtml(const std::vector<std::wstring>& allCodes, bool includeAG, std::string& outResp)

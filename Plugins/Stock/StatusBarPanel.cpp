@@ -422,10 +422,25 @@ static CString GetIndexDisplayName(const std::wstring& code, const CString& defa
 {
 	if (code == L"sh000001") return _T("上证");
 	if (code == L"sz399001") return _T("深证");
-	if (code == L"sz399006") return _T("创业板指");
+	if (code == L"sz399006") return _T("创业板");
 	if (code == L"sh000688") return _T("科创50");
 	if (code == L"sh000300") return _T("沪深300");
+	if (code == L"sh000905") return _T("中证500");
+	if (code == L"sh000852") return _T("中证1000");
 	if (code == L"sz399303" || code == L"si932000" || code == L"sh932000") return _T("中证2000");
+	if (code == L"sz399852") return _T("微盘股");
+	if (code == L"sh000016") return _T("上证50");
+	if (code == L"bj899050") return _T("北证50");
+	if (code == L"sz399673") return _T("创50");
+	if (code == L"sz399350") return _T("深证50");
+	if (code == L"sh000043") return _T("富时A50");
+	if (code == L"rt_hkHSI" || code == L"hkHSI") return _T("恒生指数");
+	if (code == L"rt_hkHSTECH" || code == L"hkHSTECH") return _T("恒生科技");
+	if (code == L"sz399997") return _T("中网30");
+	if (code == L"rt_hkHSHCI") return _T("恒生医疗");
+	if (code == L"rt_hkHSHBI") return _T("港股医药");
+	if (code == L"sh000985") return _T("中证全指");
+	if (code == L"sh000002") return _T("A股均价");
 	return defaultName;
 }
 
@@ -435,19 +450,20 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 	memDC.FillSolidRect(0, bottomBarY, w, totalBarHeight, COLOR_BG_FOOTER);
 	memDC.FillSolidRect(0, bottomBarY, w, 1, COLOR_DARK_GRAY_BORDER);
 
-	const int GAP = g_data.RDPI(4);
-
 	std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 	if (statusBarCodes.empty())
 	{
-		// 默认4个核心指数：上证，深证，创业板指，科创50
-		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688" };
+		statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300" };
 	}
-	const int COLS = min(4, static_cast<int>(statusBarCodes.size()));
-	const int colWidth = (COLS > 0) ? (w / COLS) : w;
+	const int COLS = static_cast<int>(statusBarCodes.size());
+	if (COLS <= 0) return;
+
+	const int colWidth = w / COLS;
+	const int GAP = (colWidth < g_data.RDPI(110)) ? g_data.RDPI(2) : g_data.RDPI(4);
+	const int fontPx = (colWidth < g_data.RDPI(90)) ? g_data.RDPI(10) : ((colWidth < g_data.RDPI(110)) ? g_data.RDPI(11) : g_data.RDPI(12));
 
 	CFont statusFont;
-	statusFont.CreateFont(-g_data.RDPI(12), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+	statusFont.CreateFont(-fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
 	CFont* pOldFont = memDC.SelectObject(&statusFont);
@@ -461,10 +477,15 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 	{
 		auto stockData = g_data.GetStockData(statusBarCodes[i]);
 		int colX = i * colWidth;
+		int cellW = (i == COLS - 1) ? (w - colX) : colWidth;
 		int textY = bottomBarY + textOffsetY;
 		int textX = colX + GAP;
 		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
 		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
+
+		CRgn clipRgn;
+		clipRgn.CreateRectRgn(colX, bottomBarY, colX + cellW, bottomBarY + totalBarHeight);
+		memDC.SelectClipRgn(&clipRgn);
 
 		if (stockData && stockData->info.is_ok && (stockData->info.currentPrice > 0 || stockData->info.prevClosePrice > 0))
 		{
@@ -481,22 +502,42 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 			else
 				changeStr.Format(_T("%.2f%%"), diffPercent);
 
+			int dispMode = g_data.m_setting_data.m_index_display_mode;
+
+			int nameW = memDC.GetTextExtent(nameStr).cx;
+			int priceW = (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(priceStr).cx + GAP) : 0;
+			int changeW = (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(changeStr).cx + GAP) : 0;
+			int totalItemW = nameW + priceW + changeW;
+
+			int textX = colX + (std::max)(GAP, (cellW - totalItemW) / 2);
+
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(textX, textY, nameStr);
-			textX += memDC.GetTextExtent(nameStr).cx + GAP;
+			textX += nameW + GAP;
 
-			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-			memDC.TextOut(textX, textY, priceStr);
-			textX += memDC.GetTextExtent(priceStr).cx + GAP;
+			if (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL)
+			{
+				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
+				memDC.TextOut(textX, textY, priceStr);
+				textX += priceW;
+			}
 
-			memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-			memDC.TextOut(textX, textY, changeStr);
+			if (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL)
+			{
+				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
+				memDC.TextOut(textX, textY, changeStr);
+			}
 		}
 		else
 		{
+			CString nodataStr = nameStr + _T(" --");
+			int totalItemW = memDC.GetTextExtent(nodataStr).cx;
+			int textX = colX + (std::max)(GAP, (cellW - totalItemW) / 2);
 			memDC.SetTextColor(COLOR_TEXT_DIM);
-			memDC.TextOut(textX, textY, nameStr + _T(" --"));
+			memDC.TextOut(textX, textY, nodataStr);
 		}
+
+		memDC.SelectClipRgn(nullptr);
 	}
 
 	if (pOldFont)

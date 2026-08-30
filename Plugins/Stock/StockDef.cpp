@@ -64,6 +64,8 @@ void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vec
 
 			if (key_str.find("r_hk") == 0)
 				key_str = "rt_hk" + key_str.substr(4);
+			else if (key_str.find("s_") == 0)
+				key_str = key_str.substr(2);
 
 			std::wstring key = CCommon::StrToUnicode(key_str.c_str());
 			auto stockData = getStock(key);
@@ -853,18 +855,22 @@ void STOCK::StockInfo::LoadBJ(std::vector<std::string> data, size_t size)
 
 void STOCK::StockInfo::LoadHK(std::vector<std::string> data, size_t size)
 {
-	if (size < _DATA_LEN_HK)
+	if (size < 7)
 	{
 		return;
 	}
-	displayName = CCommon::StrToUnicode(data[0].c_str());
+	if (size >= 2 && !data[1].empty())
+		displayName = CCommon::StrToUnicode(data[1].c_str());
+	else if (!data[0].empty())
+		displayName = CCommon::StrToUnicode(data[0].c_str());
+
 	openPrice = { convert<Price>(data[2]) };
 	prevClosePrice = { convert<Price>(data[3]) };
-	currentPrice = { convert<Price>(data[6]) };
-	highPrice = { convert<Price>(data[4]) };
-	lowPrice = { convert<Price>(data[5]) };
-	volume = { convert<Volume>(data[12]) };
-	turnover = { convert<Price>(data[11]) };
+	if (size > 4) highPrice = { convert<Price>(data[4]) };
+	if (size > 5) lowPrice = { convert<Price>(data[5]) };
+	if (size > 6) currentPrice = { convert<Price>(data[6]) };
+	if (size > 11) turnover = { convert<Price>(data[11]) };
+	if (size > 12) volume = { convert<Volume>(data[12]) };
 }
 
 void STOCK::StockInfo::LoadNF(std::vector<std::string> data, size_t size)

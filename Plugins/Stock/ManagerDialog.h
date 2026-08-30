@@ -5,13 +5,94 @@
 #include <string>
 #include <memory>
 
+#define IDC_STOCK_SEARCH_EDIT 1090
+
 // 平面化深色列表头（自绘，与浮动窗口暗色风格一致）
 class CFlatHeaderCtrl : public CHeaderCtrl
 {
 	DECLARE_MESSAGE_MAP()
 
 protected:
+	afx_msg void OnPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC) { return TRUE; }
 	afx_msg void OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+};
+
+// 股票搜索结果与分组添加一体化暗色浮窗
+class CSearchResultDropdown : public CWnd
+{
+	DECLARE_MESSAGE_MAP()
+public:
+	struct GroupMenuItem
+	{
+		int id{ 0 };
+		std::wstring text;
+		bool isSeparator{ false };
+		bool isAction{ false };
+	};
+
+	std::vector<StockSearchResult> m_results;
+	std::vector<GroupMenuItem> m_group_items;
+	int m_hover_item{ -1 };
+	int m_hover_btn{ -1 };
+	int m_selected_stock_idx{ -1 }; // 哪个股票展开了分组菜单 (-1 为未展开)
+	int m_hover_group_idx{ -1 };     // 分组列表中的 hover 项
+	CRect m_edit_screen_rc;
+
+	std::function<void(const StockSearchResult& stock, int groupId)> m_on_add_to_group;
+
+	CSearchResultDropdown() = default;
+	virtual ~CSearchResultDropdown() = default;
+
+	BOOL CreatePopup(CWnd* pParent);
+	void ShowResults(const std::vector<StockSearchResult>& results, const CRect& editScreenRc, const std::vector<GroupMenuItem>& groupItems);
+	void HidePopup();
+
+protected:
+	afx_msg void OnPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC) { return TRUE; }
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnMouseLeave();
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+
+	int GetResultsWidth() const;
+	int GetMenuWidth() const;
+	void UpdatePopupPosition();
+};
+
+// 暗色风格弹出菜单 (替代原生亮白 CMenu 弹窗)
+class CDarkPopupMenu : public CWnd
+{
+	DECLARE_MESSAGE_MAP()
+public:
+	struct MenuItem
+	{
+		int id{ 0 };
+		std::wstring text;
+		bool isChecked{ false };
+		bool isSeparator{ false };
+		bool isDestructive{ false };
+	};
+
+	std::vector<MenuItem> m_items;
+	int m_hover_idx{ -1 };
+	int m_selected_id{ 0 };
+	bool m_is_open{ false };
+
+	CDarkPopupMenu() = default;
+	virtual ~CDarkPopupMenu() = default;
+
+	BOOL CreatePopup(CWnd* pParent);
+	int TrackMenu(const CPoint& screenPt, const std::vector<MenuItem>& items, int minWidth = 100);
+
+protected:
+	afx_msg void OnPaint();
+	afx_msg BOOL OnEraseBkgnd(CDC* pDC) { return TRUE; }
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnMouseLeave();
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnKillFocus(CWnd* pNewWnd);
 };
 
 // 深色主题扁平下拉框（自绘，与暗色输入框/卡片保持统一视觉设计）
@@ -57,8 +138,8 @@ public:
 	enum GroupSubTab
 	{
 		TAB_WATCHLIST = 0, // 自选股
-		TAB_POSITIONS = 1, // 持仓
-		TAB_CUSTOM = 2     // 自定义
+		TAB_POSITIONS = 1  // 持仓
+		// >= 2: 自定义分组索引 (对应 m_data.m_custom_groups[idx - 2])
 	};
 
 	CManagerDialog(CWnd* pParent = nullptr);   // 标准构造函数
@@ -74,11 +155,14 @@ public:
 private:
 	CSize m_min_size;		// 窗口的最小大小
 	PageIndex m_current_page{ PAGE_BASIC };
-	GroupSubTab m_current_group_tab{ TAB_WATCHLIST };
+	int m_current_group_tab{ 0 }; // 0:自选股, 1:持仓, >=2:各自定义分组
 	int m_hover_menu{ -1 };
 	int m_hover_index_card{ -1 };
 	int m_hover_ma_tag_del{ -1 };
 	int m_hover_group_tab{ -1 };
+	int m_hover_index_mode{ -1 };
+	CRect m_index_mode_rects[3];
+	int m_index_scroll_y{ 0 };
 	bool m_tracking_mouse{ false };
 
 	// ===== 暗色主题自绘状态 =====
@@ -92,6 +176,8 @@ private:
 	CListCtrl m_stock_listctrl;
 	CListCtrl m_pos_listctrl;
 	CListCtrl m_custom_listctrl;
+	CEdit m_search_edit;
+	CSearchResultDropdown m_search_dropdown;
 	CEdit m_ma_input_edit;
 	CButton m_ma_add_btn;
 	CButton m_mgr_add_btn;
@@ -99,6 +185,7 @@ private:
 	CButton m_mgr_del_btn;
 	CButton m_mgr_up_btn;
 	CButton m_mgr_down_btn;
+	CButton m_mgr_del_group_btn;
 	CDarkComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
@@ -134,8 +221,9 @@ private:
 	// 字段整框（底色+边框）由 DrawControlBorder 绘制，文字自然居中
 	void PlaceEditInField(UINT nID, const CRect& fieldRect);
 	void SwitchPage(PageIndex page);
-	void SwitchGroupTab(GroupSubTab tab);
+	void SwitchGroupTab(int tab);
 	void UpdateControlsLayout();
+	void AdjustListColumns(CListCtrl& list, int tabType);
 	void RefreshStockList();
 	void RefreshPositionList();
 	void RefreshCustomList();
@@ -150,6 +238,7 @@ private:
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
+	virtual BOOL PreTranslateMessage(MSG* pMsg) override;
 
 	DECLARE_MESSAGE_MAP()
 public:
@@ -159,13 +248,19 @@ public:
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnMove(int x, int y);
+	afx_msg void OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized);
+	afx_msg BOOL OnNcActivate(BOOL bActive);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
+	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnMouseLeave();
 	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
 
-	// 列表与按钮事件
+	// 搜索与列表事件
+	afx_msg void OnSearchEditChange();
 	afx_msg void OnListItemClick(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnLbnDblclkMgrList(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnLbnDblclkPosList(NMHDR* pNMHDR, LRESULT* pResult);
@@ -173,6 +268,7 @@ public:
 	afx_msg void OnAddBtnClick();
 	afx_msg void OnEditBtnClick();
 	afx_msg void OnDelBtnClick();
+	afx_msg void OnDelGroupBtnClick();
 	afx_msg void OnMoveUpBtnClick();
 	afx_msg void OnMoveDownBtnClick();
 	afx_msg void OnMaAddBtnClick();

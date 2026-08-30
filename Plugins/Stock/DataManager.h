@@ -14,6 +14,27 @@ using namespace STOCK;
 
 #define g_data CDataManager::Instance()
 
+enum IndexDisplayMode
+{
+	INDEX_DISP_ALL = 0,     // 全显 (名称 + 数字 + 百分比)
+	INDEX_DISP_PRICE = 1,   // 数字 (名称 + 数字)
+	INDEX_DISP_PERCENT = 2  // 百分比 (名称 + 百分比)
+};
+
+struct CustomGroup
+{
+	std::wstring name;
+	std::vector<std::wstring> codes;
+	bool operator==(const CustomGroup& other) const
+	{
+		return name == other.name && codes == other.codes;
+	}
+	bool operator!=(const CustomGroup& other) const
+	{
+		return !(*this == other);
+	}
+};
+
 struct SettingData
 {
 	vector<std::wstring> m_stock_codes; // 代码
@@ -28,8 +49,10 @@ struct SettingData
 	bool m_use_socks5_proxy{};          // 是否启用 SOCKS5 代理
 	std::wstring m_socks5_proxy;        // SOCKS5 代理地址，如 127.0.0.1:1080
 	std::vector<std::wstring> m_selected_indices; // 选中的指数列表
+	int m_index_display_mode{ INDEX_DISP_ALL };   // 指数状态栏显示模式 (0:全显, 1:数字, 2:百分比)
 	std::vector<int> m_ma_days;         // 均线日列表，例如 {5, 17, 60}
-	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表
+	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表(向后兼容)
+	std::vector<CustomGroup> m_custom_groups; // 多自定义分组列表
 
 	// WebDAV 云端备份配置
 	std::wstring m_webdav_url{ L"https://dav.jianguoyun.com/dav/" }; // WebDAV 服务器地址
@@ -114,6 +137,12 @@ public:
 	double GetAlertLowPrice(const std::wstring& code);
 	double GetAlertHighPrice(const std::wstring& code);
 	void SetAlertPrice(const std::wstring& code, double low, double high);
+
+	// 自定义分组管理
+	void AddCustomGroup(const std::wstring& name);
+	void DeleteCustomGroup(size_t index);
+	void RenameCustomGroup(size_t index, const std::wstring& newName);
+	bool AddStockToGroup(int groupIndex, const std::wstring& code);
 
 	// 持仓配置设置
 	double GetCostPrice(const std::wstring& code);

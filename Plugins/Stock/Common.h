@@ -135,6 +135,24 @@ public:
 
 	// 校验分时数据点时间是否在交易时段内（A股：09:30-11:30, 13:00-15:00；港股：09:30-12:00, 13:00-16:10）
 	static bool IsValidTimelineTime(const std::string& timeStr, bool isHK = false);
+
+	// 获取股票所属交易所名称（上交所/深交所/北交所/港交所/美股等）
+	static std::wstring GetExchangeName(const std::wstring& fullCode);
+
+	// 获取去除交易所前缀后的纯数字/纯代码
+	static std::wstring GetPureCode(const std::wstring& fullCode);
+
+	// 搜索股票（支持代码、名称、拼音），集成腾讯 Smartbox、新浪及本地预置数据
+	static std::vector<struct StockSearchResult> SearchStock(const std::wstring& keyword);
+};
+
+struct StockSearchResult
+{
+	std::wstring exchange;   // 上交所 / 深交所 / 北交所 / 港交所 / 美股
+	std::wstring code;       // 纯代码 (600519)
+	std::wstring fullCode;   // 完整代码 (sh600519)
+	std::wstring name;       // 股票名称 (贵州茅台)
+	std::wstring type;       // 类型 (GP-A / ETF / 指数 等)
 };
 
 //通过构造函数传递一个bool变量的引用，在构造时将其置为true，析构时置为false

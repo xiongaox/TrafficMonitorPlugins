@@ -1119,21 +1119,27 @@ void CFloatingWnd::OnPaint()
 		CSize textSize = memDC.GetTextExtent(_T("Ay"));
 		const int statusBarHeight = textSize.cy + g_data.RDPI(6);
 
-		// 计算大盘指数区域高度
-		auto stockCodes = g_data.m_setting_data.m_stock_codes;
-		int indexCount = 0;
+		// 计算大盘指数区域高度（从 GetStatusBarStockCodes() 获取已选大盘指数）
+		std::vector<std::wstring> indexCodes = g_data.GetStatusBarStockCodes();
+		if (indexCodes.empty())
+		{
+			indexCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300" };
+		}
+		std::vector<std::pair<std::wstring, STOCK::StockInfo>> indices;
 		{
 			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			for (const auto& code : stockCodes)
+			for (const auto& code : indexCodes)
 			{
 				auto stockData = g_data.GetStockData(code);
-				if (stockData && stockData->info.is_ok && GetStockPriority(code) < 200)
-					indexCount++;
+				if (stockData && stockData->info.is_ok)
+					indices.push_back({ code, stockData->info });
 			}
 		}
+		const int indexCount = (int)indices.size();
 		const int indexSectionHeight = indexCount > 0 ? g_data.RDPI(56) : 0;
 
-		int totalRows = (int)stockCodes.size() - indexCount;
+		auto stockCodes = g_data.m_setting_data.m_stock_codes;
+		int totalRows = (int)stockCodes.size();
 		int totalTableH = headerHeight + totalRows * headerHeight;
 
 		// 可滚动区域 = 总高度 - 表头 - 状态栏 - 指数区域
@@ -1147,14 +1153,6 @@ void CFloatingWnd::OnPaint()
 		// 绘制大盘指数区域
 		if (indexCount > 0)
 		{
-			std::vector<std::pair<std::wstring, STOCK::StockInfo>> indices;
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			for (const auto& code : stockCodes)
-			{
-				auto stockData = g_data.GetStockData(code);
-				if (stockData && stockData->info.is_ok && GetStockPriority(code) < 200)
-					indices.push_back({ code, stockData->info });
-			}
 			m_overviewPanel.DrawIndexSection(memDC, 0, headerHeight, w, indices);
 		}
 
@@ -1254,9 +1252,9 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 			std::vector<std::wstring> statusBarCodes = g_data.GetStatusBarStockCodes();
 			if (statusBarCodes.empty())
 			{
-				statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688" };
+				statusBarCodes = { L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300" };
 			}
-			const int COLS = min(4, static_cast<int>(statusBarCodes.size()));
+			const int COLS = static_cast<int>(statusBarCodes.size());
 			if (COLS > 0)
 			{
 				const int colW = clRect.Width() / COLS;

@@ -27,6 +27,923 @@
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "dwmapi.lib")
 
+// 简易深色输入弹窗（用于新建/重命名分组）
+class CSimpleInputDialog : public CDialog
+{
+public:
+	CString m_title;
+	CString m_prompt;
+	CString m_value;
+	CEdit m_edit;
+	CStatic m_label;
+	CButton m_btnOk;
+	CButton m_btnCancel;
+	CFont m_font;
+	CBrush m_dark_brush;
+	CBrush m_edit_brush;
+
+	CSimpleInputDialog(const CString& title, const CString& prompt, const CString& defVal = _T(""), CWnd* pParent = nullptr)
+		: CDialog(), m_title(title), m_prompt(prompt), m_value(defVal)
+	{
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		pDlg->style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 220;
+		pDlg->cy = 75;
+
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+	virtual BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(m_title);
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(90, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		m_dark_brush.CreateSolidBrush(RGB(24, 27, 34));
+		m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));
+
+		CRect cr;
+		GetClientRect(&cr);
+
+		m_label.Create(m_prompt, WS_CHILD | WS_VISIBLE | SS_LEFT, CRect(g_data.DPI(18), g_data.DPI(12), cr.right - g_data.DPI(18), g_data.DPI(30)), this);
+		m_label.SetFont(&m_font);
+
+		m_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, CRect(g_data.DPI(18) + g_data.DPI(6), g_data.DPI(32) + g_data.DPI(3), cr.right - g_data.DPI(18) - g_data.DPI(6), g_data.DPI(32) + g_data.DPI(21)), this, 1001);
+		m_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowTheme(m_edit.GetSafeHwnd(), L"", L"");
+		m_edit.SetFont(&m_font);
+		m_edit.SetWindowText(m_value);
+		m_edit.SetFocus();
+		m_edit.SetSel(0, -1);
+
+		int btnW = g_data.DPI(62);
+		int btnH = g_data.DPI(24);
+		int btnY = cr.bottom - btnH - g_data.DPI(10);
+
+		m_btnOk.Create(_T("确定"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW * 2 - g_data.DPI(18), btnY, cr.right - btnW - g_data.DPI(18), btnY + btnH), this, IDOK);
+		m_btnOk.SetFont(&m_font);
+
+		m_btnCancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW - g_data.DPI(10), btnY, cr.right - g_data.DPI(10), btnY + btnH), this, IDCANCEL);
+		m_btnCancel.SetFont(&m_font);
+
+		return FALSE;
+	}
+
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect clientRect;
+			GetClientRect(clientRect);
+
+			CDC memDC;
+			memDC.CreateCompatibleDC(&dc);
+			CBitmap memBmp;
+			memBmp.CreateCompatibleBitmap(&dc, clientRect.Width(), clientRect.Height());
+			CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+			Gdiplus::Graphics g(memDC.GetSafeHdc());
+			g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+			Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&bgBrush, 0, 0, clientRect.Width(), clientRect.Height());
+
+			if (m_edit.GetSafeHwnd())
+			{
+				CRect editRc(g_data.DPI(18), g_data.DPI(32), clientRect.right - g_data.DPI(18), g_data.DPI(56));
+				
+				Gdiplus::SolidBrush editBg(Gdiplus::Color(255, 13, 15, 21));
+				g.FillRectangle(&editBg, editRc.left, editRc.top, editRc.Width(), editRc.Height());
+				
+				CWnd* pFocus = GetFocus();
+				bool focused = (pFocus && pFocus->GetSafeHwnd() == m_edit.GetSafeHwnd());
+				Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
+				g.DrawRectangle(&pen, editRc.left, editRc.top, editRc.Width() - 1, editRc.Height() - 1);
+			}
+
+			dc.BitBlt(0, 0, clientRect.Width(), clientRect.Height(), &memDC, 0, 0, SRCCOPY);
+			memDC.SelectObject(pOldBmp);
+			return 0;
+		}
+		else if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_CTLCOLOREDIT)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(255, 255, 255));
+			::SetBkColor(hdc, RGB(13, 15, 21));
+			return (LRESULT)(HBRUSH)m_edit_brush.GetSafeHandle();
+		}
+		else if (message == WM_COMMAND)
+		{
+			WORD wNotifyCode = HIWORD(wParam);
+			if (wNotifyCode == EN_SETFOCUS || wNotifyCode == EN_KILLFOCUS)
+			{
+				InvalidateRect(nullptr, FALSE);
+			}
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(24, 27, 34));
+			return (LRESULT)(HBRUSH)m_dark_brush.GetSafeHandle();
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				UINT state = pDI->itemState;
+				CString text;
+				if (pDI->CtlID == IDOK) text = _T("确定");
+				else text = _T("取消");
+
+				COLORREF bgColor = (pDI->CtlID == IDOK) ? RGB(37, 99, 235) : RGB(30, 35, 46);
+				if (state & ODS_SELECTED) bgColor = (pDI->CtlID == IDOK) ? RGB(29, 78, 216) : RGB(20, 25, 35);
+				
+				dc.FillSolidRect(rect, bgColor);
+				
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(RGB(255, 255, 255));
+				CFont* pOldFont = dc.SelectObject(&m_font);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+
+	virtual void OnOK() override
+	{
+		if (m_edit.GetSafeHwnd())
+		{
+			m_edit.GetWindowText(m_value);
+			m_value.Trim();
+		}
+		CDialog::OnOK();
+	}
+};
+
+// 暗色主题通用确认弹窗 (替代原生 MessageBox)
+class CDarkConfirmDialog : public CDialog
+{
+public:
+	CString m_title;
+	CString m_prompt;
+	bool m_is_destructive{ true };
+	CFont m_font;
+	CFont m_font_bold;
+	CBrush m_dark_brush;
+	CStatic m_label;
+	CButton m_btnOk;
+	CButton m_btnCancel;
+
+	CDarkConfirmDialog(const CString& title, const CString& prompt, CWnd* pParent = nullptr, bool isDestructive = true)
+		: CDialog(), m_title(title), m_prompt(prompt), m_is_destructive(isDestructive)
+	{
+		m_dark_brush.CreateSolidBrush(RGB(24, 27, 34)); // #181B22
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		pDlg->style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 180;
+		pDlg->cy = 75;
+
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+	virtual BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(m_title);
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(100, _T("微软雅黑"));
+		m_font_bold.CreatePointFont(100, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		CRect cr;
+		GetClientRect(&cr);
+
+		int marginX = g_data.DPI(18);
+		m_label.Create(m_prompt, WS_CHILD | WS_VISIBLE | SS_LEFT, CRect(marginX, g_data.DPI(16), cr.right - marginX, g_data.DPI(40)), this);
+		m_label.SetFont(&m_font);
+
+		int btnW = g_data.DPI(62);
+		int btnH = g_data.DPI(26);
+		int btnY = cr.bottom - btnH - g_data.DPI(12);
+
+		m_btnOk.Create(_T("确定"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW * 2 - g_data.DPI(18), btnY, cr.right - btnW - g_data.DPI(18), btnY + btnH), this, IDOK);
+		m_btnOk.SetFont(&m_font_bold);
+
+		m_btnCancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(cr.right - btnW - g_data.DPI(10), btnY, cr.right - g_data.DPI(10), btnY + btnH), this, IDCANCEL);
+		m_btnCancel.SetFont(&m_font);
+
+		return TRUE;
+	}
+
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect clientRect;
+			GetClientRect(clientRect);
+
+			Gdiplus::Graphics g(dc.GetSafeHdc());
+			Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&bgBrush, 0, 0, clientRect.Width(), clientRect.Height());
+			return 0;
+		}
+		else if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(24, 27, 34));
+			return (LRESULT)(HBRUSH)m_dark_brush.GetSafeHandle();
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				UINT state = pDI->itemState;
+				CString text = (pDI->CtlID == IDOK) ? _T("确定") : _T("取消");
+
+				bool isOk = (pDI->CtlID == IDOK);
+				COLORREF bgColor;
+				if (isOk)
+				{
+					if (m_is_destructive)
+						bgColor = (state & ODS_SELECTED) ? RGB(185, 28, 28) : RGB(220, 38, 38);
+					else
+						bgColor = (state & ODS_SELECTED) ? RGB(29, 78, 216) : RGB(37, 99, 235);
+				}
+				else
+				{
+					bgColor = (state & ODS_SELECTED) ? RGB(20, 25, 35) : RGB(30, 35, 46);
+				}
+
+				dc.FillSolidRect(rect, bgColor);
+
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(RGB(255, 255, 255));
+				CFont* pOldFont = dc.SelectObject(isOk ? &m_font_bold : &m_font);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+};
+
+// 暗色主题持仓编辑弹窗
+class CDarkPositionInputDlg : public CDialog
+{
+public:
+	std::wstring m_exchange;
+	std::wstring m_code;
+	std::wstring m_name;
+	std::wstring m_full_code;
+	double m_cost_price{ 0.0 };
+	double m_holding_count{ 0.0 };
+
+	CEdit m_cost_edit;
+	CEdit m_count_edit;
+	CButton m_btn_ok;
+	CButton m_btn_cancel;
+
+	CFont m_font;
+	CFont m_font_bold;
+	CBrush m_bg_brush;
+	CBrush m_edit_brush;
+
+	CDarkPositionInputDlg(const std::wstring& fullCode, const std::wstring& name = L"", const std::wstring& exch = L"", CWnd* pParent = nullptr)
+		: CDialog(), m_full_code(fullCode), m_name(name), m_exchange(exch)
+	{
+		if (m_exchange.empty())
+			m_exchange = CCommon::GetExchangeName(fullCode);
+		m_code = CCommon::GetPureCode(fullCode);
+		if (m_name.empty())
+		{
+			auto stockData = g_data.GetStockData(fullCode);
+			if (stockData && !stockData->info.displayName.empty())
+				m_name = stockData->info.displayName;
+			else
+				m_name = m_code;
+		}
+		m_cost_price = g_data.GetCostPrice(fullCode);
+		m_holding_count = g_data.GetHoldingCount(fullCode);
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		pDlg->style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 200;
+		pDlg->cy = 140;
+
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+	virtual BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(L"设置持仓信息");
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(100, _T("微软雅黑"));
+		m_font_bold.CreatePointFont(105, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		m_bg_brush.CreateSolidBrush(RGB(18, 20, 26));      // #12141A
+		m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));
+
+		CRect cr;
+		GetClientRect(&cr);
+
+		int marginX = g_data.DPI(16);
+		int editH = g_data.DPI(26);
+
+		// 成本价输入框
+		int costY = g_data.DPI(64);
+		int editBoxH = g_data.DPI(18);
+		int editOffset = g_data.DPI(4);
+		int editBorderLeft = marginX + g_data.DPI(80);
+		int editInnerLeft = editBorderLeft + g_data.DPI(6);
+		int editInnerRight = cr.right - marginX - g_data.DPI(6);
+
+		m_cost_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+			CRect(editInnerLeft, costY + editOffset, editInnerRight, costY + editOffset + editBoxH), this, 1001);
+		m_cost_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowTheme(m_cost_edit.GetSafeHwnd(), L"", L"");
+		m_cost_edit.SetFont(&m_font);
+		if (m_cost_price > 0)
+		{
+			CString s;
+			s.Format(_T("%.3f"), m_cost_price);
+			m_cost_edit.SetWindowText(s);
+		}
+		m_cost_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"输入成本价(元)");
+
+		// 持股数输入框
+		int countY = costY + editH + g_data.DPI(12);
+		m_count_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+			CRect(editInnerLeft, countY + editOffset, editInnerRight, countY + editOffset + editBoxH), this, 1002);
+		m_count_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowTheme(m_count_edit.GetSafeHwnd(), L"", L"");
+		m_count_edit.SetFont(&m_font);
+		if (m_holding_count > 0)
+		{
+			CString s;
+			s.Format(_T("%d"), static_cast<int>(m_holding_count));
+			m_count_edit.SetWindowText(s);
+		}
+		m_count_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"输入持股数量");
+
+		// 底部按钮
+		int btnW = g_data.DPI(70);
+		int btnH = g_data.DPI(26);
+		int btnY = cr.bottom - btnH - g_data.DPI(12);
+
+		m_btn_ok.Create(_T("确定"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW,
+			CRect(cr.right - btnW * 2 - marginX - g_data.DPI(10), btnY, cr.right - btnW - marginX - g_data.DPI(10), btnY + btnH), this, IDOK);
+		m_btn_ok.SetFont(&m_font_bold);
+
+		m_btn_cancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW,
+			CRect(cr.right - btnW - marginX, btnY, cr.right - marginX, btnY + btnH), this, IDCANCEL);
+		m_btn_cancel.SetFont(&m_font);
+
+		m_cost_edit.SetFocus();
+		m_cost_edit.SetSel(0, -1);
+
+		return FALSE;
+	}
+
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_CTLCOLOREDIT)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(255, 255, 255));
+			::SetBkColor(hdc, RGB(13, 15, 21));
+			return (LRESULT)(HBRUSH)m_edit_brush;
+		}
+		else if (message == WM_COMMAND)
+		{
+			WORD wNotifyCode = HIWORD(wParam);
+			if (wNotifyCode == EN_SETFOCUS || wNotifyCode == EN_KILLFOCUS)
+			{
+				InvalidateRect(nullptr, FALSE);
+			}
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(18, 20, 26));
+			return (LRESULT)(HBRUSH)m_bg_brush;
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				UINT state = pDI->itemState;
+				CString text;
+				if (pDI->CtlID == IDOK) text = _T("确定");
+				else text = _T("取消");
+
+				COLORREF bgColor = (pDI->CtlID == IDOK) ? RGB(37, 99, 235) : RGB(30, 35, 46);
+				if (state & ODS_SELECTED) bgColor = (pDI->CtlID == IDOK) ? RGB(29, 78, 216) : RGB(20, 25, 35);
+				
+				dc.FillSolidRect(rect, bgColor);
+				
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(RGB(255, 255, 255));
+				CFont* pFont = (pDI->CtlID == IDOK) ? &m_font_bold : &m_font;
+				CFont* pOldFont = dc.SelectObject(pFont);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		else if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect rc;
+			GetClientRect(rc);
+
+			CDC memDC;
+			memDC.CreateCompatibleDC(&dc);
+			CBitmap memBmp;
+			memBmp.CreateCompatibleBitmap(&dc, rc.Width(), rc.Height());
+			CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+			Gdiplus::Graphics g(memDC.GetSafeHdc());
+			g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+			g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+			// 1. 底色
+			Gdiplus::SolidBrush bg(Gdiplus::Color(255, 18, 20, 26));
+			g.FillRectangle(&bg, 0, 0, rc.Width(), rc.Height());
+
+			int marginX = g_data.DPI(16);
+
+			// 2. 股票信息展示卡片
+			int cardTop = g_data.DPI(12);
+			int cardBottom = cardTop + g_data.DPI(34);
+			CRect cardRc(marginX, cardTop, rc.right - marginX, cardBottom);
+			Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&cardBg, cardRc.left, cardRc.top, cardRc.Width(), cardRc.Height());
+			Gdiplus::Pen cardBorder(Gdiplus::Color(255, 42, 48, 63), 1.0f);
+			g.DrawRectangle(&cardBorder, cardRc.left, cardRc.top, cardRc.Width(), cardRc.Height());
+
+			// 交易所 Badge
+			int badgeW = g_data.DPI(50);
+			int badgeH = g_data.DPI(18);
+			int badgeX = cardRc.left + g_data.DPI(12);
+			int badgeY = cardRc.top + g_data.DPI(8);
+			Gdiplus::RectF badgeRf(static_cast<Gdiplus::REAL>(badgeX), static_cast<Gdiplus::REAL>(badgeY), static_cast<Gdiplus::REAL>(badgeW), static_cast<Gdiplus::REAL>(badgeH));
+			Gdiplus::SolidBrush badgeBg(Gdiplus::Color(255, 37, 99, 235));
+			g.FillRectangle(&badgeBg, badgeRf);
+
+			Gdiplus::Font badgeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::StringFormat sfCenter;
+			sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
+			sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+			Gdiplus::SolidBrush whiteTxt(Gdiplus::Color(255, 255, 255, 255));
+			// GDI+ 行框居中含雅黑 descent 空白区，汉字视觉偏上，文字矩形下移补偿
+			Gdiplus::RectF badgeTxtRf = badgeRf;
+			badgeTxtRf.Y += static_cast<Gdiplus::REAL>(g_data.DPI(1));
+			g.DrawString(m_exchange.c_str(), -1, &badgeFont, badgeTxtRf, &sfCenter, &whiteTxt);
+
+			// 代码
+			int codeX = badgeX + badgeW + g_data.DPI(8);
+			Gdiplus::Font codeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush codeTxt(Gdiplus::Color(255, 148, 163, 184));
+			g.DrawString(m_code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(codeX), static_cast<Gdiplus::REAL>(badgeY + g_data.DPI(1))), &codeTxt);
+
+			// 股票名称 (大号加粗白色，紧跟在代码后面)
+			int nameX = codeX + g_data.DPI(50);
+			Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+			g.DrawString(m_name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(nameX), static_cast<Gdiplus::REAL>(badgeY + 1)), &whiteTxt);
+
+			// 3. 标签文字 (成本价 / 持股数)
+			Gdiplus::Font labelFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 203, 213, 225));
+
+			int costY = g_data.DPI(64);
+			g.DrawString(L"成本价 (元):", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(marginX), static_cast<Gdiplus::REAL>(costY + g_data.DPI(5))), &labelBrush);
+
+			int countY = costY + g_data.DPI(26) + g_data.DPI(12);
+			g.DrawString(L"持股数 (股):", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(marginX), static_cast<Gdiplus::REAL>(countY + g_data.DPI(5))), &labelBrush);
+
+			// Draw edit borders
+			auto drawEdit = [&](CWnd& edit, int y) {
+				if (!edit.GetSafeHwnd()) return;
+				
+				int editBorderLeft = marginX + g_data.DPI(80);
+				CRect editRc(editBorderLeft, y, rc.right - marginX, y + g_data.DPI(26));
+				
+				Gdiplus::SolidBrush editBg(Gdiplus::Color(255, 13, 15, 21));
+				g.FillRectangle(&editBg, editRc.left, editRc.top, editRc.Width(), editRc.Height());
+
+				CWnd* pFocus = GetFocus();
+				bool focused = (pFocus && pFocus->GetSafeHwnd() == edit.GetSafeHwnd());
+				Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
+				g.DrawRectangle(&pen, editRc.left, editRc.top, editRc.Width() - 1, editRc.Height() - 1);
+			};
+			drawEdit(m_cost_edit, costY);
+			drawEdit(m_count_edit, countY);
+
+			dc.BitBlt(0, 0, rc.Width(), rc.Height(), &memDC, 0, 0, SRCCOPY);
+			memDC.SelectObject(pOldBmp);
+			return 0;
+		}
+
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+
+	virtual void OnOK() override
+	{
+		if (m_cost_edit.GetSafeHwnd())
+		{
+			CString strCost;
+			m_cost_edit.GetWindowText(strCost);
+			strCost.Trim();
+			m_cost_price = _ttof(strCost);
+		}
+		if (m_count_edit.GetSafeHwnd())
+		{
+			CString strCount;
+			m_count_edit.GetWindowText(strCount);
+			strCount.Trim();
+			m_holding_count = _ttof(strCount);
+		}
+		CDialog::OnOK();
+	}
+};
+
+// 暗色主题股票关注价格编辑弹窗
+class CDarkStockAlertInputDlg : public CDialog
+{
+public:
+	std::wstring m_exchange;
+	std::wstring m_code;
+	std::wstring m_name;
+	std::wstring m_full_code;
+	double m_low_price{ 0.0 };
+	double m_high_price{ 0.0 };
+
+	CEdit m_low_edit;
+	CEdit m_high_edit;
+	CButton m_btn_ok;
+	CButton m_btn_cancel;
+
+	CFont m_font;
+	CFont m_font_bold;
+	CBrush m_bg_brush;
+	CBrush m_edit_brush;
+
+	CDarkStockAlertInputDlg(const std::wstring& fullCode, const std::wstring& name = L"", const std::wstring& exch = L"", CWnd* pParent = nullptr)
+		: CDialog(), m_full_code(fullCode), m_name(name), m_exchange(exch)
+	{
+		if (m_exchange.empty())
+			m_exchange = CCommon::GetExchangeName(fullCode);
+		m_code = CCommon::GetPureCode(fullCode);
+		if (m_name.empty())
+		{
+			auto stockData = g_data.GetStockData(fullCode);
+			if (stockData && !stockData->info.displayName.empty())
+				m_name = stockData->info.displayName;
+			else
+				m_name = m_code;
+		}
+		m_low_price = g_data.GetAlertLowPrice(fullCode);
+		m_high_price = g_data.GetAlertHighPrice(fullCode);
+	}
+
+	INT_PTR DoModal(CWnd* pParent = nullptr)
+	{
+		BYTE buffer[512] = { 0 };
+		DLGTEMPLATE* pDlg = (DLGTEMPLATE*)buffer;
+		pDlg->style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER;
+		pDlg->dwExtendedStyle = 0;
+		pDlg->cdit = 0;
+		pDlg->x = 0;
+		pDlg->y = 0;
+		pDlg->cx = 215;
+		pDlg->cy = 140;
+
+		InitModalIndirect(pDlg, pParent);
+		return CDialog::DoModal();
+	}
+
+	virtual BOOL OnInitDialog() override
+	{
+		CDialog::OnInitDialog();
+		SetWindowText(L"编辑股票");
+
+		BOOL darkCaption = TRUE;
+		::DwmSetWindowAttribute(GetSafeHwnd(), 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &darkCaption, sizeof(darkCaption));
+
+		m_font.CreatePointFont(100, _T("微软雅黑"));
+		m_font_bold.CreatePointFont(105, _T("微软雅黑"));
+		SetFont(&m_font);
+
+		m_bg_brush.CreateSolidBrush(RGB(18, 20, 26));      // #12141A
+		m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));
+
+		CRect cr;
+		GetClientRect(&cr);
+
+		int marginX = g_data.DPI(16);
+		int editH = g_data.DPI(26);
+
+		// 关注低价输入框
+		int lowY = g_data.DPI(64);
+		int editBoxH = g_data.DPI(18);
+		int editOffset = g_data.DPI(4);
+		int editBorderLeft = marginX + g_data.DPI(92);
+		int editInnerLeft = editBorderLeft + g_data.DPI(6);
+		int editInnerRight = cr.right - marginX - g_data.DPI(6);
+
+		m_low_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+			CRect(editInnerLeft, lowY + editOffset, editInnerRight, lowY + editOffset + editBoxH), this, 1001);
+		m_low_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowTheme(m_low_edit.GetSafeHwnd(), L"", L"");
+		m_low_edit.SetFont(&m_font);
+		if (m_low_price > 0)
+		{
+			CString s;
+			s.Format(_T("%.2f"), m_low_price);
+			m_low_edit.SetWindowText(s);
+		}
+		m_low_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"输入关注低价(元)");
+
+		// 关注高价输入框
+		int highY = lowY + editH + g_data.DPI(12);
+		m_high_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+			CRect(editInnerLeft, highY + editOffset, editInnerRight, highY + editOffset + editBoxH), this, 1002);
+		m_high_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		::SetWindowTheme(m_high_edit.GetSafeHwnd(), L"", L"");
+		m_high_edit.SetFont(&m_font);
+		if (m_high_price > 0)
+		{
+			CString s;
+			s.Format(_T("%.2f"), m_high_price);
+			m_high_edit.SetWindowText(s);
+		}
+		m_high_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"输入关注高价(元)");
+
+		// 底部按钮
+		int btnW = g_data.DPI(70);
+		int btnH = g_data.DPI(26);
+		int btnY = cr.bottom - btnH - g_data.DPI(12);
+
+		m_btn_ok.Create(_T("确定"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON | BS_OWNERDRAW,
+			CRect(cr.right - btnW * 2 - marginX - g_data.DPI(10), btnY, cr.right - btnW - marginX - g_data.DPI(10), btnY + btnH), this, IDOK);
+		m_btn_ok.SetFont(&m_font_bold);
+
+		m_btn_cancel.Create(_T("取消"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW,
+			CRect(cr.right - btnW - marginX, btnY, cr.right - marginX, btnY + btnH), this, IDCANCEL);
+		m_btn_cancel.SetFont(&m_font);
+
+		m_low_edit.SetFocus();
+		m_low_edit.SetSel(0, -1);
+
+		return FALSE;
+	}
+
+	virtual LRESULT WindowProc(UINT message, WPARAM wParam, LPARAM lParam) override
+	{
+		if (message == WM_ERASEBKGND)
+		{
+			return TRUE;
+		}
+		else if (message == WM_CTLCOLOREDIT)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(255, 255, 255));
+			::SetBkColor(hdc, RGB(13, 15, 21));
+			return (LRESULT)(HBRUSH)m_edit_brush;
+		}
+		else if (message == WM_COMMAND)
+		{
+			WORD wNotifyCode = HIWORD(wParam);
+			if (wNotifyCode == EN_SETFOCUS || wNotifyCode == EN_KILLFOCUS)
+			{
+				InvalidateRect(nullptr, FALSE);
+			}
+		}
+		else if (message == WM_CTLCOLORSTATIC)
+		{
+			HDC hdc = (HDC)wParam;
+			::SetTextColor(hdc, RGB(226, 232, 240));
+			::SetBkColor(hdc, RGB(18, 20, 26));
+			return (LRESULT)(HBRUSH)m_bg_brush;
+		}
+		else if (message == WM_DRAWITEM)
+		{
+			LPDRAWITEMSTRUCT pDI = (LPDRAWITEMSTRUCT)lParam;
+			if (pDI->CtlType == ODT_BUTTON)
+			{
+				CDC dc;
+				dc.Attach(pDI->hDC);
+				CRect rect = pDI->rcItem;
+				UINT state = pDI->itemState;
+				CString text = (pDI->CtlID == IDOK) ? _T("确定") : _T("取消");
+
+				COLORREF bgColor = (pDI->CtlID == IDOK) ? RGB(37, 99, 235) : RGB(30, 35, 46);
+				if (state & ODS_SELECTED) bgColor = (pDI->CtlID == IDOK) ? RGB(29, 78, 216) : RGB(20, 25, 35);
+				
+				dc.FillSolidRect(rect, bgColor);
+				
+				dc.SetBkMode(TRANSPARENT);
+				dc.SetTextColor(RGB(255, 255, 255));
+				CFont* pFont = (pDI->CtlID == IDOK) ? &m_font_bold : &m_font;
+				CFont* pOldFont = dc.SelectObject(pFont);
+				dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				dc.SelectObject(pOldFont);
+				dc.Detach();
+				return TRUE;
+			}
+		}
+		else if (message == WM_PAINT)
+		{
+			CPaintDC dc(this);
+			CRect rc;
+			GetClientRect(rc);
+
+			CDC memDC;
+			memDC.CreateCompatibleDC(&dc);
+			CBitmap memBmp;
+			memBmp.CreateCompatibleBitmap(&dc, rc.Width(), rc.Height());
+			CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+			Gdiplus::Graphics g(memDC.GetSafeHdc());
+			g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+			g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+			// 1. 底色
+			Gdiplus::SolidBrush bg(Gdiplus::Color(255, 18, 20, 26));
+			g.FillRectangle(&bg, 0, 0, rc.Width(), rc.Height());
+
+			int marginX = g_data.DPI(16);
+
+			// 2. 股票信息展示卡片
+			int cardTop = g_data.DPI(12);
+			int cardBottom = cardTop + g_data.DPI(34);
+			CRect cardRc(marginX, cardTop, rc.right - marginX, cardBottom);
+			Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&cardBg, cardRc.left, cardRc.top, cardRc.Width(), cardRc.Height());
+			Gdiplus::Pen cardBorder(Gdiplus::Color(255, 42, 48, 63), 1.0f);
+			g.DrawRectangle(&cardBorder, cardRc.left, cardRc.top, cardRc.Width(), cardRc.Height());
+
+			// 交易所 Badge
+			int badgeW = g_data.DPI(50);
+			int badgeH = g_data.DPI(18);
+			int badgeX = cardRc.left + g_data.DPI(12);
+			int badgeY = cardRc.top + g_data.DPI(8);
+			Gdiplus::RectF badgeRf(static_cast<Gdiplus::REAL>(badgeX), static_cast<Gdiplus::REAL>(badgeY), static_cast<Gdiplus::REAL>(badgeW), static_cast<Gdiplus::REAL>(badgeH));
+			Gdiplus::SolidBrush badgeBg(Gdiplus::Color(255, 37, 99, 235));
+			g.FillRectangle(&badgeBg, badgeRf);
+
+			Gdiplus::Font badgeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::StringFormat sfCenter;
+			sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
+			sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+			Gdiplus::SolidBrush whiteTxt(Gdiplus::Color(255, 255, 255, 255));
+			// GDI+ 行框居中含雅黑 descent 空白区，汉字视觉偏上，文字矩形下移补偿
+			Gdiplus::RectF badgeTxtRf = badgeRf;
+			badgeTxtRf.Y += static_cast<Gdiplus::REAL>(g_data.DPI(1));
+			g.DrawString(m_exchange.c_str(), -1, &badgeFont, badgeTxtRf, &sfCenter, &whiteTxt);
+
+			// 代码
+			int codeX = badgeX + badgeW + g_data.DPI(8);
+			Gdiplus::Font codeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush codeTxt(Gdiplus::Color(255, 148, 163, 184));
+			g.DrawString(m_code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(codeX), static_cast<Gdiplus::REAL>(badgeY + g_data.DPI(1))), &codeTxt);
+
+			// 股票名称
+			int nameX = codeX + g_data.DPI(50);
+			Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+			g.DrawString(m_name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(nameX), static_cast<Gdiplus::REAL>(badgeY + 1)), &whiteTxt);
+
+			// 3. 标签文字 (关注低价 / 关注高价)
+			Gdiplus::Font labelFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 203, 213, 225));
+
+			int lowY = g_data.DPI(64);
+			g.DrawString(L"关注低价 (元):", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(marginX), static_cast<Gdiplus::REAL>(lowY + g_data.DPI(5))), &labelBrush);
+
+			int highY = lowY + g_data.DPI(26) + g_data.DPI(12);
+			g.DrawString(L"关注高价 (元):", -1, &labelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(marginX), static_cast<Gdiplus::REAL>(highY + g_data.DPI(5))), &labelBrush);
+
+			// Draw edit borders
+			auto drawEdit = [&](CWnd& edit, int y) {
+				if (!edit.GetSafeHwnd()) return;
+				
+				int editBorderLeft = marginX + g_data.DPI(92);
+				CRect editRc(editBorderLeft, y, rc.right - marginX, y + g_data.DPI(26));
+				
+				Gdiplus::SolidBrush editBg(Gdiplus::Color(255, 13, 15, 21));
+				g.FillRectangle(&editBg, editRc.left, editRc.top, editRc.Width(), editRc.Height());
+
+				CWnd* pFocus = GetFocus();
+				bool focused = (pFocus && pFocus->GetSafeHwnd() == edit.GetSafeHwnd());
+				Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
+				g.DrawRectangle(&pen, editRc.left, editRc.top, editRc.Width() - 1, editRc.Height() - 1);
+			};
+			drawEdit(m_low_edit, lowY);
+			drawEdit(m_high_edit, highY);
+
+			dc.BitBlt(0, 0, rc.Width(), rc.Height(), &memDC, 0, 0, SRCCOPY);
+			memDC.SelectObject(pOldBmp);
+			return 0;
+		}
+
+		return CDialog::WindowProc(message, wParam, lParam);
+	}
+
+	virtual void OnOK() override
+	{
+		CString strLow, strHigh;
+		if (m_low_edit.GetSafeHwnd())
+			m_low_edit.GetWindowText(strLow);
+		if (m_high_edit.GetSafeHwnd())
+			m_high_edit.GetWindowText(strHigh);
+
+		strLow.Trim();
+		strHigh.Trim();
+
+		m_low_price = strLow.IsEmpty() ? 0.0 : _ttof(strLow);
+		m_high_price = strHigh.IsEmpty() ? 0.0 : _ttof(strHigh);
+
+		CDialog::OnOK();
+	}
+};
+
 // CManagerDialog 对话框
 
 IMPLEMENT_DYNAMIC(CManagerDialog, CDialog)
@@ -66,13 +983,19 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_WM_CTLCOLOR()
 	ON_WM_DRAWITEM()
 	ON_WM_SIZE()
+	ON_WM_MOVE()
+	ON_WM_ACTIVATE()
+	ON_WM_NCACTIVATE()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_RBUTTONUP()
 	ON_WM_MOUSELEAVE()
 	ON_WM_SETCURSOR()
 	ON_WM_GETMINMAXINFO()
 
+	ON_EN_CHANGE(IDC_STOCK_SEARCH_EDIT, &CManagerDialog::OnSearchEditChange)
 	ON_NOTIFY(NM_CLICK, IDC_MGR_LIST, &CManagerDialog::OnListItemClick)
+	ON_NOTIFY(NM_CLICK, IDC_CUSTOM_LIST, &CManagerDialog::OnListItemClick)
 	ON_NOTIFY(NM_DBLCLK, IDC_MGR_LIST, &CManagerDialog::OnLbnDblclkMgrList)
 	ON_NOTIFY(NM_DBLCLK, IDC_POS_LIST, &CManagerDialog::OnLbnDblclkPosList)
 	ON_NOTIFY(NM_DBLCLK, IDC_CUSTOM_LIST, &CManagerDialog::OnLbnDblclkCustomList)
@@ -80,6 +1003,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_MGR_ADD_BTN, &CManagerDialog::OnAddBtnClick)
 	ON_BN_CLICKED(IDC_MGR_EDIT_BTN, &CManagerDialog::OnEditBtnClick)
 	ON_BN_CLICKED(IDC_MGR_DEL_BTN, &CManagerDialog::OnDelBtnClick)
+	ON_BN_CLICKED(1199, &CManagerDialog::OnDelGroupBtnClick)
 	ON_BN_CLICKED(IDC_MGR_MOVE_UP_BTN, &CManagerDialog::OnMoveUpBtnClick)
 	ON_BN_CLICKED(IDC_MGR_MOVE_DOWN_BTN, &CManagerDialog::OnMoveDownBtnClick)
 	ON_BN_CLICKED(IDC_MA_ADD_BTN, &CManagerDialog::OnMaAddBtnClick)
@@ -101,6 +1025,8 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_CUSTOM_LIST, &CManagerDialog::OnListCustomDraw)
 
 	// 输入框焦点变化时重绘自绘边框（聚焦高亮蓝）
+	ON_EN_SETFOCUS(IDC_STOCK_SEARCH_EDIT, &CManagerDialog::OnEditFocusChanged)
+	ON_EN_KILLFOCUS(IDC_STOCK_SEARCH_EDIT, &CManagerDialog::OnEditFocusChanged)
 	ON_EN_SETFOCUS(IDC_KLINE_WIDTH_EDIT, &CManagerDialog::OnEditFocusChanged)
 	ON_EN_KILLFOCUS(IDC_KLINE_WIDTH_EDIT, &CManagerDialog::OnEditFocusChanged)
 	ON_EN_SETFOCUS(IDC_KLINE_HEIGHT_EDIT, &CManagerDialog::OnEditFocusChanged)
@@ -117,6 +1043,8 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_EN_KILLFOCUS(IDC_WEBDAV_PWD_EDIT, &CManagerDialog::OnEditFocusChanged)
 	ON_EN_SETFOCUS(IDC_WEBDAV_DIR_EDIT, &CManagerDialog::OnEditFocusChanged)
 	ON_EN_KILLFOCUS(IDC_WEBDAV_DIR_EDIT, &CManagerDialog::OnEditFocusChanged)
+
+	ON_WM_MOUSEWHEEL()
 
 	ON_BN_CLICKED(IDOK, &CManagerDialog::OnBnClickedOk)
 	ON_BN_CLICKED(IDCANCEL, &CManagerDialog::OnBnClickedCancel)
@@ -138,10 +1066,10 @@ BOOL CManagerDialog::OnInitDialog()
 	}
 
 	// 设置窗口默认大小和最小尺寸
-	int initWidth = g_data.DPI(760);
-	int initHeight = g_data.DPI(520);
-	m_min_size.cx = g_data.DPI(680);
-	m_min_size.cy = g_data.DPI(460);
+	int initWidth = g_data.DPI(800);
+	int initHeight = g_data.DPI(590);
+	m_min_size.cx = g_data.DPI(720);
+	m_min_size.cy = g_data.DPI(550);
 
 	CRect curRect;
 	GetWindowRect(curRect);
@@ -220,6 +1148,82 @@ BOOL CManagerDialog::OnInitDialog()
 			pBtn->ModifyStyle(0, BS_OWNERDRAW);
 	}
 
+	// 初始化搜索输入框与下拉结果弹窗
+	m_search_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, CRect(0, 0, 0, 0), this, IDC_STOCK_SEARCH_EDIT);
+	m_search_edit.SetFont(&m_font);
+	m_search_edit.ModifyStyle(WS_BORDER, 0);
+	m_search_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+	m_search_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"🔍 搜索股票/代码/拼音...");
+
+	m_mgr_del_group_btn.Create(_T("删除分组"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1199);
+	m_mgr_del_group_btn.SetFont(&m_font);
+
+	m_search_dropdown.CreatePopup(this);
+
+	m_search_dropdown.m_on_add_to_group = [this](const StockSearchResult& stock, int sel) {
+		if (sel == 3001)
+		{
+			if (std::find(m_data.m_stock_codes.begin(), m_data.m_stock_codes.end(), stock.fullCode) == m_data.m_stock_codes.end())
+			{
+				m_data.m_stock_codes.push_back(stock.fullCode);
+				RefreshStockList();
+				g_data.m_setting_data.m_stock_codes = m_data.m_stock_codes;
+				g_data.SaveConfig();
+			}
+		}
+		else if (sel == 3002)
+		{
+			if (std::find(m_data.m_stock_codes.begin(), m_data.m_stock_codes.end(), stock.fullCode) == m_data.m_stock_codes.end())
+			{
+				m_data.m_stock_codes.push_back(stock.fullCode);
+			}
+			CDarkPositionInputDlg dlg(stock.fullCode, stock.name, stock.exchange, this);
+			if (dlg.DoModal(this) == IDOK)
+			{
+				g_data.SetPosition(stock.fullCode, dlg.m_cost_price, dlg.m_holding_count);
+				g_data.m_setting_data.m_stock_codes = m_data.m_stock_codes;
+				g_data.SaveConfig();
+				RefreshStockList();
+				RefreshPositionList();
+				SwitchGroupTab(1); // 自动切换至持仓 Tab
+			}
+		}
+		else if (sel >= 3010 && sel < static_cast<int>(3010 + m_data.m_custom_groups.size()))
+		{
+			size_t groupIdx = sel - 3010;
+			auto& codes = m_data.m_custom_groups[groupIdx].codes;
+			if (std::find(codes.begin(), codes.end(), stock.fullCode) == codes.end())
+			{
+				codes.push_back(stock.fullCode);
+				RefreshCustomList();
+				g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+				g_data.SaveConfig();
+			}
+		}
+		else if (sel == 3003)
+		{
+			CString defName;
+			defName.Format(L"分组%d", static_cast<int>(m_data.m_custom_groups.size() + 1));
+			CSimpleInputDialog inputDlg(L"新建分组", L"请输入新分组名称：", defName, this);
+			if (inputDlg.DoModal() == IDOK && !inputDlg.m_value.IsEmpty())
+			{
+				CustomGroup newGrp;
+				newGrp.name = inputDlg.m_value.GetString();
+				newGrp.codes.push_back(stock.fullCode);
+				m_data.m_custom_groups.push_back(newGrp);
+				SwitchGroupTab(static_cast<int>(m_data.m_custom_groups.size()) + 1);
+				g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+				g_data.SaveConfig();
+			}
+		}
+
+		if (sel > 0)
+		{
+			m_search_edit.SetWindowText(L"");
+			m_search_dropdown.HidePopup();
+		}
+	};
+
 	// 初始化列表深色背景与扩展属性 (不使用 LVS_EX_GRIDLINES，避免刺眼白网格)
 	DWORD dwStyle = LVS_EX_FULLROWSELECT;
 
@@ -233,28 +1237,45 @@ BOOL CManagerDialog::OnInitDialog()
 			SetWindowTheme(hHeader, L"", L"");
 	};
 
+	auto setupListColumns = [](CListCtrl& list, const std::vector<std::tuple<std::wstring, int, int>>& cols) {
+		for (int i = 0; i < static_cast<int>(cols.size()); ++i)
+		{
+			list.InsertColumn(i, std::get<0>(cols[i]).c_str(), std::get<1>(cols[i]), std::get<2>(cols[i]));
+			LVCOLUMN lvc = { 0 };
+			lvc.mask = LVCF_FMT;
+			lvc.fmt = std::get<1>(cols[i]);
+			list.SetColumn(i, &lvc);
+		}
+	};
+
 	setupListDarkTheme(m_stock_listctrl);
-	m_stock_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(80));
-	m_stock_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(100));
-	m_stock_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(80));
-	m_stock_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(80));
-	m_stock_listctrl.InsertColumn(4, L"状态栏显示", LVCFMT_CENTER, g_data.DPI(80));
+	setupListColumns(m_stock_listctrl, {
+		{ L"交易所", LVCFMT_CENTER, g_data.DPI(65) },
+		{ L"代码", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"名称", LVCFMT_LEFT, g_data.DPI(130) },
+		{ L"关注低价", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"关注高价", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"状态栏显示", LVCFMT_CENTER, g_data.DPI(75) }
+	});
 
 	setupListDarkTheme(m_pos_listctrl);
-	m_pos_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(75));
-	m_pos_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(90));
-	m_pos_listctrl.InsertColumn(2, L"成本价", LVCFMT_RIGHT, g_data.DPI(70));
-	m_pos_listctrl.InsertColumn(3, L"持股数", LVCFMT_RIGHT, g_data.DPI(70));
-	m_pos_listctrl.InsertColumn(4, L"买入日期", LVCFMT_CENTER, g_data.DPI(85));
-	m_pos_listctrl.InsertColumn(5, L"成本总额", LVCFMT_RIGHT, g_data.DPI(80));
-	m_pos_listctrl.InsertColumn(6, L"当前价", LVCFMT_RIGHT, g_data.DPI(70));
-	m_pos_listctrl.InsertColumn(7, L"浮动盈亏", LVCFMT_RIGHT, g_data.DPI(80));
+	setupListColumns(m_pos_listctrl, {
+		{ L"交易所", LVCFMT_CENTER, g_data.DPI(65) },
+		{ L"代码", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"股票名称", LVCFMT_LEFT, g_data.DPI(130) },
+		{ L"成本价", LVCFMT_CENTER, g_data.DPI(80) },
+		{ L"持股数", LVCFMT_CENTER, g_data.DPI(80) }
+	});
 
 	setupListDarkTheme(m_custom_listctrl);
-	m_custom_listctrl.InsertColumn(0, L"代码", LVCFMT_LEFT, g_data.DPI(85));
-	m_custom_listctrl.InsertColumn(1, L"股票名称", LVCFMT_LEFT, g_data.DPI(110));
-	m_custom_listctrl.InsertColumn(2, L"关注低价", LVCFMT_RIGHT, g_data.DPI(80));
-	m_custom_listctrl.InsertColumn(3, L"关注高价", LVCFMT_RIGHT, g_data.DPI(80));
+	setupListColumns(m_custom_listctrl, {
+		{ L"交易所", LVCFMT_CENTER, g_data.DPI(65) },
+		{ L"代码", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"名称", LVCFMT_LEFT, g_data.DPI(130) },
+		{ L"关注低价", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"关注高价", LVCFMT_CENTER, g_data.DPI(75) },
+		{ L"状态栏显示", LVCFMT_CENTER, g_data.DPI(75) }
+	});
 
 	// 表头改为自绘平面化样式，列表启用双缓冲与深色滚动条，并去掉系统边框
 	auto setupFlatHeader = [this](CListCtrl& list, CFlatHeaderCtrl& hdr) {
@@ -414,7 +1435,12 @@ std::wstring CManagerDialog::GetStockName(const std::wstring& code)
 	{
 		return stockData->info.displayName;
 	}
-	return L"";
+	for (const auto& preset : GetPresetIndices())
+	{
+		if (preset.code == code)
+			return preset.name;
+	}
+	return code;
 }
 
 void CManagerDialog::RefreshStockList()
@@ -423,9 +1449,13 @@ void CManagerDialog::RefreshStockList()
 	for (size_t i = 0; i < m_data.m_stock_codes.size(); ++i)
 	{
 		const auto& code = m_data.m_stock_codes[i];
-		int nItem = m_stock_listctrl.InsertItem(static_cast<int>(i), code.c_str());
+		std::wstring exch = CCommon::GetExchangeName(code);
+		std::wstring pureCode = CCommon::GetPureCode(code);
 		std::wstring name = GetStockName(code);
-		m_stock_listctrl.SetItemText(nItem, 1, name.c_str());
+
+		int nItem = m_stock_listctrl.InsertItem(static_cast<int>(i), exch.c_str());
+		m_stock_listctrl.SetItemText(nItem, 1, pureCode.c_str());
+		m_stock_listctrl.SetItemText(nItem, 2, name.c_str());
 
 		double low = g_data.GetAlertLowPrice(code);
 		double high = g_data.GetAlertHighPrice(code);
@@ -433,24 +1463,25 @@ void CManagerDialog::RefreshStockList()
 		{
 			CString lowStr;
 			lowStr.Format(_T("%.2f"), low);
-			m_stock_listctrl.SetItemText(nItem, 2, lowStr);
+			m_stock_listctrl.SetItemText(nItem, 3, lowStr);
 		}
 		if (high > 0)
 		{
 			CString highStr;
 			highStr.Format(_T("%.2f"), high);
-			m_stock_listctrl.SetItemText(nItem, 3, highStr);
+			m_stock_listctrl.SetItemText(nItem, 4, highStr);
 		}
 
 		if (g_data.GetShowInStatusBar(code))
 		{
-			m_stock_listctrl.SetItemText(nItem, 4, L"是");
+			m_stock_listctrl.SetItemText(nItem, 5, L"√");
 		}
 		else
 		{
-			m_stock_listctrl.SetItemText(nItem, 4, L"-");
+			m_stock_listctrl.SetItemText(nItem, 5, L"");
 		}
 	}
+	AdjustListColumns(m_stock_listctrl, 0);
 }
 
 void CManagerDialog::RefreshPositionList()
@@ -461,81 +1492,139 @@ void CManagerDialog::RefreshPositionList()
 	{
 		double cost = g_data.GetCostPrice(code);
 		double count = g_data.GetHoldingCount(code);
-		std::wstring buyDate = g_data.GetBuyDate(code);
 		if (cost > 0 || count > 0)
 		{
-			m_pos_listctrl.InsertItem(nItem, code.c_str());
+			std::wstring exch = CCommon::GetExchangeName(code);
+			std::wstring pureCode = CCommon::GetPureCode(code);
 			std::wstring name = GetStockName(code);
-			m_pos_listctrl.SetItemText(nItem, 1, name.c_str());
 
-			CString strCost, strCount, strDate, strTotal, strCurPrice, strProfit;
+			m_pos_listctrl.InsertItem(nItem, exch.c_str());
+			m_pos_listctrl.SetItemText(nItem, 1, pureCode.c_str());
+			m_pos_listctrl.SetItemText(nItem, 2, name.c_str());
+
+			CString strCost, strCount;
 			strCost.Format(_T("%.2f"), cost);
 			strCount.Format(_T("%.0f"), count);
-			strDate = buyDate.c_str();
 
-			double totalCost = cost * count;
-			strTotal.Format(_T("%.2f"), totalCost);
-
-			double curPrice = 0.0;
-			auto stockData = g_data.GetStockData(code);
-			if (stockData)
-				curPrice = stockData->info.currentPrice;
-
-			strCurPrice.Format(_T("%.2f"), curPrice);
-
-			double profit = (curPrice - cost) * count;
-			strProfit.Format(_T("%+.2f"), profit);
-
-			m_pos_listctrl.SetItemText(nItem, 2, strCost);
-			m_pos_listctrl.SetItemText(nItem, 3, strCount);
-			m_pos_listctrl.SetItemText(nItem, 4, strDate);
-			m_pos_listctrl.SetItemText(nItem, 5, strTotal);
-			m_pos_listctrl.SetItemText(nItem, 6, strCurPrice);
-			m_pos_listctrl.SetItemText(nItem, 7, strProfit);
+			m_pos_listctrl.SetItemText(nItem, 3, strCost);
+			m_pos_listctrl.SetItemText(nItem, 4, strCount);
 
 			nItem++;
 		}
 	}
+	AdjustListColumns(m_pos_listctrl, 1);
 }
 
 void CManagerDialog::RefreshCustomList()
 {
 	m_custom_listctrl.DeleteAllItems();
-	for (size_t i = 0; i < m_data.m_custom_group_codes.size(); ++i)
+	size_t groupIdx = (m_current_group_tab >= 2) ? static_cast<size_t>(m_current_group_tab - 2) : 0;
+	if (groupIdx < m_data.m_custom_groups.size())
 	{
-		const auto& code = m_data.m_custom_group_codes[i];
-		int nItem = m_custom_listctrl.InsertItem(static_cast<int>(i), code.c_str());
-		std::wstring name = GetStockName(code);
-		m_custom_listctrl.SetItemText(nItem, 1, name.c_str());
+		const auto& codes = m_data.m_custom_groups[groupIdx].codes;
+		for (size_t i = 0; i < codes.size(); ++i)
+		{
+			const auto& code = codes[i];
+			std::wstring exch = CCommon::GetExchangeName(code);
+			std::wstring pureCode = CCommon::GetPureCode(code);
+			std::wstring name = GetStockName(code);
 
-		double low = g_data.GetAlertLowPrice(code);
-		double high = g_data.GetAlertHighPrice(code);
-		if (low > 0)
-		{
-			CString lowStr;
-			lowStr.Format(_T("%.2f"), low);
-			m_custom_listctrl.SetItemText(nItem, 2, lowStr);
+			int nItem = m_custom_listctrl.InsertItem(static_cast<int>(i), exch.c_str());
+			m_custom_listctrl.SetItemText(nItem, 1, pureCode.c_str());
+			m_custom_listctrl.SetItemText(nItem, 2, name.c_str());
+
+			double low = g_data.GetAlertLowPrice(code);
+			double high = g_data.GetAlertHighPrice(code);
+			if (low > 0)
+			{
+				CString lowStr;
+				lowStr.Format(_T("%.2f"), low);
+				m_custom_listctrl.SetItemText(nItem, 3, lowStr);
+			}
+			if (high > 0)
+			{
+				CString highStr;
+				highStr.Format(_T("%.2f"), high);
+				m_custom_listctrl.SetItemText(nItem, 4, highStr);
+			}
+
+			if (g_data.GetShowInStatusBar(code))
+			{
+				m_custom_listctrl.SetItemText(nItem, 5, L"√");
+			}
+			else
+			{
+				m_custom_listctrl.SetItemText(nItem, 5, L"");
+			}
 		}
-		if (high > 0)
-		{
-			CString highStr;
-			highStr.Format(_T("%.2f"), high);
-			m_custom_listctrl.SetItemText(nItem, 3, highStr);
-		}
+	}
+	AdjustListColumns(m_custom_listctrl, 2);
+}
+
+void CManagerDialog::AdjustListColumns(CListCtrl& list, int tabType)
+{
+	if (!list.GetSafeHwnd()) return;
+	CRect clientRc;
+	list.GetClientRect(&clientRc);
+	int totalW = clientRc.Width();
+	if (totalW <= 0) return;
+
+	if (tabType == 1) // 持仓 (5 列: 交易所, 代码, 股票名称, 成本价, 持股数)
+	{
+		int w0 = max(g_data.DPI(55), totalW * 14 / 100);  // 交易所
+		int w1 = max(g_data.DPI(70), totalW * 16 / 100);  // 代码
+		int w2 = max(g_data.DPI(120), totalW * 38 / 100); // 股票名称
+		int w3 = max(g_data.DPI(65), totalW * 16 / 100);  // 成本价
+		int w4 = max(g_data.DPI(65), totalW - (w0 + w1 + w2 + w3)); // 持股数
+		if (w4 < g_data.DPI(50)) w4 = g_data.DPI(50);
+
+		list.SetColumnWidth(0, w0);
+		list.SetColumnWidth(1, w1);
+		list.SetColumnWidth(2, w2);
+		list.SetColumnWidth(3, w3);
+		list.SetColumnWidth(4, w4);
+	}
+	else // 自选股 / 自定义分组 (6 列)
+	{
+		int w0 = max(g_data.DPI(55), totalW * 14 / 100);
+		int w1 = max(g_data.DPI(70), totalW * 16 / 100);
+		int w2 = max(g_data.DPI(100), totalW * 28 / 100);
+		int w3 = max(g_data.DPI(65), totalW * 14 / 100);
+		int w4 = max(g_data.DPI(65), totalW * 14 / 100);
+		int w5 = max(g_data.DPI(70), totalW - (w0 + w1 + w2 + w3 + w4));
+		if (w5 < g_data.DPI(50)) w5 = g_data.DPI(50);
+
+		list.SetColumnWidth(0, w0);
+		list.SetColumnWidth(1, w1);
+		list.SetColumnWidth(2, w2);
+		list.SetColumnWidth(3, w3);
+		list.SetColumnWidth(4, w4);
+		list.SetColumnWidth(5, w5);
 	}
 }
 
 void CManagerDialog::SwitchPage(PageIndex page)
 {
+	if (m_search_dropdown.GetSafeHwnd())
+		m_search_dropdown.HidePopup();
 	m_current_page = page;
+	m_index_scroll_y = 0;
 	UpdateControlsLayout();
 	Invalidate();
 }
 
-void CManagerDialog::SwitchGroupTab(GroupSubTab tab)
+void CManagerDialog::SwitchGroupTab(int tab)
 {
+	if (m_search_dropdown.GetSafeHwnd())
+		m_search_dropdown.HidePopup();
 	m_current_group_tab = tab;
 	UpdateControlsLayout();
+	if (m_current_group_tab == 0)
+		RefreshStockList();
+	else if (m_current_group_tab == 1)
+		RefreshPositionList();
+	else
+		RefreshCustomList();
 	Invalidate();
 }
 
@@ -614,19 +1703,46 @@ void CManagerDialog::UpdateControlsLayout()
 	int listTop = rightTop + g_data.DPI(42);
 	int listHeight = rightBottom - listTop - g_data.DPI(44);
 
-	m_stock_listctrl.ShowWindow((isGroup && m_current_group_tab == TAB_WATCHLIST) ? SW_SHOW : SW_HIDE);
-	m_pos_listctrl.ShowWindow((isGroup && m_current_group_tab == TAB_POSITIONS) ? SW_SHOW : SW_HIDE);
-	m_custom_listctrl.ShowWindow((isGroup && m_current_group_tab == TAB_CUSTOM) ? SW_SHOW : SW_HIDE);
+	if (isGroup)
+	{
+		int searchW = min(g_data.DPI(150), rightWidth / 4);
+		int searchH = g_data.DPI(28);
+		int searchX = rightLeft + rightWidth - searchW;
+		int searchY = rightTop;
+		PlaceEditInField(IDC_STOCK_SEARCH_EDIT, CRect(searchX, searchY, searchX + searchW, searchY + searchH));
+		if (m_search_edit.GetSafeHwnd())
+			m_search_edit.ShowWindow(SW_SHOW);
+	}
+	else
+	{
+		if (m_search_edit.GetSafeHwnd())
+			m_search_edit.ShowWindow(SW_HIDE);
+		if (m_search_dropdown.GetSafeHwnd())
+			m_search_dropdown.ShowWindow(SW_HIDE);
+	}
+
+	m_stock_listctrl.ShowWindow((isGroup && m_current_group_tab == 0) ? SW_SHOW : SW_HIDE);
+	m_pos_listctrl.ShowWindow((isGroup && m_current_group_tab == 1) ? SW_SHOW : SW_HIDE);
+	m_custom_listctrl.ShowWindow((isGroup && m_current_group_tab >= 2) ? SW_SHOW : SW_HIDE);
 
 	if (isGroup)
 	{
 		CRect listRect(rightLeft, listTop, rightLeft + rightWidth, listTop + listHeight);
-		if (m_current_group_tab == TAB_WATCHLIST && m_stock_listctrl.GetSafeHwnd())
+		if (m_current_group_tab == 0 && m_stock_listctrl.GetSafeHwnd())
+		{
 			m_stock_listctrl.MoveWindow(listRect);
-		else if (m_current_group_tab == TAB_POSITIONS && m_pos_listctrl.GetSafeHwnd())
+			AdjustListColumns(m_stock_listctrl, 0);
+		}
+		else if (m_current_group_tab == 1 && m_pos_listctrl.GetSafeHwnd())
+		{
 			m_pos_listctrl.MoveWindow(listRect);
-		else if (m_current_group_tab == TAB_CUSTOM && m_custom_listctrl.GetSafeHwnd())
+			AdjustListColumns(m_pos_listctrl, 1);
+		}
+		else if (m_current_group_tab >= 2 && m_custom_listctrl.GetSafeHwnd())
+		{
 			m_custom_listctrl.MoveWindow(listRect);
+			AdjustListColumns(m_custom_listctrl, 2);
+		}
 
 		int btnTop = listTop + listHeight + g_data.DPI(10);
 		int btnW = g_data.DPI(72);
@@ -636,12 +1752,12 @@ void CManagerDialog::UpdateControlsLayout()
 		m_mgr_add_btn.ShowWindow(SW_SHOW);
 		m_mgr_del_btn.ShowWindow(SW_SHOW);
 		m_mgr_add_btn.MoveWindow(rightLeft, btnTop, btnW, btnH);
-		m_mgr_add_btn.SetWindowText(m_current_group_tab == TAB_POSITIONS ? L"编辑持仓" : L"添加股票");
+		m_mgr_add_btn.SetWindowText(m_current_group_tab == 1 ? L"编辑持仓" : L"添加股票");
 
 		m_mgr_del_btn.MoveWindow(rightLeft + btnW + btnGap, btnTop, btnW, btnH);
-		m_mgr_del_btn.SetWindowText(m_current_group_tab == TAB_POSITIONS ? L"清除持仓" : L"删除股票");
+		m_mgr_del_btn.SetWindowText(m_current_group_tab == 1 ? L"清除持仓" : L"删除股票");
 
-		bool showOrderBtns = (m_current_group_tab != TAB_POSITIONS);
+		bool showOrderBtns = (m_current_group_tab != 1);
 		m_mgr_edit_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
 		m_mgr_up_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
 		m_mgr_down_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
@@ -652,6 +1768,19 @@ void CManagerDialog::UpdateControlsLayout()
 			m_mgr_up_btn.MoveWindow(rightLeft + (btnW + btnGap) * 3, btnTop, btnW, btnH);
 			m_mgr_down_btn.MoveWindow(rightLeft + (btnW + btnGap) * 4, btnTop, btnW, btnH);
 		}
+
+		if (m_mgr_del_group_btn.GetSafeHwnd())
+		{
+			if (m_current_group_tab >= 2)
+			{
+				m_mgr_del_group_btn.ShowWindow(SW_SHOW);
+				m_mgr_del_group_btn.MoveWindow(rightLeft + (btnW + btnGap) * 5, btnTop, btnW, btnH);
+			}
+			else
+			{
+				m_mgr_del_group_btn.ShowWindow(SW_HIDE);
+			}
+		}
 	}
 	else
 	{
@@ -660,6 +1789,8 @@ void CManagerDialog::UpdateControlsLayout()
 		m_mgr_del_btn.ShowWindow(SW_HIDE);
 		m_mgr_up_btn.ShowWindow(SW_HIDE);
 		m_mgr_down_btn.ShowWindow(SW_HIDE);
+		if (m_mgr_del_group_btn.GetSafeHwnd())
+			m_mgr_del_group_btn.ShowWindow(SW_HIDE);
 	}
 
 	// 均线日配置控件布局
@@ -801,6 +1932,7 @@ void CManagerDialog::OnPaint()
 
 	// 自绘输入框与列表边框（聚焦品牌蓝高亮，失焦暗灰），绘制在卡片之上
 	const int borderedEditIds[] = {
+		IDC_STOCK_SEARCH_EDIT,
 		IDC_KLINE_WIDTH_EDIT, IDC_KLINE_HEIGHT_EDIT, IDC_SOCKS5_PROXY_EDIT,
 		IDC_WEBDAV_URL_EDIT, IDC_WEBDAV_USER_EDIT, IDC_WEBDAV_PWD_EDIT, IDC_WEBDAV_DIR_EDIT,
 		IDC_MA_INPUT_EDIT
@@ -917,11 +2049,76 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 	std::wstring subText = subs[m_current_page];
 	if (m_current_page == PAGE_INDEX)
 	{
-		subText = L"点击卡片选择展示的指数，前 5 个展示在首页顶部 (已选: " + std::to_wstring(m_data.m_selected_indices.size()) + L")";
+		subText = L"点击卡片选择展示的指数，将在主窗口底部状态栏及首页展示 (已选: " + std::to_wstring(m_data.m_selected_indices.size()) + L")";
+
+		const wchar_t* modes[] = { L"全显", L"数字", L"百分比" };
+		int modeBtnW = g_data.DPI(56);
+		int modeBtnH = g_data.DPI(26);
+		int modeTotalW = modeBtnW * 3;
+		int modeRight = clientRect.Width() - g_data.DPI(18);
+		int modeLeft = modeRight - modeTotalW;
+		int modeTop = headerTop + g_data.DPI(2);
+
+		// 分段开关外框底
+		Gdiplus::SolidBrush barBg(Gdiplus::Color(255, 24, 27, 34)); // #181B22
+		Gdiplus::Pen barBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+		Gdiplus::RectF barRf(static_cast<Gdiplus::REAL>(modeLeft), static_cast<Gdiplus::REAL>(modeTop), static_cast<Gdiplus::REAL>(modeTotalW), static_cast<Gdiplus::REAL>(modeBtnH));
+		g.FillRectangle(&barBg, barRf);
+		g.DrawRectangle(&barBorder, barRf);
+
+		Gdiplus::Font modeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+		Gdiplus::Font modeBoldFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+		Gdiplus::StringFormat sfCenter(Gdiplus::StringFormat::GenericTypographic());
+		sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
+		sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+		sfCenter.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+
+		for (int i = 0; i < 3; ++i)
+		{
+			int bx = modeLeft + i * modeBtnW;
+			CRect btnRect(bx, modeTop, bx + modeBtnW, modeTop + modeBtnH);
+			m_index_mode_rects[i] = btnRect;
+
+			Gdiplus::RectF btnRf(static_cast<Gdiplus::REAL>(bx), static_cast<Gdiplus::REAL>(modeTop), static_cast<Gdiplus::REAL>(modeBtnW), static_cast<Gdiplus::REAL>(modeBtnH));
+
+			bool isActive = (m_data.m_index_display_mode == i);
+			if (isActive)
+			{
+				Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 37, 99, 235)); // #2563EB
+				g.FillRectangle(&activeBg, btnRf);
+
+				Gdiplus::SolidBrush activeTxt(Gdiplus::Color(255, 255, 255, 255));
+				g.DrawString(modes[i], -1, &modeBoldFont, btnRf, &sfCenter, &activeTxt);
+			}
+			else
+			{
+				if (m_hover_index_mode == i)
+				{
+					Gdiplus::SolidBrush hoverBg(Gdiplus::Color(255, 38, 42, 54));
+					g.FillRectangle(&hoverBg, btnRf);
+				}
+
+				if (i > 0 && m_data.m_index_display_mode != (i - 1) && !isActive)
+				{
+					Gdiplus::Pen sepPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+					g.DrawLine(&sepPen, bx, modeTop + g_data.DPI(4), bx, modeTop + modeBtnH - g_data.DPI(4));
+				}
+
+				Gdiplus::SolidBrush inactiveTxt(Gdiplus::Color(255, 148, 163, 184));
+				g.DrawString(modes[i], -1, &modeFont, btnRf, &sfCenter, &inactiveTxt);
+			}
+		}
 	}
-	else if (m_current_page == PAGE_MA)
+	else
 	{
-		subText = L"最多 5 条；点标签右上角 × 删除；在下方输入添加。已选 (" + std::to_wstring(m_data.m_ma_days.size()) + L"/5)";
+		for (int i = 0; i < 3; ++i)
+			m_index_mode_rects[i].SetRectEmpty();
+
+		if (m_current_page == PAGE_MA)
+		{
+			subText = L"最多 5 条；点标签右上角 × 删除；在下方输入添加。已选 (" + std::to_wstring(m_data.m_ma_days.size()) + L"/5)";
+		}
 	}
 
 	g.DrawString(subText.c_str(), -1, &subFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(10)), static_cast<Gdiplus::REAL>(headerTop + g_data.DPI(24))), &subBrush);
@@ -959,28 +2156,60 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(72))), &tipBrush);
 }
 
+namespace
+{
+	std::wstring FormatIndexCodeDisplay(const std::wstring& code)
+	{
+		if (code.rfind(L"rt_hk", 0) == 0)
+		{
+			return L"HK · " + code.substr(5);
+		}
+		if (code.rfind(L"hk", 0) == 0)
+		{
+			return L"HK · " + code.substr(2);
+		}
+		if (code.size() >= 2)
+		{
+			std::wstring prefix = code.substr(0, 2);
+			for (auto& ch : prefix)
+				ch = static_cast<wchar_t>(towupper(ch));
+			std::wstring suffix = code.substr(2);
+			return prefix + L" · " + suffix;
+		}
+		return code;
+	}
+}
+
 void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
 	const auto& presets = GetPresetIndices();
 	m_index_card_rects.clear();
 	m_index_card_rects.resize(presets.size());
 
-	int cols = 3;
-	int cardGapX = g_data.DPI(10);
-	int cardGapY = g_data.DPI(8);
+	int cardGapX = g_data.DPI(12);
+	int cardGapY = g_data.DPI(10);
+	int minCardW = g_data.DPI(185);
+	int cols = max(2, (contentRect.Width() + cardGapX) / (minCardW + cardGapX));
 	int cardW = (contentRect.Width() - (cardGapX * (cols - 1))) / cols;
-	int cardH = g_data.DPI(46);
+	int cardH = g_data.DPI(52);
 
-	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::Font codeFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::Font rankFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font codeFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font rankFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+	Gdiplus::StringFormat sfRank(Gdiplus::StringFormat::GenericTypographic());
+	sfRank.SetAlignment(Gdiplus::StringAlignmentCenter);
+	sfRank.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfRank.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+
+	g.SetClip(Gdiplus::RectF(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(contentRect.Height())));
 
 	for (size_t i = 0; i < presets.size(); ++i)
 	{
 		int col = static_cast<int>(i % cols);
 		int row = static_cast<int>(i / cols);
 		int x = contentRect.left + col * (cardW + cardGapX);
-		int y = contentRect.top + row * (cardH + cardGapY);
+		int y = contentRect.top + row * (cardH + cardGapY) - m_index_scroll_y;
 
 		CRect cardRect(x, y, x + cardW, y + cardH);
 		m_index_card_rects[i] = cardRect;
@@ -991,6 +2220,8 @@ void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRec
 		bool isSelected = (it != m_data.m_selected_indices.end());
 		int rank = isSelected ? static_cast<int>(std::distance(m_data.m_selected_indices.begin(), it) + 1) : 0;
 
+		std::wstring displayCode = FormatIndexCodeDisplay(presets[i].code);
+
 		if (isSelected)
 		{
 			Gdiplus::SolidBrush selBg(Gdiplus::Color(255, 28, 45, 75)); // #1C2D4B
@@ -999,25 +2230,32 @@ void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRec
 			Gdiplus::Pen borderPen(Gdiplus::Color(255, 37, 99, 235), 1.2f); // #2563EB
 			g.DrawRectangle(&borderPen, rf);
 
-			if (rank <= 5)
+			if (rank > 0)
 			{
+				int badgeSize = g_data.DPI(20);
+				int badgeX = x + cardW - badgeSize - g_data.DPI(12);
+				int badgeY = y + (cardH - badgeSize) / 2;
+
 				Gdiplus::SolidBrush rankBg(Gdiplus::Color(255, 37, 99, 235));
-				g.FillEllipse(&rankBg, x + cardW - g_data.DPI(24), y + g_data.DPI(8), g_data.DPI(16), g_data.DPI(16));
+				g.FillEllipse(&rankBg, badgeX, badgeY, badgeSize, badgeSize);
 
 				Gdiplus::SolidBrush rankTxtBrush(Gdiplus::Color(255, 255, 255, 255));
-				Gdiplus::StringFormat sfRank;
-				sfRank.SetAlignment(Gdiplus::StringAlignmentCenter);
-				sfRank.SetLineAlignment(Gdiplus::StringAlignmentCenter);
 				std::wstring rankStr = std::to_wstring(rank);
-				Gdiplus::RectF rankRf(static_cast<Gdiplus::REAL>(x + cardW - g_data.DPI(24)), static_cast<Gdiplus::REAL>(y + g_data.DPI(8)), static_cast<Gdiplus::REAL>(g_data.DPI(16)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
+				// 微调 Y 偏移 0.5px 以抵消数字无下延伸部分的视觉下沉，实现完美居中
+				Gdiplus::RectF rankRf(
+					static_cast<Gdiplus::REAL>(badgeX),
+					static_cast<Gdiplus::REAL>(badgeY) - static_cast<Gdiplus::REAL>(g_data.DPI(0.5f)),
+					static_cast<Gdiplus::REAL>(badgeSize),
+					static_cast<Gdiplus::REAL>(badgeSize)
+				);
 				g.DrawString(rankStr.c_str(), -1, &rankFont, rankRf, &sfRank, &rankTxtBrush);
 			}
 
 			Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 255, 255, 255));
-			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(7))), &nameBrush);
+			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(12)), static_cast<Gdiplus::REAL>(y + g_data.DPI(8))), &nameBrush);
 
 			Gdiplus::SolidBrush codeBrush(Gdiplus::Color(255, 147, 197, 253));
-			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(25))), &codeBrush);
+			g.DrawString(displayCode.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(12)), static_cast<Gdiplus::REAL>(y + g_data.DPI(28))), &codeBrush);
 		}
 		else
 		{
@@ -1028,19 +2266,62 @@ void CManagerDialog::DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRec
 			g.DrawRectangle(&borderPen, rf);
 
 			Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 226, 232, 240));
-			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(7))), &nameBrush);
+			g.DrawString(presets[i].name.c_str(), -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(12)), static_cast<Gdiplus::REAL>(y + g_data.DPI(8))), &nameBrush);
 
 			Gdiplus::SolidBrush codeBrush(Gdiplus::Color(255, 100, 116, 139));
-			g.DrawString(presets[i].code.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y + g_data.DPI(25))), &codeBrush);
+			g.DrawString(displayCode.c_str(), -1, &codeFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(12)), static_cast<Gdiplus::REAL>(y + g_data.DPI(28))), &codeBrush);
 		}
 	}
+
+	g.ResetClip();
+}
+
+struct GroupTabItem
+{
+	std::wstring text;
+	int targetTab; // 0=自选股, 1=持仓, 2..=custom group, -1=+新增分组, -2=dropdown
+	bool isActive;
+	bool isAddBtn;
+	bool isDropdown;
+};
+
+static std::vector<GroupTabItem> BuildGroupTabItems(const std::vector<CustomGroup>& customGroups, int currentGroupTab)
+{
+	std::vector<GroupTabItem> tabs;
+	tabs.push_back({ L"自选股", 0, currentGroupTab == 0, false, false });
+	tabs.push_back({ L"持仓", 1, currentGroupTab == 1, false, false });
+
+	size_t customCount = customGroups.size();
+	if (customCount <= 2)
+	{
+		for (size_t i = 0; i < customCount; ++i)
+		{
+			int tabIdx = static_cast<int>(i + 2);
+			tabs.push_back({ customGroups[i].name, tabIdx, currentGroupTab == tabIdx, false, false });
+		}
+	}
+	else
+	{
+		tabs.push_back({ customGroups[0].name, 2, currentGroupTab == 2, false, false });
+		tabs.push_back({ customGroups[1].name, 3, currentGroupTab == 3, false, false });
+
+		std::wstring dropText = L"更多分组 ▾";
+		if (currentGroupTab >= 4 && (currentGroupTab - 2) < static_cast<int>(customCount))
+		{
+			dropText = customGroups[currentGroupTab - 2].name + L" ▾";
+		}
+		tabs.push_back({ dropText, -2, currentGroupTab >= 4, false, true });
+	}
+
+	tabs.push_back({ L"+ 新增分组", -1, false, true, false });
+	return tabs;
 }
 
 void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
-	const wchar_t* groupTabs[] = { L"自选股", L"持仓", L"自定义" };
-	int tabCount = 3;
-	int tabW = g_data.DPI(80);
+	std::vector<GroupTabItem> tabs = BuildGroupTabItems(m_data.m_custom_groups, m_current_group_tab);
+
+	int tabCount = static_cast<int>(tabs.size());
 	int tabH = g_data.DPI(28);
 	int tabGap = g_data.DPI(6);
 	int tabTop = contentRect.top;
@@ -1055,21 +2336,46 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 	sf.SetAlignment(Gdiplus::StringAlignmentCenter);
 	sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
 
+	int curX = contentRect.left;
+	int searchW = min(g_data.DPI(150), contentRect.Width() / 4);
+	int maxTabRight = contentRect.right - searchW - g_data.DPI(10);
+
 	for (int i = 0; i < tabCount; ++i)
 	{
-		int x = contentRect.left + i * (tabW + tabGap);
-		CRect r(x, tabTop, x + tabW, tabTop + tabH);
+		Gdiplus::RectF boundBox;
+		g.MeasureString(tabs[i].text.c_str(), -1, &tabActiveFont, Gdiplus::PointF(0, 0), &sf, &boundBox);
+		int tabW = max(g_data.DPI(65), static_cast<int>(boundBox.Width) + g_data.DPI(20));
+
+		if (curX + tabW > maxTabRight && i < tabCount - 1 && curX > contentRect.left)
+		{
+			tabW = max(g_data.DPI(50), maxTabRight - curX - tabGap);
+		}
+
+		CRect r(curX, tabTop, curX + tabW, tabTop + tabH);
 		m_group_tab_rects[i] = r;
+		curX += tabW + tabGap;
 
 		Gdiplus::RectF rf(static_cast<Gdiplus::REAL>(r.left), static_cast<Gdiplus::REAL>(r.top), static_cast<Gdiplus::REAL>(r.Width()), static_cast<Gdiplus::REAL>(r.Height()));
 
-		if (i == m_current_group_tab)
+		if (tabs[i].isActive)
 		{
 			Gdiplus::SolidBrush activeBg(Gdiplus::Color(255, 37, 99, 235)); // #2563EB
 			g.FillRectangle(&activeBg, rf);
 
 			Gdiplus::SolidBrush txtBrush(Gdiplus::Color(255, 255, 255, 255));
-			g.DrawString(groupTabs[i], -1, &tabActiveFont, rf, &sf, &txtBrush);
+			g.DrawString(tabs[i].text.c_str(), -1, &tabActiveFont, rf, &sf, &txtBrush);
+		}
+		else if (tabs[i].isAddBtn)
+		{
+			Gdiplus::SolidBrush unselBg(i == m_hover_group_tab ? Gdiplus::Color(255, 30, 41, 59) : Gdiplus::Color(255, 24, 27, 34));
+			g.FillRectangle(&unselBg, rf);
+
+			Gdiplus::Pen dashPen(i == m_hover_group_tab ? Gdiplus::Color(255, 59, 130, 246) : Gdiplus::Color(255, 51, 65, 85), 1.0f);
+			dashPen.SetDashStyle(Gdiplus::DashStyleDash);
+			g.DrawRectangle(&dashPen, rf);
+
+			Gdiplus::SolidBrush txtBrush(i == m_hover_group_tab ? Gdiplus::Color(255, 96, 165, 250) : Gdiplus::Color(255, 148, 163, 184));
+			g.DrawString(tabs[i].text.c_str(), -1, &tabFont, rf, &sf, &txtBrush);
 		}
 		else
 		{
@@ -1080,7 +2386,7 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 			g.DrawRectangle(&borderPen, rf);
 
 			Gdiplus::SolidBrush txtBrush(i == m_hover_group_tab ? Gdiplus::Color(255, 241, 245, 249) : Gdiplus::Color(255, 148, 163, 184));
-			g.DrawString(groupTabs[i], -1, &tabFont, rf, &sf, &txtBrush);
+			g.DrawString(tabs[i].text.c_str(), -1, &tabFont, rf, &sf, &txtBrush);
 		}
 	}
 }
@@ -1258,6 +2564,7 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	int oldHoverCard = m_hover_index_card;
 	int oldHoverMa = m_hover_ma_tag_del;
 	int oldHoverTab = m_hover_group_tab;
+	int oldHoverMode = m_hover_index_mode;
 
 	m_hover_menu = -1;
 	for (size_t i = 0; i < m_menu_rects.size(); ++i)
@@ -1270,8 +2577,18 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	}
 
 	m_hover_index_card = -1;
+	m_hover_index_mode = -1;
 	if (m_current_page == PAGE_INDEX)
 	{
+		for (int i = 0; i < 3; ++i)
+		{
+			if (m_index_mode_rects[i].PtInRect(point))
+			{
+				m_hover_index_mode = i;
+				break;
+			}
+		}
+
 		for (size_t i = 0; i < m_index_card_rects.size(); ++i)
 		{
 			if (m_index_card_rects[i].PtInRect(point))
@@ -1309,7 +2626,8 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	}
 
 	if (oldHoverMenu != m_hover_menu || oldHoverCard != m_hover_index_card ||
-		oldHoverMa != m_hover_ma_tag_del || oldHoverTab != m_hover_group_tab)
+		oldHoverMa != m_hover_ma_tag_del || oldHoverTab != m_hover_group_tab ||
+		oldHoverMode != m_hover_index_mode)
 	{
 		Invalidate();
 	}
@@ -1324,6 +2642,7 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_index_card = -1;
 	m_hover_ma_tag_del = -1;
 	m_hover_group_tab = -1;
+	m_hover_index_mode = -1;
 	Invalidate();
 	CDialog::OnMouseLeave();
 }
@@ -1335,7 +2654,7 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 	ScreenToClient(&pt);
 
 	if (m_hover_menu >= 0 || m_hover_index_card >= 0 || m_hover_ma_tag_del >= 0 ||
-		m_hover_group_tab >= 0 || (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
+		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
 		return TRUE;
@@ -1357,10 +2676,24 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (m_current_page == PAGE_INDEX)
 	{
+		for (int i = 0; i < 3; ++i)
+		{
+			if (m_index_mode_rects[i].PtInRect(point))
+			{
+				m_data.m_index_display_mode = i;
+				Invalidate();
+				return;
+			}
+		}
+
+		CRect clientRect;
+		GetClientRect(clientRect);
+		CRect contentRect(m_menu_width + g_data.DPI(18), g_data.DPI(72), clientRect.Width() - g_data.DPI(18), clientRect.Height() - g_data.DPI(52));
+
 		const auto& presets = GetPresetIndices();
 		for (size_t i = 0; i < m_index_card_rects.size() && i < presets.size(); ++i)
 		{
-			if (m_index_card_rects[i].PtInRect(point))
+			if (m_index_card_rects[i].PtInRect(point) && contentRect.PtInRect(point))
 			{
 				const auto& code = presets[i].code;
 				auto it = std::find(m_data.m_selected_indices.begin(), m_data.m_selected_indices.end(), code);
@@ -1381,12 +2714,64 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (m_current_page == PAGE_GROUPS)
 	{
-		for (size_t i = 0; i < m_group_tab_rects.size(); ++i)
+		std::vector<GroupTabItem> tabs = BuildGroupTabItems(m_data.m_custom_groups, m_current_group_tab);
+		for (size_t i = 0; i < m_group_tab_rects.size() && i < tabs.size(); ++i)
 		{
 			if (m_group_tab_rects[i].PtInRect(point))
 			{
-				SwitchGroupTab(static_cast<GroupSubTab>(i));
-				return;
+				if (tabs[i].isAddBtn)
+				{
+					// 点击了 "+ 新增分组"
+					CString defName;
+					defName.Format(L"分组%d", static_cast<int>(m_data.m_custom_groups.size() + 1));
+					CSimpleInputDialog inputDlg(L"新增分组", L"请输入新分组名称：", defName, this);
+					if (inputDlg.DoModal() == IDOK && !inputDlg.m_value.IsEmpty())
+					{
+						CustomGroup newGrp;
+						newGrp.name = inputDlg.m_value.GetString();
+						m_data.m_custom_groups.push_back(newGrp);
+						SwitchGroupTab(static_cast<int>(m_data.m_custom_groups.size()) + 1);
+						g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+						g_data.SaveConfig();
+						Invalidate();
+					}
+					return;
+				}
+				else if (tabs[i].isDropdown)
+				{
+					// 点击了 "更多分组 ▾"
+					std::vector<CDarkPopupMenu::MenuItem> menuItems;
+					for (size_t k = 2; k < m_data.m_custom_groups.size(); ++k)
+					{
+						menuItems.push_back({
+							static_cast<int>(1000 + k),
+							m_data.m_custom_groups[k].name,
+							(m_current_group_tab == static_cast<int>(k + 2)),
+							false,
+							false
+						});
+					}
+
+					CRect tabRc = m_group_tab_rects[i];
+					CPoint pt(tabRc.left, tabRc.bottom + g_data.DPI(2));
+					ClientToScreen(&pt);
+
+					CDarkPopupMenu menu;
+					menu.CreatePopup(this);
+					int cmd = menu.TrackMenu(pt, menuItems, tabRc.Width());
+					if (cmd >= 1000 && cmd < 1000 + static_cast<int>(m_data.m_custom_groups.size()))
+					{
+						int selectedGroup = cmd - 1000;
+						SwitchGroupTab(selectedGroup + 2);
+						Invalidate();
+					}
+					return;
+				}
+				else
+				{
+					SwitchGroupTab(tabs[i].targetTab);
+					return;
+				}
 			}
 		}
 	}
@@ -1431,11 +2816,219 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 	CDialog::OnLButtonDown(nFlags, point);
 }
 
+void CManagerDialog::OnRButtonUp(UINT nFlags, CPoint point)
+{
+	if (m_current_page == PAGE_GROUPS)
+	{
+		std::vector<GroupTabItem> tabs = BuildGroupTabItems(m_data.m_custom_groups, m_current_group_tab);
+		for (size_t i = 0; i < m_group_tab_rects.size() && i < tabs.size(); ++i)
+		{
+			if (m_group_tab_rects[i].PtInRect(point))
+			{
+				int groupIdx = -1;
+				if (tabs[i].targetTab >= 2)
+				{
+					groupIdx = tabs[i].targetTab - 2;
+				}
+				else if (tabs[i].isDropdown && m_current_group_tab >= 4)
+				{
+					groupIdx = m_current_group_tab - 2;
+				}
+
+				if (groupIdx >= 0 && groupIdx < static_cast<int>(m_data.m_custom_groups.size()))
+				{
+					std::vector<CDarkPopupMenu::MenuItem> menuItems;
+					menuItems.push_back({ 101, L"重命名分组", false, false, false });
+					menuItems.push_back({ 102, L"删除分组", false, false, true });
+
+					CPoint screenPt = point;
+					ClientToScreen(&screenPt);
+
+					CDarkPopupMenu menu;
+					menu.CreatePopup(this);
+					int cmd = menu.TrackMenu(screenPt, menuItems, g_data.DPI(110));
+					if (cmd == 101)
+					{
+						CSimpleInputDialog inputDlg(L"重命名分组", L"请输入新的分组名称：", m_data.m_custom_groups[groupIdx].name.c_str(), this);
+						if (inputDlg.DoModal() == IDOK && !inputDlg.m_value.IsEmpty())
+						{
+							m_data.m_custom_groups[groupIdx].name = inputDlg.m_value.GetString();
+							g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+							g_data.SaveConfig();
+							Invalidate();
+						}
+					}
+					else if (cmd == 102)
+					{
+						CString prompt;
+						prompt.Format(L"确定要删除分组 [%s] 吗？", m_data.m_custom_groups[groupIdx].name.c_str());
+						CDarkConfirmDialog confirmDlg(L"确认删除", prompt, this, true);
+						if (confirmDlg.DoModal() == IDOK)
+						{
+							m_data.m_custom_groups.erase(m_data.m_custom_groups.begin() + groupIdx);
+							g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+							g_data.SaveConfig();
+							SwitchGroupTab(0);
+							Invalidate();
+						}
+					}
+					return;
+				}
+			}
+		}
+	}
+
+	CDialog::OnRButtonUp(nFlags, point);
+}
+
+void CManagerDialog::OnSearchEditChange()
+{
+	if (!m_search_edit.GetSafeHwnd()) return;
+	CString query;
+	m_search_edit.GetWindowText(query);
+	query.Trim();
+
+	if (query.IsEmpty())
+	{
+		if (m_search_dropdown.GetSafeHwnd())
+			m_search_dropdown.HidePopup();
+		return;
+	}
+
+	std::vector<StockSearchResult> results = CCommon::SearchStock(query.GetString());
+	if (results.empty())
+	{
+		if (m_search_dropdown.GetSafeHwnd())
+			m_search_dropdown.HidePopup();
+		return;
+	}
+
+	std::vector<CSearchResultDropdown::GroupMenuItem> groupItems;
+	groupItems.push_back({ 3001, L"添加到: 自选股", false, false });
+	groupItems.push_back({ 3002, L"添加到: 持仓", false, false });
+	for (size_t i = 0; i < m_data.m_custom_groups.size(); ++i)
+	{
+		CString itemText;
+		itemText.Format(L"添加到: %s", m_data.m_custom_groups[i].name.c_str());
+		groupItems.push_back({ static_cast<int>(3010 + i), itemText.GetString(), false, false });
+	}
+	groupItems.push_back({ 0, L"", true, false });
+	groupItems.push_back({ 3003, L"+ 新建分组并添加...", false, true });
+
+	CRect editRc;
+	m_search_edit.GetWindowRect(&editRc);
+	m_search_dropdown.ShowResults(results, editRc, groupItems);
+}
+
+BOOL CManagerDialog::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
+{
+	if (m_current_page == PAGE_INDEX)
+	{
+		const auto& presets = GetPresetIndices();
+		CRect clientRect;
+		GetClientRect(clientRect);
+		int contentWidth = clientRect.Width() - m_menu_width - g_data.DPI(36);
+		int cardGapX = g_data.DPI(12);
+		int cardGapY = g_data.DPI(10);
+		int minCardW = g_data.DPI(185);
+		int cols = max(2, (contentWidth + cardGapX) / (minCardW + cardGapX));
+		int rows = static_cast<int>((presets.size() + cols - 1) / cols);
+		int cardH = g_data.DPI(52);
+		int totalH = rows * (cardH + cardGapY);
+
+		int availableH = clientRect.Height() - g_data.DPI(72) - g_data.DPI(52);
+		int maxScroll = max(0, totalH - availableH);
+
+		if (maxScroll > 0)
+		{
+			int oldScroll = m_index_scroll_y;
+			if (zDelta > 0)
+				m_index_scroll_y -= g_data.DPI(36);
+			else
+				m_index_scroll_y += g_data.DPI(36);
+
+			if (m_index_scroll_y < 0) m_index_scroll_y = 0;
+			if (m_index_scroll_y > maxScroll) m_index_scroll_y = maxScroll;
+
+			if (oldScroll != m_index_scroll_y)
+			{
+				Invalidate();
+				return TRUE;
+			}
+		}
+	}
+	return CDialog::OnMouseWheel(nFlags, zDelta, pt);
+}
+
+BOOL CManagerDialog::PreTranslateMessage(MSG* pMsg)
+{
+	if (pMsg->message == WM_KEYDOWN && pMsg->wParam == VK_ESCAPE)
+	{
+		if (m_search_dropdown.GetSafeHwnd() && m_search_dropdown.IsWindowVisible())
+		{
+			m_search_dropdown.HidePopup();
+			return TRUE;
+		}
+	}
+
+	if (pMsg->message == WM_LBUTTONDOWN || pMsg->message == WM_RBUTTONDOWN ||
+		pMsg->message == WM_NCLBUTTONDOWN || pMsg->message == WM_NCRBUTTONDOWN)
+	{
+		CPoint pt = pMsg->pt;
+		if (m_search_dropdown.GetSafeHwnd() && m_search_dropdown.IsWindowVisible())
+		{
+			CRect dropRc, editRc;
+			m_search_dropdown.GetWindowRect(&dropRc);
+			m_search_edit.GetWindowRect(&editRc);
+			if (!dropRc.PtInRect(pt) && !editRc.PtInRect(pt))
+			{
+				m_search_dropdown.HidePopup();
+			}
+		}
+	}
+
+	return CDialog::PreTranslateMessage(pMsg);
+}
+
 void CManagerDialog::OnSize(UINT nType, int cx, int cy)
 {
 	CDialog::OnSize(nType, cx, cy);
+	if (m_search_dropdown.GetSafeHwnd())
+		m_search_dropdown.HidePopup();
 	UpdateControlsLayout();
 	Invalidate();
+}
+
+void CManagerDialog::OnMove(int x, int y)
+{
+	CDialog::OnMove(x, y);
+	if (m_search_dropdown.GetSafeHwnd())
+		m_search_dropdown.HidePopup();
+}
+
+void CManagerDialog::OnActivate(UINT nState, CWnd* pWndOther, BOOL bMinimized)
+{
+	CDialog::OnActivate(nState, pWndOther, bMinimized);
+	if (nState == WA_INACTIVE)
+	{
+		if (pWndOther && (pWndOther->GetSafeHwnd() == m_search_dropdown.GetSafeHwnd() ||
+			pWndOther->GetSafeHwnd() == m_search_edit.GetSafeHwnd()))
+		{
+			return;
+		}
+		if (m_search_dropdown.GetSafeHwnd())
+			m_search_dropdown.HidePopup();
+	}
+}
+
+BOOL CManagerDialog::OnNcActivate(BOOL bActive)
+{
+	if (!bActive)
+	{
+		if (m_search_dropdown.GetSafeHwnd())
+			m_search_dropdown.HidePopup();
+	}
+	return CDialog::OnNcActivate(bActive);
 }
 
 void CManagerDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -1447,6 +3040,42 @@ void CManagerDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 
 void CManagerDialog::OnListItemClick(NMHDR* pNMHDR, LRESULT* pResult)
 {
+	LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
+	if (pNMItemActivate && pNMItemActivate->iItem >= 0)
+	{
+		int nItem = pNMItemActivate->iItem;
+		int nSubItem = pNMItemActivate->iSubItem;
+
+		// 检查是否点击了 "状态栏显示" 列 (第 5 列)
+		if (nSubItem == 5)
+		{
+			if (m_current_group_tab == 0) // 自选股
+			{
+				if (nItem < static_cast<int>(m_data.m_stock_codes.size()))
+				{
+					const auto& code = m_data.m_stock_codes[nItem];
+					bool cur = g_data.GetShowInStatusBar(code);
+					g_data.SetShowInStatusBar(code, !cur);
+					m_stock_listctrl.SetItemText(nItem, 5, (!cur) ? L"√" : L"");
+				}
+			}
+			else if (m_current_group_tab >= 2) // 自定义分组
+			{
+				size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+				if (groupIdx < m_data.m_custom_groups.size())
+				{
+					auto& codes = m_data.m_custom_groups[groupIdx].codes;
+					if (nItem < static_cast<int>(codes.size()))
+					{
+						const auto& code = codes[nItem];
+						bool cur = g_data.GetShowInStatusBar(code);
+						g_data.SetShowInStatusBar(code, !cur);
+						m_custom_listctrl.SetItemText(nItem, 5, (!cur) ? L"√" : L"");
+					}
+				}
+			}
+		}
+	}
 	*pResult = 0;
 }
 
@@ -1455,12 +3084,13 @@ void CManagerDialog::OnLbnDblclkMgrList(NMHDR* pNMHDR, LRESULT* pResult)
 	int index = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
 	if (index >= 0 && index < static_cast<int>(m_data.m_stock_codes.size()))
 	{
-		COptionsDlg dlg(m_data.m_stock_codes[index], this);
-		if (dlg.DoModal() == IDOK && !dlg.m_stock_code.IsEmpty())
+		const auto& code = m_data.m_stock_codes[index];
+		CDarkStockAlertInputDlg dlg(code, L"", L"", this);
+		if (dlg.DoModal(this) == IDOK)
 		{
-			m_data.m_stock_codes[index] = dlg.m_stock_code.GetString();
+			g_data.SetAlertPrice(code, dlg.m_low_price, dlg.m_high_price);
+			g_data.SaveConfig();
 			RefreshStockList();
-			RefreshPositionList();
 		}
 	}
 	*pResult = 0;
@@ -1471,11 +3101,17 @@ void CManagerDialog::OnLbnDblclkPosList(NMHDR* pNMHDR, LRESULT* pResult)
 	int index = m_pos_listctrl.GetNextItem(-1, LVNI_SELECTED);
 	if (index >= 0)
 	{
-		CString code = m_pos_listctrl.GetItemText(index, 0);
-		COptionsDlg dlg(code.GetString(), this);
-		if (dlg.DoModal() == IDOK)
+		DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(index);
+		if (codeIdx < m_data.m_stock_codes.size())
 		{
-			RefreshPositionList();
+			const auto& code = m_data.m_stock_codes[codeIdx];
+			CDarkPositionInputDlg dlg(code, L"", L"", this);
+			if (dlg.DoModal(this) == IDOK)
+			{
+				g_data.SetPosition(code, dlg.m_cost_price, dlg.m_holding_count);
+				g_data.SaveConfig();
+				RefreshPositionList();
+			}
 		}
 	}
 	*pResult = 0;
@@ -1484,13 +3120,20 @@ void CManagerDialog::OnLbnDblclkPosList(NMHDR* pNMHDR, LRESULT* pResult)
 void CManagerDialog::OnLbnDblclkCustomList(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	int index = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
-	if (index >= 0 && index < static_cast<int>(m_data.m_custom_group_codes.size()))
+	size_t groupIdx = (m_current_group_tab >= 2) ? static_cast<size_t>(m_current_group_tab - 2) : 0;
+	if (groupIdx < m_data.m_custom_groups.size())
 	{
-		COptionsDlg dlg(m_data.m_custom_group_codes[index], this);
-		if (dlg.DoModal() == IDOK && !dlg.m_stock_code.IsEmpty())
+		auto& codes = m_data.m_custom_groups[groupIdx].codes;
+		if (index >= 0 && index < static_cast<int>(codes.size()))
 		{
-			m_data.m_custom_group_codes[index] = dlg.m_stock_code.GetString();
-			RefreshCustomList();
+			const auto& code = codes[index];
+			CDarkStockAlertInputDlg dlg(code, L"", L"", this);
+			if (dlg.DoModal(this) == IDOK)
+			{
+				g_data.SetAlertPrice(code, dlg.m_low_price, dlg.m_high_price);
+				g_data.SaveConfig();
+				RefreshCustomList();
+			}
 		}
 	}
 	*pResult = 0;
@@ -1498,53 +3141,74 @@ void CManagerDialog::OnLbnDblclkCustomList(NMHDR* pNMHDR, LRESULT* pResult)
 
 void CManagerDialog::OnAddBtnClick()
 {
-	if (m_current_group_tab == TAB_WATCHLIST)
-	{
-		if (m_data.m_stock_codes.size() >= Stock_ITEM_MAX)
-		{
-			MessageBox(g_data.StringRes(IDS_STOCK_NUM_LIMIT_WARNING), g_data.StringRes(IDS_PLUGIN_NAME), MB_ICONWARNING | MB_OK);
-			return;
-		}
-		COptionsDlg dlg(std::wstring(), this);
-		if (dlg.DoModal() == IDOK)
-		{
-			std::wstring stock_code = dlg.m_stock_code.GetString();
-			if (!stock_code.empty())
-			{
-				if (std::find(m_data.m_stock_codes.begin(), m_data.m_stock_codes.end(), stock_code) == m_data.m_stock_codes.end())
-				{
-					m_data.m_stock_codes.push_back(stock_code);
-					RefreshStockList();
-				}
-			}
-		}
-	}
-	else if (m_current_group_tab == TAB_POSITIONS)
+	if (m_current_group_tab == 1)
 	{
 		int curSel = m_pos_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		std::wstring code;
 		if (curSel >= 0)
-			code = m_pos_listctrl.GetItemText(curSel, 0).GetString();
-		else if (!m_data.m_stock_codes.empty())
-			code = m_data.m_stock_codes[0];
-
-		COptionsDlg dlg(code, this);
-		if (dlg.DoModal() == IDOK)
 		{
-			RefreshPositionList();
+			DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(curSel);
+			if (codeIdx < m_data.m_stock_codes.size())
+				code = m_data.m_stock_codes[codeIdx];
+		}
+		else if (!m_data.m_stock_codes.empty())
+		{
+			code = m_data.m_stock_codes[0];
+		}
+
+		if (!code.empty())
+		{
+			CDarkPositionInputDlg dlg(code, L"", L"", this);
+			if (dlg.DoModal(this) == IDOK)
+			{
+				g_data.SetPosition(code, dlg.m_cost_price, dlg.m_holding_count);
+				g_data.SaveConfig();
+				RefreshPositionList();
+			}
 		}
 	}
-	else if (m_current_group_tab == TAB_CUSTOM)
+	else
 	{
-		COptionsDlg dlg(std::wstring(), this);
-		if (dlg.DoModal() == IDOK)
+		if (m_search_edit.GetSafeHwnd())
 		{
-			std::wstring stock_code = dlg.m_stock_code.GetString();
-			if (!stock_code.empty())
+			m_search_edit.SetFocus();
+			m_search_edit.SetSel(0, -1);
+		}
+	}
+}
+
+void CManagerDialog::OnEditBtnClick()
+{
+	if (m_current_group_tab == 0)
+	{
+		int curSel = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
+		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_stock_codes.size()))
+		{
+			const auto& code = m_data.m_stock_codes[curSel];
+			CDarkStockAlertInputDlg dlg(code, L"", L"", this);
+			if (dlg.DoModal(this) == IDOK)
 			{
-				if (std::find(m_data.m_custom_group_codes.begin(), m_data.m_custom_group_codes.end(), stock_code) == m_data.m_custom_group_codes.end())
+				g_data.SetAlertPrice(code, dlg.m_low_price, dlg.m_high_price);
+				g_data.SaveConfig();
+				RefreshStockList();
+			}
+		}
+	}
+	else if (m_current_group_tab >= 2)
+	{
+		size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+		if (groupIdx < m_data.m_custom_groups.size())
+		{
+			auto& codes = m_data.m_custom_groups[groupIdx].codes;
+			int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
+			if (curSel >= 0 && curSel < static_cast<int>(codes.size()))
+			{
+				const auto& code = codes[curSel];
+				CDarkStockAlertInputDlg dlg(code, L"", L"", this);
+				if (dlg.DoModal(this) == IDOK)
 				{
-					m_data.m_custom_group_codes.push_back(stock_code);
+					g_data.SetAlertPrice(code, dlg.m_low_price, dlg.m_high_price);
+					g_data.SaveConfig();
 					RefreshCustomList();
 				}
 			}
@@ -1552,40 +3216,9 @@ void CManagerDialog::OnAddBtnClick()
 	}
 }
 
-void CManagerDialog::OnEditBtnClick()
-{
-	if (m_current_group_tab == TAB_WATCHLIST)
-	{
-		int curSel = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
-		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_stock_codes.size()))
-		{
-			COptionsDlg dlg(m_data.m_stock_codes[curSel], this);
-			if (dlg.DoModal() == IDOK && !dlg.m_stock_code.IsEmpty())
-			{
-				m_data.m_stock_codes[curSel] = dlg.m_stock_code.GetString();
-				RefreshStockList();
-				RefreshPositionList();
-			}
-		}
-	}
-	else if (m_current_group_tab == TAB_CUSTOM)
-	{
-		int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
-		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_custom_group_codes.size()))
-		{
-			COptionsDlg dlg(m_data.m_custom_group_codes[curSel], this);
-			if (dlg.DoModal() == IDOK && !dlg.m_stock_code.IsEmpty())
-			{
-				m_data.m_custom_group_codes[curSel] = dlg.m_stock_code.GetString();
-				RefreshCustomList();
-			}
-		}
-	}
-}
-
 void CManagerDialog::OnDelBtnClick()
 {
-	if (m_current_group_tab == TAB_WATCHLIST)
+	if (m_current_group_tab == 0)
 	{
 		int curSel = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_stock_codes.size()))
@@ -1595,30 +3228,58 @@ void CManagerDialog::OnDelBtnClick()
 			RefreshPositionList();
 		}
 	}
-	else if (m_current_group_tab == TAB_POSITIONS)
+	else if (m_current_group_tab == 1)
 	{
 		int curSel = m_pos_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		if (curSel >= 0)
 		{
-			std::wstring code = m_pos_listctrl.GetItemText(curSel, 0).GetString();
-			g_data.SetPosition(code, 0.0, 0.0, L"");
-			RefreshPositionList();
+			DWORD_PTR codeIdx = m_pos_listctrl.GetItemData(curSel);
+			if (codeIdx < m_data.m_stock_codes.size())
+			{
+				const auto& code = m_data.m_stock_codes[codeIdx];
+				g_data.SetPosition(code, 0.0, 0.0, L"");
+				RefreshPositionList();
+			}
 		}
 	}
-	else if (m_current_group_tab == TAB_CUSTOM)
+	else if (m_current_group_tab >= 2)
 	{
-		int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
-		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_custom_group_codes.size()))
+		size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+		if (groupIdx < m_data.m_custom_groups.size())
 		{
-			m_data.m_custom_group_codes.erase(m_data.m_custom_group_codes.begin() + curSel);
-			RefreshCustomList();
+			auto& codes = m_data.m_custom_groups[groupIdx].codes;
+			int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
+			if (curSel >= 0 && curSel < static_cast<int>(codes.size()))
+			{
+				codes.erase(codes.begin() + curSel);
+				RefreshCustomList();
+			}
+		}
+	}
+}
+
+void CManagerDialog::OnDelGroupBtnClick()
+{
+	if (m_current_group_tab >= 2 && (m_current_group_tab - 2) < static_cast<int>(m_data.m_custom_groups.size()))
+	{
+		size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+		CString prompt;
+		prompt.Format(L"确定要删除分组 [%s] 吗？", m_data.m_custom_groups[groupIdx].name.c_str());
+		CDarkConfirmDialog confirmDlg(L"确认删除", prompt, this, true);
+		if (confirmDlg.DoModal() == IDOK)
+		{
+			m_data.m_custom_groups.erase(m_data.m_custom_groups.begin() + groupIdx);
+			g_data.m_setting_data.m_custom_groups = m_data.m_custom_groups;
+			g_data.SaveConfig();
+			SwitchGroupTab(0);
+			Invalidate();
 		}
 	}
 }
 
 void CManagerDialog::OnMoveUpBtnClick()
 {
-	if (m_current_group_tab == TAB_WATCHLIST)
+	if (m_current_group_tab == 0)
 	{
 		int curSel = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		if (curSel > 0 && curSel < static_cast<int>(m_data.m_stock_codes.size()))
@@ -1628,21 +3289,26 @@ void CManagerDialog::OnMoveUpBtnClick()
 			m_stock_listctrl.SetItemState(curSel - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 		}
 	}
-	else if (m_current_group_tab == TAB_CUSTOM)
+	else if (m_current_group_tab >= 2)
 	{
-		int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
-		if (curSel > 0 && curSel < static_cast<int>(m_data.m_custom_group_codes.size()))
+		size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+		if (groupIdx < m_data.m_custom_groups.size())
 		{
-			std::swap(m_data.m_custom_group_codes[curSel - 1], m_data.m_custom_group_codes[curSel]);
-			RefreshCustomList();
-			m_custom_listctrl.SetItemState(curSel - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			auto& codes = m_data.m_custom_groups[groupIdx].codes;
+			int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
+			if (curSel > 0 && curSel < static_cast<int>(codes.size()))
+			{
+				std::swap(codes[curSel - 1], codes[curSel]);
+				RefreshCustomList();
+				m_custom_listctrl.SetItemState(curSel - 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			}
 		}
 	}
 }
 
 void CManagerDialog::OnMoveDownBtnClick()
 {
-	if (m_current_group_tab == TAB_WATCHLIST)
+	if (m_current_group_tab == 0)
 	{
 		int curSel = m_stock_listctrl.GetNextItem(-1, LVNI_SELECTED);
 		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_stock_codes.size()) - 1)
@@ -1652,14 +3318,19 @@ void CManagerDialog::OnMoveDownBtnClick()
 			m_stock_listctrl.SetItemState(curSel + 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 		}
 	}
-	else if (m_current_group_tab == TAB_CUSTOM)
+	else if (m_current_group_tab >= 2)
 	{
-		int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
-		if (curSel >= 0 && curSel < static_cast<int>(m_data.m_custom_group_codes.size()) - 1)
+		size_t groupIdx = static_cast<size_t>(m_current_group_tab - 2);
+		if (groupIdx < m_data.m_custom_groups.size())
 		{
-			std::swap(m_data.m_custom_group_codes[curSel], m_data.m_custom_group_codes[curSel + 1]);
-			RefreshCustomList();
-			m_custom_listctrl.SetItemState(curSel + 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			auto& codes = m_data.m_custom_groups[groupIdx].codes;
+			int curSel = m_custom_listctrl.GetNextItem(-1, LVNI_SELECTED);
+			if (curSel >= 0 && curSel < static_cast<int>(codes.size()) - 1)
+			{
+				std::swap(codes[curSel], codes[curSel + 1]);
+				RefreshCustomList();
+				m_custom_listctrl.SetItemState(curSel + 1, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			}
 		}
 	}
 }
@@ -1935,8 +3606,69 @@ void CManagerDialog::OnBnClickedCancel()
 // ===================== 暗色主题自绘辅助 =====================
 
 BEGIN_MESSAGE_MAP(CFlatHeaderCtrl, CHeaderCtrl)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
 	ON_NOTIFY_REFLECT(NM_CUSTOMDRAW, &CFlatHeaderCtrl::OnCustomDraw)
 END_MESSAGE_MAP()
+
+void CFlatHeaderCtrl::OnPaint()
+{
+	CPaintDC dc(this);
+	CRect clientRect;
+	GetClientRect(&clientRect);
+
+	CDC memDC;
+	memDC.CreateCompatibleDC(&dc);
+	CBitmap memBmp;
+	memBmp.CreateCompatibleBitmap(&dc, clientRect.Width(), clientRect.Height());
+	CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+	// 填充全表头深色底 (#1C1F27)，彻底消除右侧白色占位
+	memDC.FillSolidRect(&clientRect, RGB(28, 31, 39));
+	memDC.FillSolidRect(CRect(clientRect.left, clientRect.bottom - 1, clientRect.right, clientRect.bottom), COLOR_DARK_GRAY_BORDER);
+
+	int itemCount = GetItemCount();
+	CFont* pFont = GetFont();
+	if (pFont == nullptr || pFont->GetSafeHandle() == nullptr)
+		pFont = CFont::FromHandle((HFONT)::GetStockObject(DEFAULT_GUI_FONT));
+	CFont* pOldFont = memDC.SelectObject(pFont);
+	memDC.SetBkMode(TRANSPARENT);
+	memDC.SetTextColor(COLOR_TEXT_MUTED);
+
+	for (int i = 0; i < itemCount; ++i)
+	{
+		CRect itemRect;
+		GetItemRect(i, &itemRect);
+
+		// 右侧细分割线
+		memDC.FillSolidRect(CRect(itemRect.right - 1, itemRect.top + g_data.DPI(4), itemRect.right, itemRect.bottom - g_data.DPI(4)), COLOR_DARK_GRAY_BORDER);
+
+		wchar_t buf[128] = { 0 };
+		HDITEM it = { 0 };
+		it.mask = HDI_TEXT | HDI_FORMAT;
+		it.pszText = buf;
+		it.cchTextMax = 128;
+		if (GetItem(i, &it))
+		{
+			CRect textRc = itemRect;
+			textRc.DeflateRect(g_data.DPI(6), 0);
+
+			UINT dtFlags = DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS;
+			if ((it.fmt & HDF_JUSTIFYMASK) == HDF_RIGHT)
+				dtFlags |= DT_RIGHT;
+			else if ((it.fmt & HDF_JUSTIFYMASK) == HDF_CENTER)
+				dtFlags |= DT_CENTER;
+			else
+				dtFlags |= DT_LEFT;
+
+			memDC.DrawText(buf, -1, &textRc, dtFlags);
+		}
+	}
+
+	memDC.SelectObject(pOldFont);
+	dc.BitBlt(0, 0, clientRect.Width(), clientRect.Height(), &memDC, 0, 0, SRCCOPY);
+	memDC.SelectObject(pOldBmp);
+}
 
 // 平面化表头：深色底 + 细分隔线 + 灰色文字，与浮动窗表面体系一致
 void CFlatHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
@@ -1960,7 +3692,7 @@ void CFlatHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 
 		wchar_t buf[128] = { 0 };
 		HDITEM it = { 0 };
-		it.mask = HDI_TEXT;
+		it.mask = HDI_TEXT | HDI_FORMAT;
 		it.pszText = buf;
 		it.cchTextMax = 128;
 		if (GetItem(static_cast<int>(pCD->dwItemSpec), &it))
@@ -1972,15 +3704,700 @@ void CFlatHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 			dc.SetBkMode(TRANSPARENT);
 			dc.SetTextColor(COLOR_TEXT_MUTED);
 			CRect textRc = rc;
-			textRc.DeflateRect(g_data.DPI(8), 0);
+			textRc.DeflateRect(g_data.DPI(6), 0);
+
+			UINT dtFlags = DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS;
+			if ((it.fmt & HDF_JUSTIFYMASK) == HDF_RIGHT)
+				dtFlags |= DT_RIGHT;
+			else if ((it.fmt & HDF_JUSTIFYMASK) == HDF_CENTER)
+				dtFlags |= DT_CENTER;
+			else
+				dtFlags |= DT_LEFT;
+
 			CString headerText(buf);
-			dc.DrawText(headerText, textRc, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+			dc.DrawText(headerText, textRc, dtFlags);
 			dc.SelectObject(pOldFont);
 		}
 
 		dc.Detach();
 		*pResult = CDRF_SKIPDEFAULT;
 	}
+}
+
+// ===================== CDarkPopupMenu 暗色风格弹出菜单 =====================
+
+BEGIN_MESSAGE_MAP(CDarkPopupMenu, CWnd)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
+	ON_WM_MOUSEMOVE()
+	ON_WM_MOUSELEAVE()
+	ON_WM_LBUTTONUP()
+	ON_WM_KILLFOCUS()
+END_MESSAGE_MAP()
+
+BOOL CDarkPopupMenu::CreatePopup(CWnd* pParent)
+{
+	CString className = AfxRegisterWndClass(CS_DROPSHADOW | CS_HREDRAW | CS_VREDRAW | CS_SAVEBITS, ::LoadCursor(nullptr, IDC_ARROW), (HBRUSH)::GetStockObject(BLACK_BRUSH), nullptr);
+	return CreateEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, className, _T("DarkPopupMenu"), WS_POPUP, CRect(0, 0, 0, 0), pParent, 0);
+}
+
+int CDarkPopupMenu::TrackMenu(const CPoint& screenPt, const std::vector<MenuItem>& items, int minWidth)
+{
+	m_items = items;
+	m_selected_id = 0;
+	m_hover_idx = -1;
+	m_is_open = true;
+
+	if (m_items.empty() || !GetSafeHwnd())
+		return 0;
+
+	CDC* pDC = GetDC();
+	Gdiplus::Graphics g(pDC->GetSafeHdc());
+	Gdiplus::Font font(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+
+	int maxTextW = 0;
+	for (const auto& item : m_items)
+	{
+		if (!item.isSeparator)
+		{
+			Gdiplus::RectF bounds;
+			g.MeasureString(item.text.c_str(), -1, &font, Gdiplus::PointF(0, 0), &bounds);
+			maxTextW = max(maxTextW, static_cast<int>(bounds.Width));
+		}
+	}
+	ReleaseDC(pDC);
+
+	int padX = g_data.DPI(32);
+	int menuW = max(minWidth, maxTextW + padX + g_data.DPI(16));
+
+	int itemH = g_data.DPI(28);
+	int sepH = g_data.DPI(7);
+	int padY = g_data.DPI(4);
+
+	int totalH = padY * 2;
+	for (const auto& item : m_items)
+	{
+		totalH += item.isSeparator ? sepH : itemH;
+	}
+
+	int screenW = GetSystemMetrics(SM_CXSCREEN);
+	int screenH = GetSystemMetrics(SM_CYSCREEN);
+	int x = screenPt.x;
+	int y = screenPt.y;
+	if (x + menuW > screenW) x = screenW - menuW - g_data.DPI(4);
+	if (y + totalH > screenH) y = screenPt.y - totalH;
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+
+	SetWindowPos(&wndTopMost, x, y, menuW, totalH, SWP_SHOWWINDOW);
+	SetCapture();
+
+	MSG msg;
+	while (m_is_open && ::GetMessage(&msg, nullptr, 0, 0))
+	{
+		if (msg.message == WM_LBUTTONDOWN || msg.message == WM_RBUTTONDOWN || msg.message == WM_NCLBUTTONDOWN)
+		{
+			CPoint pt = msg.pt;
+			CRect rc;
+			GetWindowRect(rc);
+			if (!rc.PtInRect(pt))
+			{
+				m_is_open = false;
+				break;
+			}
+		}
+		else if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE)
+		{
+			m_is_open = false;
+			break;
+		}
+
+		::TranslateMessage(&msg);
+		::DispatchMessage(&msg);
+	}
+
+	if (GetCapture() == this)
+		ReleaseCapture();
+
+	ShowWindow(SW_HIDE);
+	DestroyWindow();
+	return m_selected_id;
+}
+
+void CDarkPopupMenu::OnPaint()
+{
+	CPaintDC dc(this);
+	CRect clientRect;
+	GetClientRect(clientRect);
+
+	CDC memDC;
+	memDC.CreateCompatibleDC(&dc);
+	CBitmap memBmp;
+	memBmp.CreateCompatibleBitmap(&dc, clientRect.Width(), clientRect.Height());
+	CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+	Gdiplus::Graphics g(memDC.GetSafeHdc());
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+	Gdiplus::SolidBrush bg(Gdiplus::Color(255, 24, 27, 34)); // #181B22
+	g.FillRectangle(&bg, 0, 0, clientRect.Width(), clientRect.Height());
+	Gdiplus::Pen border(Gdiplus::Color(255, 42, 48, 63), 1.0f); // #2A303F
+	g.DrawRectangle(&border, 0, 0, clientRect.Width() - 1, clientRect.Height() - 1);
+
+	int padY = g_data.DPI(4);
+	int curY = padY;
+	int itemH = g_data.DPI(28);
+	int sepH = g_data.DPI(7);
+
+	Gdiplus::Font font(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font checkFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+	Gdiplus::StringFormat sf;
+	sf.SetAlignment(Gdiplus::StringAlignmentNear);
+	sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+	for (size_t i = 0; i < m_items.size(); ++i)
+	{
+		const auto& item = m_items[i];
+		if (item.isSeparator)
+		{
+			int sepLineY = curY + sepH / 2;
+			Gdiplus::Pen sepPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+			g.DrawLine(&sepPen, g_data.DPI(8), sepLineY, clientRect.Width() - g_data.DPI(8), sepLineY);
+			curY += sepH;
+		}
+		else
+		{
+			CRect itemRc(g_data.DPI(3), curY, clientRect.Width() - g_data.DPI(3), curY + itemH);
+			bool isHover = (static_cast<int>(i) == m_hover_idx);
+
+			if (isHover)
+			{
+				Gdiplus::SolidBrush hoverBg(Gdiplus::Color(255, 37, 99, 235)); // #2563EB
+				g.FillRectangle(&hoverBg, itemRc.left, itemRc.top, itemRc.Width(), itemRc.Height());
+			}
+
+			// 勾选标识 ✓
+			if (item.isChecked)
+			{
+				Gdiplus::SolidBrush checkBrush(isHover ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 59, 130, 246));
+				Gdiplus::RectF checkRf(static_cast<Gdiplus::REAL>(itemRc.left + g_data.DPI(4)), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(g_data.DPI(16)), static_cast<Gdiplus::REAL>(itemRc.Height()));
+				Gdiplus::StringFormat checkSf;
+				checkSf.SetAlignment(Gdiplus::StringAlignmentCenter);
+				checkSf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+				g.DrawString(L"✓", -1, &checkFont, checkRf, &checkSf, &checkBrush);
+			}
+
+			// 文本
+			Gdiplus::Color textCol = isHover ? Gdiplus::Color(255, 255, 255, 255) :
+				(item.isDestructive ? Gdiplus::Color(255, 239, 68, 68) : Gdiplus::Color(255, 226, 232, 240));
+			Gdiplus::SolidBrush textBrush(textCol);
+
+			int textLeft = itemRc.left + g_data.DPI(22);
+			Gdiplus::RectF textRf(static_cast<Gdiplus::REAL>(textLeft), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(itemRc.right - textLeft - g_data.DPI(6)), static_cast<Gdiplus::REAL>(itemRc.Height()));
+			g.DrawString(item.text.c_str(), -1, &font, textRf, &sf, &textBrush);
+
+			curY += itemH;
+		}
+	}
+
+	dc.BitBlt(0, 0, clientRect.Width(), clientRect.Height(), &memDC, 0, 0, SRCCOPY);
+	memDC.SelectObject(pOldBmp);
+}
+
+void CDarkPopupMenu::OnMouseMove(UINT nFlags, CPoint point)
+{
+	int padY = g_data.DPI(4);
+	int curY = padY;
+	int itemH = g_data.DPI(28);
+	int sepH = g_data.DPI(7);
+
+	int oldHover = m_hover_idx;
+	m_hover_idx = -1;
+
+	for (size_t i = 0; i < m_items.size(); ++i)
+	{
+		if (m_items[i].isSeparator)
+		{
+			curY += sepH;
+		}
+		else
+		{
+			CRect itemRc(0, curY, 10000, curY + itemH);
+			if (point.y >= itemRc.top && point.y < itemRc.bottom)
+			{
+				m_hover_idx = static_cast<int>(i);
+				break;
+			}
+			curY += itemH;
+		}
+	}
+
+	if (oldHover != m_hover_idx)
+		Invalidate();
+
+	CWnd::OnMouseMove(nFlags, point);
+}
+
+void CDarkPopupMenu::OnMouseLeave()
+{
+	m_hover_idx = -1;
+	Invalidate();
+	CWnd::OnMouseLeave();
+}
+
+void CDarkPopupMenu::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	if (m_hover_idx >= 0 && m_hover_idx < static_cast<int>(m_items.size()))
+	{
+		if (!m_items[m_hover_idx].isSeparator)
+		{
+			m_selected_id = m_items[m_hover_idx].id;
+			m_is_open = false;
+			return;
+		}
+	}
+	CWnd::OnLButtonUp(nFlags, point);
+}
+
+void CDarkPopupMenu::OnKillFocus(CWnd* pNewWnd)
+{
+	m_is_open = false;
+	CWnd::OnKillFocus(pNewWnd);
+}
+
+// ===================== CSearchResultDropdown 搜索结果与分组添加一体化暗色浮窗 =====================
+
+BEGIN_MESSAGE_MAP(CSearchResultDropdown, CWnd)
+	ON_WM_PAINT()
+	ON_WM_ERASEBKGND()
+	ON_WM_MOUSEMOVE()
+	ON_WM_MOUSELEAVE()
+	ON_WM_LBUTTONDOWN()
+	ON_WM_LBUTTONUP()
+END_MESSAGE_MAP()
+
+BOOL CSearchResultDropdown::CreatePopup(CWnd* pParent)
+{
+	CString className = AfxRegisterWndClass(CS_DROPSHADOW | CS_HREDRAW | CS_VREDRAW, ::LoadCursor(nullptr, IDC_ARROW), (HBRUSH)::GetStockObject(BLACK_BRUSH), nullptr);
+	return CreateEx(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, className, L"", WS_POPUP, CRect(0, 0, 0, 0), pParent, 0);
+}
+
+int CSearchResultDropdown::GetResultsWidth() const
+{
+	return g_data.DPI(225);
+}
+
+int CSearchResultDropdown::GetMenuWidth() const
+{
+	return g_data.DPI(155);
+}
+
+void CSearchResultDropdown::ShowResults(const std::vector<StockSearchResult>& results, const CRect& editScreenRc, const std::vector<GroupMenuItem>& groupItems)
+{
+	m_results = results;
+	m_edit_screen_rc = editScreenRc;
+	m_group_items = groupItems;
+	m_hover_item = -1;
+	m_hover_btn = -1;
+	m_hover_group_idx = -1;
+	m_selected_stock_idx = -1;
+
+	if (m_results.empty())
+	{
+		HidePopup();
+		return;
+	}
+
+	UpdatePopupPosition();
+}
+
+void CSearchResultDropdown::HidePopup()
+{
+	m_selected_stock_idx = -1;
+	m_hover_item = -1;
+	m_hover_btn = -1;
+	m_hover_group_idx = -1;
+	if (GetSafeHwnd())
+		ShowWindow(SW_HIDE);
+}
+
+void CSearchResultDropdown::UpdatePopupPosition()
+{
+	if (m_results.empty() || !GetSafeHwnd())
+	{
+		ShowWindow(SW_HIDE);
+		return;
+	}
+
+	int resW = GetResultsWidth();
+	int menuW = GetMenuWidth();
+	int totalW = (m_selected_stock_idx >= 0) ? (resW + menuW) : resW;
+
+	int maxItems = min(static_cast<int>(m_results.size()), 8);
+	int itemH = g_data.DPI(34);
+	int searchH = maxItems * itemH + 2;
+
+	int menuH = 0;
+	if (m_selected_stock_idx >= 0)
+	{
+		menuH = static_cast<int>(m_group_items.size()) * g_data.DPI(30) + g_data.DPI(28);
+	}
+	int totalH = max(searchH, menuH);
+
+	int screenW = GetSystemMetrics(SM_CXSCREEN);
+	int screenH = GetSystemMetrics(SM_CYSCREEN);
+
+	int dropX = m_edit_screen_rc.right - resW;
+	if (m_selected_stock_idx >= 0)
+	{
+		if (dropX + totalW > screenW - 10)
+		{
+			dropX = screenW - totalW - 10;
+		}
+	}
+	if (dropX < 10) dropX = 10;
+
+	int dropY = m_edit_screen_rc.bottom + 2;
+	if (dropY + totalH > screenH - 10)
+	{
+		dropY = m_edit_screen_rc.top - totalH - 2;
+	}
+	if (dropY < 10) dropY = 10;
+
+	SetWindowPos(&CWnd::wndTopMost, dropX, dropY, totalW, totalH, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+	Invalidate();
+}
+
+void CSearchResultDropdown::OnPaint()
+{
+	CPaintDC dc(this);
+	CRect rc;
+	GetClientRect(&rc);
+	if (rc.Width() <= 0 || rc.Height() <= 0) return;
+
+	CDC memDC;
+	memDC.CreateCompatibleDC(&dc);
+	CBitmap memBmp;
+	memBmp.CreateCompatibleBitmap(&dc, rc.Width(), rc.Height());
+	CBitmap* pOldBmp = memDC.SelectObject(&memBmp);
+
+	Gdiplus::Graphics g(memDC.GetSafeHdc());
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+
+	// 1. 全局深色底与外边框
+	Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 20, 22, 29));
+	g.FillRectangle(&bgBrush, 0, 0, rc.Width(), rc.Height());
+
+	Gdiplus::Pen borderPen(Gdiplus::Color(255, 59, 130, 246), 1.0f);
+	g.DrawRectangle(&borderPen, 0.5f, 0.5f, static_cast<Gdiplus::REAL>(rc.Width() - 1), static_cast<Gdiplus::REAL>(rc.Height() - 1));
+
+	int resW = (m_selected_stock_idx >= 0) ? GetResultsWidth() : rc.Width();
+	int itemH = g_data.DPI(34);
+
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font codeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font badgeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font plusFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+	Gdiplus::StringFormat sfNear;
+	sfNear.SetAlignment(Gdiplus::StringAlignmentNear);
+	sfNear.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfNear.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+	Gdiplus::StringFormat sfCenter;
+	sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
+	sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+	// 2. 绘制左侧搜索结果项
+	int maxItems = min(static_cast<int>(m_results.size()), 8);
+	for (int i = 0; i < maxItems; ++i)
+	{
+		int itemY = i * itemH + 1;
+		CRect itemRc(1, itemY, resW - 1, itemY + itemH);
+
+		bool isSelected = (m_selected_stock_idx == i);
+		bool isHover = (m_hover_item == i);
+
+		if (isSelected)
+		{
+			Gdiplus::SolidBrush selBrush(Gdiplus::Color(255, 37, 99, 235));
+			g.FillRectangle(&selBrush, static_cast<Gdiplus::REAL>(itemRc.left), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(itemRc.Width()), static_cast<Gdiplus::REAL>(itemRc.Height()));
+		}
+		else if (isHover)
+		{
+			Gdiplus::SolidBrush hoverBrush(Gdiplus::Color(255, 30, 41, 59));
+			g.FillRectangle(&hoverBrush, static_cast<Gdiplus::REAL>(itemRc.left), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(itemRc.Width()), static_cast<Gdiplus::REAL>(itemRc.Height()));
+		}
+
+		// 分隔线
+		if (i > 0)
+		{
+			Gdiplus::Pen divPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+			g.DrawLine(&divPen, static_cast<Gdiplus::REAL>(itemRc.left + g_data.DPI(6)), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(itemRc.right - g_data.DPI(6)), static_cast<Gdiplus::REAL>(itemRc.top));
+		}
+
+		const auto& stock = m_results[i];
+
+		// 交易所徽标
+		std::wstring exch = stock.exchange;
+		if (exch.empty()) exch = CCommon::GetExchangeName(stock.fullCode);
+		std::wstring pureCode = stock.code;
+		if (pureCode.empty()) pureCode = CCommon::GetPureCode(stock.fullCode);
+
+		int badgeW = g_data.DPI(38);
+		int badgeH = g_data.DPI(16);
+		int badgeX = itemRc.left + g_data.DPI(6);
+		int badgeY = itemRc.top + (itemRc.Height() - badgeH) / 2;
+		Gdiplus::RectF badgeRf(static_cast<Gdiplus::REAL>(badgeX), static_cast<Gdiplus::REAL>(badgeY), static_cast<Gdiplus::REAL>(badgeW), static_cast<Gdiplus::REAL>(badgeH));
+
+		Gdiplus::SolidBrush badgeBg(isSelected ? Gdiplus::Color(255, 30, 41, 59) : Gdiplus::Color(255, 37, 99, 235));
+		g.FillRectangle(&badgeBg, badgeRf);
+
+		Gdiplus::SolidBrush badgeTxt(Gdiplus::Color(255, 255, 255, 255));
+		// GDI+ 行框居中含雅黑 descent 空白区，汉字视觉偏上，文字矩形下移补偿
+		Gdiplus::RectF badgeTxtRf = badgeRf;
+		badgeTxtRf.Y += static_cast<Gdiplus::REAL>(g_data.DPI(1));
+		g.DrawString(exch.c_str(), -1, &badgeFont, badgeTxtRf, &sfCenter, &badgeTxt);
+
+		// 代码
+		int codeX = badgeX + badgeW + g_data.DPI(5);
+		int codeW = g_data.DPI(46);
+		Gdiplus::RectF codeRf(static_cast<Gdiplus::REAL>(codeX), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(codeW), static_cast<Gdiplus::REAL>(itemRc.Height()));
+		Gdiplus::SolidBrush codeTxt(isSelected ? Gdiplus::Color(255, 226, 232, 240) : Gdiplus::Color(255, 148, 163, 184));
+		g.DrawString(pureCode.c_str(), -1, &codeFont, codeRf, &sfNear, &codeTxt);
+
+		// 加号按钮 [+]
+		int btnSize = g_data.DPI(20);
+		int btnX = itemRc.right - btnSize - g_data.DPI(6);
+		int btnY = itemRc.top + (itemRc.Height() - btnSize) / 2;
+		Gdiplus::RectF btnRf(static_cast<Gdiplus::REAL>(btnX), static_cast<Gdiplus::REAL>(btnY), static_cast<Gdiplus::REAL>(btnSize), static_cast<Gdiplus::REAL>(btnSize));
+
+		bool isBtnHover = (m_hover_btn == i) || isSelected;
+		Gdiplus::SolidBrush plusBg(isBtnHover ? (isSelected ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 37, 99, 235)) : Gdiplus::Color(255, 30, 41, 59));
+		g.FillRectangle(&plusBg, btnRf);
+
+		Gdiplus::Pen plusBorder(isBtnHover ? Gdiplus::Color(255, 96, 165, 250) : Gdiplus::Color(255, 71, 85, 105), 1.0f);
+		g.DrawRectangle(&plusBorder, btnRf);
+
+		Gdiplus::SolidBrush plusTxt(isBtnHover ? (isSelected ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 255, 255, 255)) : Gdiplus::Color(255, 148, 163, 184));
+		g.DrawString(isSelected ? L"▶" : L"+", -1, &plusFont, btnRf, &sfCenter, &plusTxt);
+
+		// 名称
+		int nameX = codeX + codeW + g_data.DPI(5);
+		int nameW = max(10, btnX - nameX - g_data.DPI(4));
+		Gdiplus::RectF nameRf(static_cast<Gdiplus::REAL>(nameX), static_cast<Gdiplus::REAL>(itemRc.top), static_cast<Gdiplus::REAL>(nameW), static_cast<Gdiplus::REAL>(itemRc.Height()));
+		Gdiplus::SolidBrush nameTxt(Gdiplus::Color(255, 255, 255, 255));
+		g.DrawString(stock.name.c_str(), -1, &nameFont, nameRf, &sfNear, &nameTxt);
+	}
+
+	// 3. 绘制右侧分组选择面板
+	if (m_selected_stock_idx >= 0)
+	{
+		// 垂直分割线
+		Gdiplus::Pen vSepPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+		g.DrawLine(&vSepPen, static_cast<Gdiplus::REAL>(resW), 0.0f, static_cast<Gdiplus::REAL>(resW), static_cast<Gdiplus::REAL>(rc.Height()));
+
+		// 右侧背景
+		Gdiplus::SolidBrush menuBg(Gdiplus::Color(255, 16, 18, 24));
+		g.FillRectangle(&menuBg, static_cast<Gdiplus::REAL>(resW + 1), 1.0f, static_cast<Gdiplus::REAL>(rc.Width() - resW - 2), static_cast<Gdiplus::REAL>(rc.Height() - 2));
+
+		int curY = g_data.DPI(6);
+		// 标题
+		Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(8.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+		Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 148, 163, 184));
+		g.DrawString(L"添加到目标分组：", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(resW + g_data.DPI(10)), static_cast<Gdiplus::REAL>(curY)), &titleBrush);
+
+		curY += g_data.DPI(18);
+
+		int grpH = g_data.DPI(28);
+		int grpSepH = g_data.DPI(7);
+
+		Gdiplus::Font grpFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+		Gdiplus::Font actFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+		for (size_t j = 0; j < m_group_items.size(); ++j)
+		{
+			const auto& it = m_group_items[j];
+			if (it.isSeparator)
+			{
+				Gdiplus::Pen sepPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+				int lineY = curY + grpSepH / 2;
+				g.DrawLine(&sepPen, static_cast<Gdiplus::REAL>(resW + g_data.DPI(8)), static_cast<Gdiplus::REAL>(lineY),
+					static_cast<Gdiplus::REAL>(rc.right - g_data.DPI(8)), static_cast<Gdiplus::REAL>(lineY));
+				curY += grpSepH;
+			}
+			else
+			{
+				CRect itemRc(resW + 1, curY, rc.right - 1, curY + grpH);
+				bool isHover = (m_hover_group_idx == static_cast<int>(j));
+
+				if (isHover)
+				{
+					Gdiplus::SolidBrush hoverBrush(Gdiplus::Color(255, 30, 41, 59));
+					g.FillRectangle(&hoverBrush, static_cast<Gdiplus::REAL>(itemRc.left), static_cast<Gdiplus::REAL>(itemRc.top),
+						static_cast<Gdiplus::REAL>(itemRc.Width()), static_cast<Gdiplus::REAL>(itemRc.Height()));
+				}
+
+				if (it.isAction)
+				{
+					Gdiplus::RectF txtRf(static_cast<Gdiplus::REAL>(itemRc.left + g_data.DPI(10)), static_cast<Gdiplus::REAL>(itemRc.top),
+						static_cast<Gdiplus::REAL>(itemRc.Width() - g_data.DPI(14)), static_cast<Gdiplus::REAL>(itemRc.Height()));
+					Gdiplus::SolidBrush actionTxt(isHover ? Gdiplus::Color(255, 147, 197, 253) : Gdiplus::Color(255, 96, 165, 250));
+					g.DrawString(it.text.c_str(), -1, &actFont, txtRf, &sfNear, &actionTxt);
+				}
+				else
+				{
+					int dotSize = g_data.DPI(5);
+					int dotX = itemRc.left + g_data.DPI(10);
+					int dotY = itemRc.top + (itemRc.Height() - dotSize) / 2;
+					Gdiplus::SolidBrush dotBrush(isHover ? Gdiplus::Color(255, 96, 165, 250) : Gdiplus::Color(255, 71, 85, 105));
+					g.FillEllipse(&dotBrush, dotX, dotY, dotSize, dotSize);
+
+					int txtLeft = dotX + dotSize + g_data.DPI(6);
+					Gdiplus::RectF txtRf(static_cast<Gdiplus::REAL>(txtLeft), static_cast<Gdiplus::REAL>(itemRc.top),
+						static_cast<Gdiplus::REAL>(itemRc.right - txtLeft - g_data.DPI(4)), static_cast<Gdiplus::REAL>(itemRc.Height()));
+					Gdiplus::SolidBrush txtBrush(isHover ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 226, 232, 240));
+					g.DrawString(it.text.c_str(), -1, &grpFont, txtRf, &sfNear, &txtBrush);
+				}
+
+				curY += grpH;
+			}
+		}
+	}
+
+	dc.BitBlt(0, 0, rc.Width(), rc.Height(), &memDC, 0, 0, SRCCOPY);
+	memDC.SelectObject(pOldBmp);
+}
+
+void CSearchResultDropdown::OnMouseMove(UINT nFlags, CPoint point)
+{
+	int resW = (m_selected_stock_idx >= 0) ? GetResultsWidth() : 99999;
+	int oldHover = m_hover_item;
+	int oldBtnHover = m_hover_btn;
+	int oldGroupHover = m_hover_group_idx;
+
+	if (point.x < resW)
+	{
+		int itemH = g_data.DPI(34);
+		m_hover_item = point.y / itemH;
+		if (m_hover_item < 0 || m_hover_item >= static_cast<int>(m_results.size()) || m_hover_item >= 8)
+			m_hover_item = -1;
+
+		int btnSize = g_data.DPI(20);
+		int btnX = resW - btnSize - g_data.DPI(6);
+		if (m_hover_item >= 0 && point.x >= btnX - g_data.DPI(4) && point.x <= resW)
+			m_hover_btn = m_hover_item;
+		else
+			m_hover_btn = -1;
+
+		m_hover_group_idx = -1;
+	}
+	else
+	{
+		m_hover_item = -1;
+		m_hover_btn = -1;
+		m_hover_group_idx = -1;
+
+		int grpH = g_data.DPI(28);
+		int grpSepH = g_data.DPI(7);
+		int curY = g_data.DPI(24);
+
+		for (size_t j = 0; j < m_group_items.size(); ++j)
+		{
+			if (m_group_items[j].isSeparator)
+			{
+				curY += grpSepH;
+			}
+			else
+			{
+				if (point.y >= curY && point.y < curY + grpH)
+				{
+					m_hover_group_idx = static_cast<int>(j);
+					break;
+				}
+				curY += grpH;
+			}
+		}
+	}
+
+	if (m_hover_item != oldHover || m_hover_btn != oldBtnHover || m_hover_group_idx != oldGroupHover)
+	{
+		Invalidate();
+		TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, GetSafeHwnd(), 0 };
+		TrackMouseEvent(&tme);
+	}
+	CWnd::OnMouseMove(nFlags, point);
+}
+
+void CSearchResultDropdown::OnMouseLeave()
+{
+	m_hover_item = -1;
+	m_hover_btn = -1;
+	m_hover_group_idx = -1;
+	Invalidate();
+	CWnd::OnMouseLeave();
+}
+
+void CSearchResultDropdown::OnLButtonDown(UINT nFlags, CPoint point)
+{
+	int resW = (m_selected_stock_idx >= 0) ? GetResultsWidth() : 99999;
+
+	if (point.x < resW)
+	{
+		int itemH = g_data.DPI(34);
+		int clickedItem = point.y / itemH;
+		if (clickedItem >= 0 && clickedItem < static_cast<int>(m_results.size()) && clickedItem < 8)
+		{
+			if (m_selected_stock_idx == clickedItem)
+			{
+				m_selected_stock_idx = -1; // 再次点击折叠
+			}
+			else
+			{
+				m_selected_stock_idx = clickedItem; // 展开分组选择面板
+			}
+			UpdatePopupPosition();
+			return;
+		}
+	}
+	else if (m_selected_stock_idx >= 0 && m_selected_stock_idx < static_cast<int>(m_results.size()))
+	{
+		int grpH = g_data.DPI(28);
+		int grpSepH = g_data.DPI(7);
+		int curY = g_data.DPI(24);
+
+		for (size_t j = 0; j < m_group_items.size(); ++j)
+		{
+			if (m_group_items[j].isSeparator)
+			{
+				curY += grpSepH;
+			}
+			else
+			{
+				if (point.y >= curY && point.y < curY + grpH)
+				{
+					int selId = m_group_items[j].id;
+					auto stock = m_results[m_selected_stock_idx];
+					if (m_on_add_to_group)
+					{
+						m_on_add_to_group(stock, selId);
+					}
+					return;
+				}
+				curY += grpH;
+			}
+		}
+	}
+
+	CWnd::OnLButtonDown(nFlags, point);
+}
+
+void CSearchResultDropdown::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	CWnd::OnLButtonUp(nFlags, point);
 }
 
 // ===================== CDarkComboBox 暗色自绘下拉框 =====================
@@ -2202,7 +4619,7 @@ bool CManagerDialog::IsPrimaryBtn(UINT nID) const
 
 bool CManagerDialog::IsDestructiveBtn(UINT nID) const
 {
-	return nID == IDC_MGR_DEL_BTN;
+	return nID == IDC_MGR_DEL_BTN || nID == 1199;
 }
 
 // 与浮动窗按钮同款：直角 + 1px 细边框 + 悬停/按下反馈；主操作品牌蓝，删除操作警示红
@@ -2297,15 +4714,17 @@ void CManagerDialog::DrawControlBorder(Gdiplus::Graphics& g, UINT nID)
 		static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
 }
 
-// 在字段矩形内垂直居中放置单行编辑控件（控件高=字段高-8，水平各留 2px）
+// 在字段矩形内垂直居中放置单行编辑控件（控件高=18DPI居中，水平各留 6px 呼吸边距）
 void CManagerDialog::PlaceEditInField(UINT nID, const CRect& fieldRect)
 {
 	m_editFieldRects[nID] = fieldRect;
 	CWnd* pWnd = GetDlgItem(nID);
 	if (pWnd && pWnd->GetSafeHwnd())
 	{
-		pWnd->MoveWindow(fieldRect.left + g_data.DPI(2), fieldRect.top + g_data.DPI(4),
-			fieldRect.Width() - g_data.DPI(4), fieldRect.Height() - g_data.DPI(8));
+		int editH = g_data.DPI(18);
+		int editY = fieldRect.top + (fieldRect.Height() - editH) / 2;
+		pWnd->MoveWindow(fieldRect.left + g_data.DPI(6), editY,
+			max(10, fieldRect.Width() - g_data.DPI(12)), editH);
 	}
 }
 

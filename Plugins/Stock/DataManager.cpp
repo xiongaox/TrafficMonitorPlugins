@@ -113,6 +113,7 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	ini.GetStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices, std::vector<std::wstring>{
 		L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300"
 	});
+	m_setting_data.m_index_display_mode = ini.GetInt(L"config", L"index_display_mode", INDEX_DISP_ALL);
 	std::vector<std::wstring> ma_str_list;
 	ini.GetStringList(L"config", L"ma_days", ma_str_list, std::vector<std::wstring>{ L"5", L"17", L"60" });
 	m_setting_data.m_ma_days.clear();
@@ -125,7 +126,26 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	if (m_setting_data.m_ma_days.empty())
 		m_setting_data.m_ma_days = { 5, 17, 60 };
 
+	m_setting_data.m_custom_groups.clear();
+	int custom_group_count = ini.GetInt(L"config", L"custom_group_count", 0);
+	for (int i = 0; i < custom_group_count; ++i)
+	{
+		std::wstring prefix = L"custom_group_" + std::to_wstring(i);
+		std::wstring gname = ini.GetString(L"config", (prefix + L"_name").c_str(), (L"分组" + std::to_wstring(i + 1)).c_str());
+		std::vector<std::wstring> gcodes;
+		ini.GetStringList(L"config", (prefix + L"_codes").c_str(), gcodes, std::vector<std::wstring>{});
+		m_setting_data.m_custom_groups.push_back({ gname, gcodes });
+	}
+
 	ini.GetStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes, std::vector<std::wstring>{});
+	if (m_setting_data.m_custom_groups.empty() && !m_setting_data.m_custom_group_codes.empty())
+	{
+		m_setting_data.m_custom_groups.push_back({ L"自定义", m_setting_data.m_custom_group_codes });
+	}
+	if (!m_setting_data.m_custom_groups.empty())
+	{
+		m_setting_data.m_custom_group_codes = m_setting_data.m_custom_groups[0].codes;
+	}
 
 	// WebDAV 云端备份配置
 	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
@@ -466,10 +486,22 @@ void CDataManager::SaveConfig()
 		ini.WriteBool(L"config", L"use_socks5_proxy", m_setting_data.m_use_socks5_proxy);
 		ini.WriteString(L"config", L"socks5_proxy", m_setting_data.m_socks5_proxy);
 		ini.WriteStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices);
+		ini.WriteInt(L"config", L"index_display_mode", m_setting_data.m_index_display_mode);
 		std::vector<std::wstring> ma_str_list;
 		for (int ma : m_setting_data.m_ma_days)
 			ma_str_list.push_back(std::to_wstring(ma));
 		ini.WriteStringList(L"config", L"ma_days", ma_str_list);
+		ini.WriteInt(L"config", L"custom_group_count", static_cast<int>(m_setting_data.m_custom_groups.size()));
+		for (size_t i = 0; i < m_setting_data.m_custom_groups.size(); ++i)
+		{
+			std::wstring prefix = L"custom_group_" + std::to_wstring(i);
+			ini.WriteString(L"config", (prefix + L"_name").c_str(), m_setting_data.m_custom_groups[i].name);
+			ini.WriteStringList(L"config", (prefix + L"_codes").c_str(), m_setting_data.m_custom_groups[i].codes);
+		}
+		if (!m_setting_data.m_custom_groups.empty())
+			m_setting_data.m_custom_group_codes = m_setting_data.m_custom_groups[0].codes;
+		else
+			m_setting_data.m_custom_group_codes.clear();
 		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
 
 		// 保存 WebDAV 云端备份配置
@@ -1084,6 +1116,9 @@ void CDataManager::SetShowInStatusBar(const std::wstring& code, bool show)
 
 std::vector<std::wstring> CDataManager::GetStatusBarStockCodes()
 {
+	if (!m_setting_data.m_selected_indices.empty())
+		return m_setting_data.m_selected_indices;
+
 	std::vector<std::wstring> result;
 	// 按照股票列表中的先后顺序遍历，保持状态栏显示顺序与配置一致
 	for (const auto& code : m_setting_data.m_stock_codes)
@@ -1594,4 +1629,73 @@ bool CDataManager::CalculateChipDistributionForKLines(const std::wstring& code, 
 		}
 	}
 	return calcOk && outChip.IsValid();
+}
+
+void CDataManager::AddCustomGroup(const std::wstring& name)
+{
+	std::wstring finalName = name.empty() ? (L"分组" + std::to_wstring(m_setting_data.m_custom_groups.size() + 1)) : name;
+	m_setting_data.m_custom_groups.push_back({ finalName, {} });
+	SaveConfig();
+}
+
+void CDataManager::DeleteCustomGroup(size_t index)
+{
+	if (index < m_setting_data.m_custom_groups.size())
+	{
+		m_setting_data.m_custom_groups.erase(m_setting_data.m_custom_groups.begin() + index);
+		SaveConfig();
+	}
+}
+
+void CDataManager::RenameCustomGroup(size_t index, const std::wstring& newName)
+{
+	if (index < m_setting_data.m_custom_groups.size() && !newName.empty())
+	{
+		m_setting_data.m_custom_groups[index].name = newName;
+		SaveConfig();
+	}
+}
+
+bool CDataManager::AddStockToGroup(int groupIndex, const std::wstring& code)
+{
+	if (code.empty()) return false;
+	if (groupIndex == 0) // 自选股
+	{
+		auto& codes = m_setting_data.m_stock_codes;
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+		{
+			codes.push_back(code);
+			SaveConfig();
+			return true;
+		}
+	}
+	else if (groupIndex == 1) // 持仓
+	{
+		auto& codes = m_setting_data.m_stock_codes;
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+		{
+			codes.push_back(code);
+		}
+		if (GetCostPrice(code) <= 0 && GetHoldingCount(code) <= 0)
+		{
+			SetPosition(code, 0.0, 0.0, L"");
+		}
+		SaveConfig();
+		return true;
+	}
+	else if (groupIndex >= 2) // 自定义分组
+	{
+		size_t customIdx = static_cast<size_t>(groupIndex - 2);
+		if (customIdx < m_setting_data.m_custom_groups.size())
+		{
+			auto& codes = m_setting_data.m_custom_groups[customIdx].codes;
+			if (std::find(codes.begin(), codes.end(), code) == codes.end())
+			{
+				codes.push_back(code);
+				SaveConfig();
+				return true;
+			}
+		}
+	}
+	return false;
 }
