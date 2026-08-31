@@ -2349,32 +2349,46 @@ void CManagerDialog::UpdateControlsLayout()
 		int btnH = g_data.DPI(26);
 		int btnGap = g_data.DPI(8);
 
-		m_mgr_add_btn.ShowWindow(SW_SHOW);
-		m_mgr_del_btn.ShowWindow(SW_SHOW);
-		m_mgr_add_btn.MoveWindow(rightLeft, btnTop, btnW, btnH);
-		m_mgr_add_btn.SetWindowText(m_current_group_tab == 1 ? L"编辑持仓" : L"添加股票");
+		// 所有分组都不显示「添加股票」；持仓保留「编辑持仓」，并同样支持上下移动。
+		bool isPositionTab = (m_current_group_tab == 1);
+		bool showPositionEdit = isPositionTab;
+		bool showItemEdit = !isPositionTab;
+		bool showOrderBtns = true;
+		int nextBtnX = rightLeft;
 
-		m_mgr_del_btn.MoveWindow(rightLeft + btnW + btnGap, btnTop, btnW, btnH);
-		m_mgr_del_btn.SetWindowText(m_current_group_tab == 1 ? L"清除持仓" : L"删除股票");
-
-		bool showOrderBtns = (m_current_group_tab != 1);
-		m_mgr_edit_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
-		m_mgr_up_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
-		m_mgr_down_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
-
-		if (showOrderBtns)
+		m_mgr_add_btn.ShowWindow(showPositionEdit ? SW_SHOW : SW_HIDE);
+		if (showPositionEdit)
 		{
-			m_mgr_edit_btn.MoveWindow(rightLeft + (btnW + btnGap) * 2, btnTop, btnW, btnH);
-			m_mgr_up_btn.MoveWindow(rightLeft + (btnW + btnGap) * 3, btnTop, btnW, btnH);
-			m_mgr_down_btn.MoveWindow(rightLeft + (btnW + btnGap) * 4, btnTop, btnW, btnH);
+			m_mgr_add_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
+			m_mgr_add_btn.SetWindowText(L"编辑持仓");
+			nextBtnX += btnW + btnGap;
 		}
+
+		m_mgr_del_btn.ShowWindow(SW_SHOW);
+		m_mgr_del_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
+		m_mgr_del_btn.SetWindowText(isPositionTab ? L"清除持仓" : L"删除股票");
+		nextBtnX += btnW + btnGap;
+
+		m_mgr_edit_btn.ShowWindow(showItemEdit ? SW_SHOW : SW_HIDE);
+		if (showItemEdit)
+		{
+			m_mgr_edit_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
+			nextBtnX += btnW + btnGap;
+		}
+
+		m_mgr_up_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
+		m_mgr_up_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
+		nextBtnX += btnW + btnGap;
+		m_mgr_down_btn.ShowWindow(showOrderBtns ? SW_SHOW : SW_HIDE);
+		m_mgr_down_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
+		nextBtnX += btnW + btnGap;
 
 		if (m_mgr_del_group_btn.GetSafeHwnd())
 		{
 			if (m_current_group_tab >= 2)
 			{
 				m_mgr_del_group_btn.ShowWindow(SW_SHOW);
-				m_mgr_del_group_btn.MoveWindow(rightLeft + (btnW + btnGap) * 5, btnTop, btnW, btnH);
+				m_mgr_del_group_btn.MoveWindow(nextBtnX, btnTop, btnW, btnH);
 			}
 			else
 			{

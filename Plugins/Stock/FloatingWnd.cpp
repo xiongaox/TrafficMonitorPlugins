@@ -210,8 +210,8 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_btnIndicatorRSI.ShowWindow(SW_HIDE);
 	m_btnIndicatorWR.ShowWindow(SW_HIDE);
 
-	// 初始分时模式下，基金默认显示净值曲线
-	m_showJZCurve = CCommon::IsFundCode(m_stock_id);
+	// 主页默认显示日K，并应用日K对应的指标和显示设置。
+	SetDayKLineModeDefaults();
 
 	UpdateModeButtons();
 	UpdatePeriodComboVisibility();
@@ -234,7 +234,7 @@ LRESULT CFloatingWnd::OnUpdateStatus(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-CFloatingWnd::CFloatingWnd() : m_isDestroying(FALSE), m_klineDataLoaded(false), m_viewMode(UI_VIEW_TIMELINE)
+CFloatingWnd::CFloatingWnd() : m_isDestroying(FALSE), m_klineDataLoaded(false), m_viewMode(UI_VIEW_DAY_KLINE)
 {
 }
 
@@ -403,9 +403,11 @@ void CFloatingWnd::OnPaint()
 	const int singleBarHeight = g_data.RDPI(20);  // 单行状态栏高度
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（单行4个）
+	const bool showPositionSummary = CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1;
+	const int positionSummaryHeight = showPositionSummary ? singleBarHeight : 0;
 
 	// 统一现代双层布局：标题栏 + 主走势图(约62%) + 单一副图(约38%) + 时间标签 + 底部系统状态栏
-	int chartArea = h - headerHeight - relatedBarHeight - xAxisLabelHeight - indexBarHeight;
+	int chartArea = h - headerHeight - relatedBarHeight - positionSummaryHeight - xAxisLabelHeight - indexBarHeight;
 	int priceChartHeight, subChartHeight;
 	if (m_expandedMode)
 	{
@@ -421,7 +423,7 @@ void CFloatingWnd::OnPaint()
 	int kdjChartHeight = subChartHeight;
 	int volumeChartHeight = subChartHeight;
 
-	const int priceChartTop = headerHeight + relatedBarHeight;
+	const int priceChartTop = headerHeight + relatedBarHeight + positionSummaryHeight;
 
 	STOCK::StockInfo realtimeData;
 	STOCK::ChipDistribution chipData;
@@ -520,6 +522,75 @@ void CFloatingWnd::OnPaint()
 			m_groupTabs = CStockListPanel::LayoutGroupTabs(memDC, w, headerHeight, activeGroupTab);
 			CStockListPanel::DrawGroupTabs(memDC, m_groupTabs, m_hoverGroupTab);
 			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab);
+		}
+
+		// 持仓分组汇总行：位于主图标题栏下方，仅占图表区域，不覆盖左侧列表和右侧盘口。
+		if (showPositionSummary)
+		{
+			double totalMarketValue = 0.0;
+			double floatingProfitLoss = 0.0;
+			double todayProfitLoss = 0.0;
+			std::vector<std::wstring> positionCodes = CStockListPanel::GetStockListCodes(1);
+			{
+				std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+				for (const auto& code : positionCodes)
+				{
+					auto stockData = g_data.GetStockData(code);
+					if (!stockData)
+						continue;
+					double holdingCount = g_data.GetHoldingCount(code);
+					double costPrice = g_data.GetCostPrice(code);
+					double currentPrice = stockData->info.currentPrice > 0 ? stockData->info.currentPrice : stockData->info.prevClosePrice;
+					if (holdingCount <= 0 || currentPrice <= 0)
+						continue;
+					totalMarketValue += currentPrice * holdingCount;
+					if (costPrice > 0)
+						floatingProfitLoss += (currentPrice - costPrice) * holdingCount;
+					if (stockData->info.prevClosePrice > 0)
+						todayProfitLoss += (currentPrice - stockData->info.prevClosePrice) * holdingCount;
+				}
+			}
+
+			// 总市值显示完整数值，不使用 FormatAmount 的“万/亿”缩写。
+			CString marketText = CCommon::FormatNumber(totalMarketValue, 2);
+			CString floatingText = CCommon::FormatAmount(std::abs(floatingProfitLoss));
+			CString todayText = CCommon::FormatAmount(std::abs(todayProfitLoss));
+			if (floatingProfitLoss > 0.0001) floatingText = _T("+") + floatingText;
+			else if (floatingProfitLoss < -0.0001) floatingText = _T("-") + floatingText;
+			else floatingText = _T("0.00");
+			if (todayProfitLoss > 0.0001) todayText = _T("+") + todayText;
+			else if (todayProfitLoss < -0.0001) todayText = _T("-") + todayText;
+			else todayText = _T("0.00");
+
+			const int summaryX = stockListWidth;
+			const int summaryW = chartWidth - stockListWidth;
+			const int summaryY = headerHeight + relatedBarHeight;
+			memDC.FillSolidRect(summaryX, summaryY, summaryW, positionSummaryHeight, COLOR_BG_HEADER);
+			memDC.FillSolidRect(summaryX, summaryY, summaryW, 1, COLOR_DARK_GRAY_BORDER);
+			int textH = memDC.GetTextExtent(_T("Ay")).cy;
+			int textY = summaryY + max(0, (positionSummaryHeight - textH) / 2);
+			const int columnWidth = summaryW / 3;
+			const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: ") };
+			const CString values[] = { marketText, floatingText, todayText };
+			const COLORREF valueColors[] = {
+				COLOR_TEXT_PRIMARY,
+				floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
+				todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
+			};
+			memDC.SetBkMode(TRANSPARENT);
+			for (int i = 0; i < 3; ++i)
+			{
+				const int columnX = summaryX + i * columnWidth;
+				const int currentColumnWidth = i == 2 ? summaryW - i * columnWidth : columnWidth;
+				const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
+				int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
+
+				memDC.SetTextColor(COLOR_TEXT_MUTED);
+				memDC.TextOut(drawX, textY, labels[i]);
+				drawX += memDC.GetTextExtent(labels[i]).cx;
+				memDC.SetTextColor(valueColors[i]);
+				memDC.TextOut(drawX, textY, values[i]);
+			}
 		}
 
 		// 集合竞价模式绘制（主图+副图各占一半）
@@ -726,7 +797,8 @@ void CFloatingWnd::OnPaint()
 
 			TimelineDrawContext ctx;
 			ctx.chartLeft = stockListWidth + yAxisWidth;         // 左侧股票列表+Y轴留白
-			ctx.chartWidth = chartWidth - stockListWidth - yAxisWidth;  // 图表宽度（不含股票列表和Y轴区域）
+			const int timelinePercentAxisWidth = m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0;
+			ctx.chartWidth = chartWidth - stockListWidth - yAxisWidth - timelinePercentAxisWidth;  // 图表宽度（不含左右价格轴）
 			ctx.windowWidth = w;
 			ctx.chartHeight = h;
 			// 每个图表顶部预留16像素标题栏，绘图区域下移并减小高度
@@ -743,6 +815,9 @@ void CFloatingWnd::OnPaint()
 			ctx.macdChartHeight = macdChartHeight - titleH;
 			// 时间标签位置：KDJ图下方
 			ctx.positionY = origKdjTop + kdjChartHeight + g_data.RDPI(2);
+			ctx.showTimelinePercentAxis = timelinePercentAxisWidth > 0;
+			ctx.timelinePercentAxisWidth = timelinePercentAxisWidth;
+			ctx.baseFont = m_pfont ? reinterpret_cast<HFONT>(m_pfont->GetSafeHandle()) : nullptr;
 			ctx.realtimeData = realtimeData;
 			ctx.timelinePoint = &subTimeline;
 			ctx.fullTimeline = &timelinePoint;  // 完整分时数据，供布林带等指标回溯
@@ -916,6 +991,11 @@ void CFloatingWnd::OnPaint()
 			if (subChartHeight > 0 && !m_expandedMode)
 			{
 				int subChartTop = origPriceTop + priceChartHeight;
+				// 右侧百分比轴只属于价格图，成交量/指标图继续使用完整宽度。
+				TimelineDrawContext indicatorCtx = ctx;
+				indicatorCtx.chartWidth += timelinePercentAxisWidth;
+				indicatorCtx.showTimelinePercentAxis = false;
+				indicatorCtx.timelinePercentAxisWidth = 0;
 				auto indicatorType = static_cast<CIndicatorChart::TimelineIndicator>(m_timelineIndicator);
 				CIndicatorChart::HoverState subHover;
 				subHover.isHoveringVolume = m_isHoveringVolume;
@@ -929,11 +1009,11 @@ void CFloatingWnd::OnPaint()
 
 				if (indicatorType == CIndicatorChart::TimelineIndicator::MACD)
 				{
-					m_indicatorChart.DrawMacdChartArea(memDC, ctx, subChartTop, subChartHeight, m_timelineMacdTitleTip, subHover);
+					m_indicatorChart.DrawMacdChartArea(memDC, indicatorCtx, subChartTop, subChartHeight, m_timelineMacdTitleTip, subHover);
 				}
 				else
 				{
-					m_indicatorChart.DrawIndicatorChartArea(memDC, ctx, subChartTop, subChartHeight, true, indicatorType, subHover);
+					m_indicatorChart.DrawIndicatorChartArea(memDC, indicatorCtx, subChartTop, subChartHeight, true, indicatorType, subHover);
 				}
 			}
 			m_timelineChart.DrawTimelineHoverOverlay(memDC, ctx, tlHover);
@@ -1349,8 +1429,9 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int yAxisWidth = g_data.RDPI(50);
 		const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 		const int chartLeft = stockListWidth + yAxisWidth;
+		const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 
-		if (point.x >= chartLeft && point.x < chartWidth && point.y >= headerHeight + relatedBarHeight)
+		if (point.x >= chartLeft && point.x < chartRight && point.y >= headerHeight + relatedBarHeight)
 		{
 			std::vector<STOCK::TimelinePoint> timelinePoint;
 			{
@@ -1406,7 +1487,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				int startIndex = max(0, min(m_timelineScrollOffset, maxOffset));
 
 				int adjX = point.x - chartLeft;
-				int effectiveWidth = chartWidth - chartLeft;
+				int effectiveWidth = chartRight - chartLeft;
 				int relIndex = static_cast<int>(adjX * static_cast<float>(visibleCount) / effectiveWidth);
 				relIndex = max(0, min(relIndex, visibleCount - 1));
 				int countX = startIndex + relIndex;
@@ -1648,7 +1729,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			CRect clientRect;
 			GetClientRect(&clientRect);
 			int yAxisW = g_data.RDPI(50);
-			int effectiveWidth = clientRect.Width() - yAxisW;
+			int effectiveWidth = clientRect.Width() - yAxisW - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 			int pointsDelta = static_cast<int>(dx * static_cast<float>(visibleCount) / effectiveWidth);
 			int newOffset = m_timelineDragStartOffset - pointsDelta;
 			newOffset = max(0, min(newOffset, maxOffset));
@@ -1687,6 +1768,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	const int yAxisWidth = g_data.RDPI(50);
 	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
 	const int chartLeft = stockListWidth + yAxisWidth;
+	const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 	const int headerHeight = g_data.RDPI(26);
 	const int xAxisLabelHeight = g_data.RDPI(20);
 	const int singleBarHeight = g_data.RDPI(20);
@@ -1726,7 +1808,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			}
 		}
 
-		if (!klineData.empty() && point.x >= chartLeft && point.x < chartWidth)
+		if (!klineData.empty() && point.x >= chartLeft && point.x < chartRight)
 		{
 			// 使用与绘制完全一致的参数计算（x从chartLeft开始，宽度为chartWidth-chartLeft）
 			const int paddingY = g_data.RDPI(10);
@@ -1882,7 +1964,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			}
 		}
 
-		if (!timelinePoint.empty() && point.x >= chartLeft && point.x < chartWidth)
+		if (!timelinePoint.empty() && point.x >= chartLeft && point.x < chartRight)
 		{
 			// 计算可见范围（与OnPaint一致）
 			int totalPoints = static_cast<int>(timelinePoint.size());
@@ -1901,7 +1983,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 
 			// 鼠标坐标减去图表左边界，对应到分时图内部坐标
 			int adjX = point.x - chartLeft;
-			int effectiveWidth = chartWidth - chartLeft;
+			int effectiveWidth = chartRight - chartLeft;
 			// 按索引比例计算鼠标对应的可见数据索引
 			// 分时模式X轴基于m_timelineVisibleCount固定格数，K线模式基于实际数据点数
 			int xSlotCount = (m_viewMode >= UI_VIEW_DAY_KLINE) ? visibleCount : m_timelineVisibleCount;
@@ -2174,6 +2256,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = clientRect.Width() - orderBookWidth;
+	const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 
 	// 1. 如果在非总览模式且左侧股票列表显示时，鼠标在左侧面板区域（包括左侧列表与Y轴左边缘），则滚动股票列表
 	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList &&
@@ -2207,7 +2290,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 	}
 
 	// 2. 只有当鼠标位于中间图表区域时，才触发分时图/K线缩放
-	bool isInChart = (clientPt.x >= chartLeft && clientPt.x < chartWidth &&
+	bool isInChart = (clientPt.x >= chartLeft && clientPt.x < chartRight &&
 		clientPt.y >= headerHeight + relatedBarHeight &&
 		clientPt.y < clientRect.Height() - indexBarHeight);
 
@@ -2283,7 +2366,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		if (newCount != m_timelineVisibleCount)
 		{
 			int adjX = clientPt.x - chartLeft;
-			int effectiveWidth = chartWidth - chartLeft;
+			int effectiveWidth = chartRight - chartLeft;
 
 			// 鼠标在可见区域中的比例位置
 			float ratio = 0.5f;

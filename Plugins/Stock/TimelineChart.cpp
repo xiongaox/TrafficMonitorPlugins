@@ -162,6 +162,12 @@ void CTimelineChart::DrawTimelineGridLines(CDC& memDC, const TimelineDrawContext
 
 void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawContext& ctx)
 {
+	// 分时价格/百分比刻度直接复用盘口报价的 HFONT，确保字号完全一致。
+	CFont* oldFont = memDC.GetCurrentFont();
+	CFont* orderBookFont = ctx.baseFont ? CFont::FromHandle(ctx.baseFont) : nullptr;
+	if (orderBookFont)
+		memDC.SelectObject(orderBookFont);
+
 	if (ctx.maxPrice > 0 && ctx.minPrice >= 0 && ctx.maxPrice > ctx.minPrice && ctx.niceStep > 0)
 	{
 		int oldBkMode = memDC.SetBkMode(TRANSPARENT);
@@ -177,13 +183,28 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 			CSize sz = memDC.GetTextExtent(priceTxt);
 			int labelX = -sz.cx - g_data.RDPI(4);
 			int labelY = y - sz.cy / 2;
+			COLORREF labelColor = COLOR_WHITE;
 			if (ctx.realtimeData.prevClosePrice > 0 && labelPrice > ctx.realtimeData.prevClosePrice + ctx.niceStep * 0.01)
-				memDC.SetTextColor(COLOR_RED_UP);
+				labelColor = COLOR_RED_UP;
 			else if (ctx.realtimeData.prevClosePrice > 0 && labelPrice < ctx.realtimeData.prevClosePrice - ctx.niceStep * 0.01)
-				memDC.SetTextColor(COLOR_GREEN_DOWN);
-			else
-				memDC.SetTextColor(COLOR_WHITE);
+				labelColor = COLOR_GREEN_DOWN;
+			memDC.SetTextColor(labelColor);
 			memDC.TextOut(labelX, labelY, priceTxt);
+
+			if (ctx.showTimelinePercentAxis && ctx.realtimeData.prevClosePrice > 0)
+			{
+				double changePercent = (labelPrice - ctx.realtimeData.prevClosePrice) / ctx.realtimeData.prevClosePrice * 100.0;
+				CString percentTxt;
+				if (changePercent > 0.0001)
+					percentTxt.Format(_T("+%.2f%%"), changePercent);
+				else if (changePercent < -0.0001)
+					percentTxt.Format(_T("%.2f%%"), changePercent);
+				else
+					percentTxt = _T("0.00%");
+				CSize percentSize = memDC.GetTextExtent(percentTxt);
+				int percentX = ctx.chartWidth + ctx.timelinePercentAxisWidth - percentSize.cx - g_data.RDPI(4);
+				memDC.TextOut(percentX, labelY, percentTxt);
+			}
 		}
 
 		if (ctx.realtimeData.prevClosePrice > 0
@@ -197,6 +218,8 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 			memDC.TextOut(-prevSize.cx - g_data.RDPI(4), labelY, prevTxt);
 		}
 		memDC.SetBkMode(oldBkMode);
+		if (oldFont)
+			memDC.SelectObject(oldFont);
 		return;
 	}
 
@@ -225,6 +248,8 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 	memDC.TextOut(-midSize.cx - g_data.RDPI(4), midY, middleTxt);
 
 	memDC.SetBkMode(oldBkMode);
+	if (oldFont)
+		memDC.SelectObject(oldFont);
 }
 
 void CTimelineChart::DrawTimelineCostAndProfitLines(CDC& memDC, const TimelineDrawContext& ctx, const HoverState& hover)

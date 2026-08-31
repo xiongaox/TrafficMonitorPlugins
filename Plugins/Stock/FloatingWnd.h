@@ -135,7 +135,7 @@ private:
 	CButton m_btnOrderBook;      // 盘口按钮（与筹码峰按钮切换）
 	CFont m_chipPeakFont;        // 筹码峰按钮小字体
 	std::wstring m_stock_id;
-	UIViewMode m_viewMode{ UI_VIEW_TIMELINE };  // 当前界面视图模式
+	UIViewMode m_viewMode{ UI_VIEW_DAY_KLINE };  // 当前界面视图模式
 	bool m_klineDataLoaded{ false };
 	int m_klinePeriodDays{ 250 };
 	int m_scrollOffset{ 0 };
@@ -195,7 +195,7 @@ private:
 	bool m_showChipPeak{ false };
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
-	int m_activeGroupTab{ 0 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
+	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
 	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
 	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）
 	bool m_trackingTabHover{ false };  // 是否已申请 WM_MOUSELEAVE 跟踪
