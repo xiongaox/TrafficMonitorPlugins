@@ -407,19 +407,19 @@ UINT CStockFetchThread::ThreadProc(LPVOID pParam)
 void CStockFetchThread::Run()
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	// 初始化时获取一次全量数据
-	FetchAllData();
+	// 启动时不再阻塞图表线程做全量预加载：拆成"每代码一个后台任务"入队，
+	// 让 SetFocusStockId 投递的关注股票K线任务与图表定时任务能立即插队执行。
+	QueuePreloadTasks();
 
 	while (true)
 	{
-		// 1. 先检查是否有投递的即时任务（日K线/集合竞价/后台任务）
+		// 1. 先检查是否有高优先级即时任务（关注股票日K线/集合竞价）
 		Task task;
 		bool isCallAuctionTask = false;
-		bool isBackgroundTask = false;
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
 
-			// 优先级：常规任务 > 集合竞价 > 后台任务 > 图表定时任务（实时行情在独立线程）
+			// 优先级：常规任务 > 集合竞价 > 图表定时任务 > 后台预加载（实时行情在独立线程）
 			if (m_has_task)
 			{
 				task = std::move(m_task);
@@ -434,12 +434,6 @@ void CStockFetchThread::Run()
 				m_has_callAuction_task = false;
 				m_callAuction_busy = true;
 				isCallAuctionTask = true;
-			}
-			else if (!m_background_tasks.empty())
-			{
-				task = std::move(m_background_tasks.front());
-				m_background_tasks.pop_front();
-				isBackgroundTask = true;
 			}
 		}
 
@@ -461,7 +455,7 @@ void CStockFetchThread::Run()
 			}
 			if (isCallAuctionTask)
 				m_callAuction_busy = false;
-			else if (!isBackgroundTask)
+			else
 				m_busy = false;
 			// UI刷新由1秒定时器检查dirty标识驱动，此处仅更新数据
 			continue;
@@ -556,6 +550,40 @@ void CStockFetchThread::Run()
 			continue;  // 执行完一个图表任务后立即检查下一个
 		}
 
+		// 3. 后台预加载任务（日K/筹码/流通股本预加载）。优先级最低：只有常规任务、
+		//    图表定时任务都空闲时才执行，且每处理一个股票任务就回到循环顶部让新投递的
+		//    关注股票K线任务/图表任务可随时插队，避免全量预加载卡住内容加载。
+		{
+			Task bgTask;
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				if (m_stopping.load())
+					return;
+				if (!m_background_tasks.empty())
+				{
+					bgTask = std::move(m_background_tasks.front());
+					m_background_tasks.pop_front();
+				}
+			}
+			if (bgTask)
+			{
+				if (m_stopping.load())
+					return;
+				try
+				{
+					bgTask();
+				}
+				catch (CInternetException* e)
+				{
+					e->Delete();
+				}
+				catch (...)
+				{
+				}
+				continue;
+			}
+		}
+
 		// 2.5 其余基金净值（IOPV）定时获取：轮询每个基金，保证非关注基金也持续更新
 		// 关注基金由上面的 CHART_IOPV 高频获取，这里只负责剩余基金
 		if (CCommon::IsMarketSession())
@@ -591,7 +619,7 @@ void CStockFetchThread::Run()
 			}
 		}
 
-		// 3. 没有即时任务也没有到时的图表任务，计算等待时间
+		// 4. 没有即时/图表/后台任务可执行，计算等待时间
 		{
 			std::unique_lock<std::mutex> lock(m_mutex);
 			if (m_stopping.load())
@@ -915,37 +943,44 @@ void CStockFetchThread::FetchChipDistribution(const std::wstring& code)
 		g_data.ApplyChipDistribution(code, klines, circulatingAShares);
 }
 
-void CStockFetchThread::FetchAllData()
+void CStockFetchThread::QueuePreloadTasks()
 {
-	// 初始化时获取一次实时行情和集合竞价数据
-	FetchRealtimeByHttp(false);
-	FetchCallAuction();
-
-	// 预加载所有股票的日K线、基础数据和筹码分布
-	for (const auto& code : g_data.GetAllKnownStockCodes())
+	// 预加载覆盖：自选 ∪ 持仓 ∪ 自定义分组 ∪ 状态栏注册代码（去重）
+	std::vector<std::wstring> codes = g_data.GetAllKnownStockCodes();
+	for (const auto& code : g_data.GetRegisteredStockCodes())
 	{
-		if (m_stopping.load())
-			return;
-		if (!g_data.HasKLineCache(code, STOCK::Period::DAY))
-			FetchDayKLine(code, 750);
-		if (!g_data.HasKLineCache(code, STOCK::Period::WEEK))
-			FetchWeekKLine(code, 750);
-		if (!g_data.HasKLineCache(code, STOCK::Period::MONTH))
-			FetchMonthKLine(code, 750);
-		if (!g_data.HasKLineCache(code, STOCK::Period::MIN5))
-			FetchMin5KLine(code, 250);
-		if (!g_data.HasKLineCache(code, STOCK::Period::MIN30))
-			FetchMin30KLine(code, 250);
-		if (CCommon::IsFundCode(code) )
-			FetchFundIOPV(code);
-		FetchStockBasic(code);
-		FetchChipDistribution(code);
+		if (std::find(codes.begin(), codes.end(), code) == codes.end())
+			codes.push_back(code);
 	}
+	if (codes.empty())
+		return;
 
-	// 获取关注股票的图表数据
-	std::wstring focusId = GetFocusStockId();
-	if (!focusId.empty())
+	// 拆成"每个代码一个后台任务"入队。后台任务优先级最低，
+	// 打开悬浮窗时 SetFocusStockId 投递的关注股票K线任务可在其间随时插队执行。
+	for (const auto& code : codes)
 	{
-		FetchTimeline(focusId);		
+		PostBackgroundTask([this, code]() {
+			PreloadOneStock(code);
+		});
 	}
+}
+
+void CStockFetchThread::PreloadOneStock(const std::wstring& code)
+{
+	if (m_stopping.load())
+		return;
+	if (!g_data.HasKLineCache(code, STOCK::Period::DAY))
+		FetchDayKLine(code, 750);
+	if (!g_data.HasKLineCache(code, STOCK::Period::WEEK))
+		FetchWeekKLine(code, 750);
+	if (!g_data.HasKLineCache(code, STOCK::Period::MONTH))
+		FetchMonthKLine(code, 750);
+	if (!g_data.HasKLineCache(code, STOCK::Period::MIN5))
+		FetchMin5KLine(code, 250);
+	if (!g_data.HasKLineCache(code, STOCK::Period::MIN30))
+		FetchMin30KLine(code, 250);
+	if (CCommon::IsFundCode(code))
+		FetchFundIOPV(code);
+	FetchStockBasic(code);
+	FetchChipDistribution(code);
 }

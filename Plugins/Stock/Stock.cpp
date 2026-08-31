@@ -207,10 +207,8 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 		}
 		// 启动专用数据获取线程（与 UI 交互分离）
 		CStockFetchThread::Instance().Start();
-		// 程序启动后异步预加载所有股票的日K数据、筹码峰数据和基础行情数据
-		m_instance.PreloadAllKLineData();
-		m_instance.PreloadAllChipDistributionData();
-		m_instance.PreloadAllStockBasicData();
+		// 全量预加载（日K/筹码/流通股本）已由 StockFetchThread::QueuePreloadTasks
+		// 拆成后台任务在图表线程空闲时执行，避免占用启动流程、阻塞内容加载。
 		// 启动时获取一次集合竞价数据（非竞价时段也获取，用于展示最新竞价结果）
 		m_instance.m_last_call_auction_time = 0;
 		CStockFetchThread::Instance().PostCallAuctionTask([]() {
