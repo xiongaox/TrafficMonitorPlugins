@@ -164,7 +164,7 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 {
 	// 分时价格/百分比刻度直接复用盘口报价的 HFONT，确保字号完全一致。
 	CFont* oldFont = memDC.GetCurrentFont();
-	CFont* orderBookFont = ctx.baseFont ? CFont::FromHandle(ctx.baseFont) : nullptr;
+	CFont* orderBookFont = ctx.baseFont;
 	if (orderBookFont)
 		memDC.SelectObject(orderBookFont);
 

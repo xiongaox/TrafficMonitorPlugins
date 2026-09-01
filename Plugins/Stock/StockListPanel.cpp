@@ -110,6 +110,16 @@ std::vector<FloatingGroupTab> CStockListPanel::LayoutGroupTabs(CDC& memDC, int w
 	return tabs;
 }
 
+int CStockListPanel::GetRowHeight()
+{
+	return g_data.RDPI(48);
+}
+
+int CStockListPanel::GetPanelWidth()
+{
+	return g_data.RDPI(114);
+}
+
 void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx)
 {
 	CFont font;
@@ -192,10 +202,14 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 		return;
 	}
 
-	// 每行高度固定36像素
-	const int rowHeight = g_data.RDPI(36);
+	const int rowHeight = GetRowHeight();
 	const int nameHeight = g_data.RDPI(14);
-	const int codeHeight = g_data.RDPI(11);
+	const int codeHeight = g_data.RDPI(12);
+	const int lineGap = g_data.RDPI(4);
+	const int cardPadX = g_data.RDPI(3);
+	const int cardPadY = g_data.RDPI(4);
+	const int innerPadX = g_data.RDPI(6);
+	const int innerPadY = g_data.RDPI(5);
 
 	int listTop = y + titleH;
 	int listAreaH = h - titleH;
@@ -229,7 +243,8 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 			continue;
 
 		// 获取股票名称与行情
-		std::wstring stockName = code;  // 默认使用代码作为名称
+		std::wstring stockName = CCommon::GetPureCode(code);
+		std::wstring displayCode = CCommon::GetPureCode(code);
 		double diffPercent = 0.0;
 		bool hasRealtime = false;
 		auto stockData = g_data.GetStockData(code);
@@ -244,34 +259,31 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 			}
 		}
 
-		// 高亮当前股票卡片
+		CRect cardRect(
+			x + cardPadX,
+			currentY + cardPadY,
+			x + w - cardPadX,
+			currentY + rowHeight - cardPadY);
+
 		bool isCurrent = (code == currentStockId);
+		memDC.FillSolidRect(&cardRect, isCurrent ? COLOR_CARD_SELECTED : COLOR_BG_CARD);
 		if (isCurrent)
-		{
-			// 选中项暗黑高亮背景
-			memDC.FillSolidRect(x + 1, currentY, w - 2, rowHeight, COLOR_CARD_SELECTED);
-			// 左侧 3px 品牌蓝聚焦指示条
-			memDC.FillSolidRect(x + 1, currentY, g_data.RDPI(3), rowHeight, COLOR_ACCENT_BLUE);
-		}
+			memDC.FillSolidRect(cardRect.left, cardRect.top, g_data.RDPI(3), cardRect.Height(), COLOR_ACCENT_BLUE);
 
-		// 文字垂直居中：内容总高度 = nameHeight + codeHeight
-		int contentH = nameHeight + codeHeight;
-		int textOffsetY = (rowHeight - contentH) / 2;
+		int textLeft = cardRect.left + innerPadX;
+		int textRight = cardRect.right - innerPadX;
+		int nameTop = cardRect.top + innerPadY;
+		int codeTop = nameTop + nameHeight + lineGap;
 
-		// 绘制股票名称（上方，高亮白色）
 		memDC.SetTextColor(isCurrent ? RGB(255, 255, 255) : COLOR_WHITE);
 		CFont* pOldFont = memDC.SelectObject(&nameFont);
-		int textLeft = x + g_data.RDPI(6);
-		int textRight = x + w - (maxScrollOffset > 0 ? g_data.RDPI(7) : g_data.RDPI(4));
-		CRect nameRect(textLeft, currentY + textOffsetY, textRight, currentY + textOffsetY + nameHeight);
+		CRect nameRect(textLeft, nameTop, textRight, nameTop + nameHeight);
 		memDC.DrawText(stockName.c_str(), static_cast<int>(stockName.length()), &nameRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-		// 绘制股票代码（下方，暗灰）
 		memDC.SelectObject(&codeFont);
 		memDC.SetTextColor(isCurrent ? RGB(147, 197, 253) : COLOR_GRAY_TEXT);
-		memDC.TextOut(textLeft, currentY + textOffsetY + nameHeight, code.c_str());
 
-		// 绘制微涨跌幅徽章（若有行情）
+		CRect codeRect(textLeft, codeTop, textRight, codeTop + codeHeight);
 		if (hasRealtime)
 		{
 			CString changeStr;
@@ -281,42 +293,33 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 				changeStr.Format(_T("%.2f%%"), diffPercent);
 
 			CSize changeSize = memDC.GetTextExtent(changeStr);
-			int changeX = textRight - changeSize.cx - g_data.RDPI(2);
-			if (changeX > textLeft + g_data.RDPI(30))
-			{
-				COLORREF badgeBg = (diffPercent >= 0) ? COLOR_BG_RED : COLOR_BG_GREEN;
-				CRect badgeRect(changeX - g_data.RDPI(2), currentY + textOffsetY + nameHeight - g_data.RDPI(1),
-					changeX + changeSize.cx + g_data.RDPI(2), currentY + textOffsetY + nameHeight + changeSize.cy);
-				memDC.FillSolidRect(&badgeRect, badgeBg);
-				memDC.SetTextColor(RGB(255, 255, 255));
-				memDC.TextOut(changeX, currentY + textOffsetY + nameHeight, changeStr);
-			}
+			const int badgePadX = g_data.RDPI(3);
+			int badgeW = changeSize.cx + badgePadX * 2;
+			int badgeRight = textRight;
+			int badgeLeft = max(textLeft, badgeRight - badgeW);
+			CRect badgeRect(
+				badgeLeft,
+				codeTop - g_data.RDPI(1),
+				badgeRight,
+				codeTop + codeHeight + g_data.RDPI(1));
+			memDC.FillSolidRect(&badgeRect, (diffPercent >= 0) ? COLOR_BG_RED : COLOR_BG_GREEN);
+			memDC.SetTextColor(RGB(255, 255, 255));
+			CRect changeRect(badgeLeft, codeTop, badgeRight, codeTop + codeHeight);
+			memDC.DrawText(changeStr, changeRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+			int codeRight = badgeLeft - g_data.RDPI(4);
+			if (codeRight > textLeft + g_data.RDPI(18))
+				codeRect.right = codeRight;
+
+			memDC.SetTextColor(isCurrent ? RGB(147, 197, 253) : COLOR_GRAY_TEXT);
 		}
 
-		memDC.SelectObject(pOldFont);
+		memDC.DrawText(displayCode.c_str(), static_cast<int>(displayCode.length()), &codeRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-		// 绘制暗黑行分隔线
-		memDC.MoveTo(x + g_data.RDPI(4), currentY + rowHeight);
-		memDC.LineTo(x + w - g_data.RDPI(4), currentY + rowHeight);
+		memDC.SelectObject(pOldFont);
 	}
 
 	memDC.RestoreDC(savedDC);
-
-	// 绘制右侧极简滚动条指示器（仅在超出高度时显示）
-	if (maxScrollOffset > 0 && listAreaH > g_data.RDPI(20))
-	{
-		int scrollBarW = g_data.RDPI(2);
-		int scrollBarX = x + w - scrollBarW - g_data.RDPI(1);
-		int trackY = listTop + g_data.RDPI(2);
-		int trackH = listAreaH - g_data.RDPI(4);
-		int minThumbH = g_data.RDPI(16);
-		int thumbH = max(minThumbH, trackH * listAreaH / totalContentH);
-		thumbH = min(thumbH, trackH);
-		int thumbY = trackY + (trackH - thumbH) * effectiveScrollOffset / maxScrollOffset;
-
-		CRect thumbRect(scrollBarX, thumbY, scrollBarX + scrollBarW, thumbY + thumbH);
-		memDC.FillSolidRect(&thumbRect, RGB(80, 85, 105));
-	}
 
 	nameFont.DeleteObject();
 	codeFont.DeleteObject();

@@ -38,6 +38,11 @@ public:
 	// 绘制顶部分组标签条（hoverIdx 为悬停标签下标，-1 表示无）
 	static void DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx = -1);
 
+	// 左侧列表单行高度（含卡片外间距），点击/滚动命中需与绘制保持一致
+	static int GetRowHeight();
+	// 左侧列表面板宽度（名称 + 代码 + 涨跌幅徽章）
+	static int GetPanelWidth();
+
 	// 绘制股票列表面板
 	// x, y, w, h: 面板位置和尺寸
 	// currentStockId: 当前选中的股票代码（用于高亮）

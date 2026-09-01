@@ -392,7 +392,7 @@ void CFloatingWnd::OnPaint()
 	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_DAY_KLINE，自动覆盖）
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 
-	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;  // 左侧股票列表面板宽度
+	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;  // 左侧股票列表面板宽度
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = w - orderBookWidth;
 	// 左侧Y轴坐标区域宽度（所有图表统一预留）
@@ -817,7 +817,7 @@ void CFloatingWnd::OnPaint()
 			ctx.positionY = origKdjTop + kdjChartHeight + g_data.RDPI(2);
 			ctx.showTimelinePercentAxis = timelinePercentAxisWidth > 0;
 			ctx.timelinePercentAxisWidth = timelinePercentAxisWidth;
-			ctx.baseFont = m_pfont ? reinterpret_cast<HFONT>(m_pfont->GetSafeHandle()) : nullptr;
+			ctx.baseFont = m_pfont;
 			ctx.realtimeData = realtimeData;
 			ctx.timelinePoint = &subTimeline;
 			ctx.fullTimeline = &timelinePoint;  // 完整分时数据，供布林带等指标回溯
@@ -1303,7 +1303,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 	// 左侧股票列表区域的单击/拖动处理
 	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
 	{
-		const int stockListWidth = g_data.RDPI(86);
+		const int stockListWidth = CStockListPanel::GetPanelWidth();
 		const int headerHeight = g_data.RDPI(26);
 		const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 		const int titleH = g_data.RDPI(18);
@@ -1427,7 +1427,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 
 		const int yAxisWidth = g_data.RDPI(50);
-		const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
+		const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 		const int chartLeft = stockListWidth + yAxisWidth;
 		const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 
@@ -1512,7 +1512,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int dragOrderBookWidth = isIdxKLine ? 0 : ORDER_BOOK_WIDTH;
 		const int dragChartWidth = dragRect.Width() - dragOrderBookWidth;
 		const int dragYAxisWidth = g_data.RDPI(50);
-		const int dragStockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
+		const int dragStockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 		const int dragChartLeft = dragStockListWidth + dragYAxisWidth;
 		const int dragHeaderHeight = g_data.RDPI(26);  // 标题栏
 		const int dragIndexBarHeight = g_data.RDPI(20);
@@ -1556,7 +1556,7 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 			const int headerHeight = g_data.RDPI(26);
 			const int relatedBarHeight = 0;
 			const int titleH = g_data.RDPI(18);
-			const int rowHeight = g_data.RDPI(36);
+			const int rowHeight = CStockListPanel::GetRowHeight();
 			const int listTop = headerHeight + relatedBarHeight + titleH;
 
 			int contentY = (point.y - listTop) + m_stockListScrollOffset;
@@ -1657,7 +1657,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 		const int indexBarHeight = g_data.RDPI(20);
 		const int titleH = g_data.RDPI(18);
 		int listAreaH = (clRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
-		const int rowHeight = g_data.RDPI(36);
+		const int rowHeight = CStockListPanel::GetRowHeight();
 		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
 		int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
 		int maxOffset = max(0, totalH - listAreaH);
@@ -1766,7 +1766,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
 	const int chartWidth = rect.Width() - orderBookWidth;
 	const int yAxisWidth = g_data.RDPI(50);
-	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
+	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 	const int chartLeft = stockListWidth + yAxisWidth;
 	const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
 	const int headerHeight = g_data.RDPI(26);
@@ -2248,7 +2248,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 	const int headerHeight = g_data.RDPI(26);
 	const int relatedBarHeight = 0;
 	const int indexBarHeight = g_data.RDPI(20);
-	const int stockListWidth = m_showStockList ? g_data.RDPI(86) : 0;
+	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 	const int yAxisWidth = g_data.RDPI(50);
 	const int chartLeft = stockListWidth + yAxisWidth;
 
@@ -2265,7 +2265,7 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		clientPt.y < clientRect.Height() - indexBarHeight)
 	{
 		std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
-		const int rowHeight = g_data.RDPI(36);
+		const int rowHeight = CStockListPanel::GetRowHeight();
 		const int titleH = g_data.RDPI(18);
 		int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight) - titleH;
 		int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
@@ -3055,7 +3055,7 @@ void CFloatingWnd::EnsureStockListVisible()
 	const int relatedBarHeight = 0;
 	const int indexBarHeight = g_data.RDPI(20);
 	const int titleH = g_data.RDPI(18);
-	const int rowHeight = g_data.RDPI(36);
+	const int rowHeight = CStockListPanel::GetRowHeight();
 	int listAreaH = clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight - titleH;
 	if (listAreaH <= 0)
 		return;
