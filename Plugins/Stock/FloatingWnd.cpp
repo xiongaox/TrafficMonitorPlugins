@@ -2682,6 +2682,21 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		dc.FillSolidRect(dotRect, signalColor);
 	}
 
+	// 关闭按钮不使用字体字符：某些系统字体没有“✕”字形，字体回退会显示成竖线。
+	if (isCloseBtn)
+	{
+		int margin = max(g_data.RDPI(5), min(rect.Width(), rect.Height()) / 4);
+		CPen closePen(PS_SOLID, max(1, g_data.RDPI(1)), textColor);
+		CPen* pOldClosePen = dc.SelectObject(&closePen);
+		dc.MoveTo(rect.left + margin, rect.top + margin);
+		dc.LineTo(rect.right - margin - 1, rect.bottom - margin - 1);
+		dc.MoveTo(rect.right - margin - 1, rect.top + margin);
+		dc.LineTo(rect.left + margin, rect.bottom - margin - 1);
+		dc.SelectObject(pOldClosePen);
+		dc.Detach();
+		return;
+	}
+
 	// 明确获取按钮文本
 	CString text;
 	if (nID == IDC_CALL_AUCTION_BTN) text = _T("竞价");

@@ -19,7 +19,10 @@ inline bool CreateStockFont(CFont& target, CDC& dc, int pixelHeight, LONG weight
 		_tcscpy_s(lf.lfFaceName, _T("Segoe UI"));
 	}
 
-	lf.lfHeight = -max(1, pixelHeight);
+	// The host font has a larger visual body than the old hard-coded fonts.
+	// Compensate once here so all derived controls keep the previous density.
+	int adjustedHeight = pixelHeight * 85 / 100;
+	lf.lfHeight = -max(1, adjustedHeight);
 	lf.lfWidth = 0; // Let GDI preserve the font's natural aspect ratio.
 	lf.lfEscapement = 0;
 	lf.lfOrientation = 0;
