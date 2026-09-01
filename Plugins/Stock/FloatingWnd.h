@@ -41,6 +41,10 @@ public:
 	const std::wstring& GetStockId() const { return m_stock_id; }
 	void SetStockId(const std::wstring& stockId);
 	void ToggleKLineMode(); // 切换分时/日K模式
+	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
+	void CheckHoverCardAutoHide();
+	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
+	bool IsInfoPanelVisible(bool isIndexKLine) const;
 
 protected:
 	DECLARE_MESSAGE_MAP()
@@ -162,6 +166,9 @@ private:
 	CFont* m_pfont{};
 	CString loading_state_txt;
 
+	// 悬停信息卡自动清除：鼠标持续离开图表区的时间起点（0=鼠标在图表区内或无信息卡）
+	ULONG64 m_hoverCardOutsideSince{ 0 };
+
 	// 鼠标悬停数据
 	CPoint m_mousePos;
 	bool m_isHoveringVolume{ false };
@@ -193,6 +200,7 @@ private:
 	bool m_isHoveringKDJ{ false };
 	bool m_showTrendView{ false };
 	bool m_showChipPeak{ false };
+	bool m_showOrderBook{ true };  // 是否显示右侧买卖盘口面板（隐藏后宽度全部让给图表）
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
 	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组

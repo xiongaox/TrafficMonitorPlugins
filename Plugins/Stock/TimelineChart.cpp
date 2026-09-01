@@ -187,25 +187,10 @@ void CTimelineChart::DrawTimelinePriceLabels(CDC& memDC, const TimelineDrawConte
 			if (ctx.realtimeData.prevClosePrice > 0 && labelPrice > ctx.realtimeData.prevClosePrice + ctx.niceStep * 0.01)
 				labelColor = COLOR_RED_UP;
 			else if (ctx.realtimeData.prevClosePrice > 0 && labelPrice < ctx.realtimeData.prevClosePrice - ctx.niceStep * 0.01)
-				labelColor = COLOR_GREEN_DOWN;
-			memDC.SetTextColor(labelColor);
-			memDC.TextOut(labelX, labelY, priceTxt);
-
-			if (ctx.showTimelinePercentAxis && ctx.realtimeData.prevClosePrice > 0)
-			{
-				double changePercent = (labelPrice - ctx.realtimeData.prevClosePrice) / ctx.realtimeData.prevClosePrice * 100.0;
-				CString percentTxt;
-				if (changePercent > 0.0001)
-					percentTxt.Format(_T("+%.2f%%"), changePercent);
-				else if (changePercent < -0.0001)
-					percentTxt.Format(_T("%.2f%%"), changePercent);
-				else
-					percentTxt = _T("0.00%");
-				CSize percentSize = memDC.GetTextExtent(percentTxt);
-				int percentX = ctx.chartWidth + ctx.timelinePercentAxisWidth - percentSize.cx - g_data.RDPI(4);
-				memDC.TextOut(percentX, labelY, percentTxt);
+				labelColor = COLOR_GREEN_DOWN;				memDC.SetTextColor(labelColor);
+				memDC.TextOut(labelX, labelY, priceTxt);
 			}
-		}
+
 
 		if (ctx.realtimeData.prevClosePrice > 0
 			&& ctx.realtimeData.prevClosePrice >= ctx.minPrice && ctx.realtimeData.prevClosePrice <= ctx.maxPrice)

@@ -20,8 +20,6 @@ struct TimelineDrawContext {
 	double niceStep{ 0 };  // Y轴刻度步长（OnPaint计算一次，绘制函数直接用）
 	int macdChartHeight;
 	int positionY;
-	bool showTimelinePercentAxis{ false };  // 分时模式右侧涨跌幅刻度
-	int timelinePercentAxisWidth{ 0 };      // 分时模式右侧涨跌幅刻度列宽
 	CFont* baseFont{ nullptr };             // 盘口报价使用的基础字体（与盘口绘制共享同一对象）
 	int visibleCount{ 0 };   // 可见数据点数（≤120）
 	int xAxisPoints{ 0 };   // X轴总格数（=m_timelineVisibleCount，数据不足时右侧留白）

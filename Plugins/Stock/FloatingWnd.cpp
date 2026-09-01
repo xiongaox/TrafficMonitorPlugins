@@ -396,7 +396,7 @@ void CFloatingWnd::OnPaint()
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
 
 	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;  // 左侧股票列表面板宽度
-	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
+	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
 	const int chartWidth = w - orderBookWidth;
 	// 左侧Y轴坐标区域宽度（所有图表统一预留）
 	const int yAxisWidth = g_data.RDPI(50);
@@ -572,7 +572,6 @@ void CFloatingWnd::OnPaint()
 			memDC.FillSolidRect(summaryX, summaryY, summaryW, 1, COLOR_DARK_GRAY_BORDER);
 			int textH = memDC.GetTextExtent(_T("Ay")).cy;
 			int textY = summaryY + max(0, (positionSummaryHeight - textH) / 2);
-			const int columnWidth = summaryW / 3;
 			const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: ") };
 			const CString values[] = { marketText, floatingText, todayText };
 			const COLORREF valueColors[] = {
@@ -581,18 +580,17 @@ void CFloatingWnd::OnPaint()
 				todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
 			};
 			memDC.SetBkMode(TRANSPARENT);
+			// 三项数据左对齐排布（固定宽松间距），盘口收起后末端不会顶到PK按钮
+			int drawX = summaryX + g_data.RDPI(12);
+			const int itemGap = g_data.RDPI(48);
 			for (int i = 0; i < 3; ++i)
 			{
-				const int columnX = summaryX + i * columnWidth;
-				const int currentColumnWidth = i == 2 ? summaryW - i * columnWidth : columnWidth;
-				const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
-				int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
-
 				memDC.SetTextColor(COLOR_TEXT_MUTED);
 				memDC.TextOut(drawX, textY, labels[i]);
 				drawX += memDC.GetTextExtent(labels[i]).cx;
 				memDC.SetTextColor(valueColors[i]);
 				memDC.TextOut(drawX, textY, values[i]);
+				drawX += memDC.GetTextExtent(values[i]).cx + itemGap;
 			}
 		}
 
@@ -767,13 +765,11 @@ void CFloatingWnd::OnPaint()
 			SafeShowWindow(m_btnIndicatorCJL, false);
 			SafeShowWindow(m_btnIndicatorKDJ, false);
 			SafeShowWindow(m_btnIndicatorWR, false);
-			SafeShowWindow(m_btnIndicatorRSI, false);
-
-			// 右侧盘口（竞价模式下始终显示盘口）
-			if (!isIndexKLine)
-			{
-				m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
-			}
+			SafeShowWindow(m_btnIndicatorRSI, false);				// 右侧盘口（竞价模式下盘口跟随PK开关）
+				if (IsInfoPanelVisible(isIndexKLine))
+				{
+					m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
+				}
 		}
 		else if (!timelinePoint.empty())
 		{
@@ -800,9 +796,7 @@ void CFloatingWnd::OnPaint()
 
 			TimelineDrawContext ctx;
 			ctx.chartLeft = stockListWidth + yAxisWidth;         // 左侧股票列表+Y轴留白
-			// 涨跌幅刻度改画在价格图内部右侧，不再单独留列，价格图与副图宽度完全对齐
-			const int timelinePercentAxisWidth = 0;
-			ctx.chartWidth = chartWidth - stockListWidth - yAxisWidth - timelinePercentAxisWidth;  // 图表宽度（不含左右价格轴）
+			ctx.chartWidth = chartWidth - stockListWidth - yAxisWidth;  // 图表宽度（不含左右价格轴）
 			ctx.windowWidth = w;
 			ctx.chartHeight = h;
 			// 每个图表顶部预留16像素标题栏，绘图区域下移并减小高度
@@ -819,8 +813,6 @@ void CFloatingWnd::OnPaint()
 			ctx.macdChartHeight = macdChartHeight - titleH;
 			// 时间标签位置：KDJ图下方
 			ctx.positionY = origKdjTop + kdjChartHeight + g_data.RDPI(2);
-			ctx.showTimelinePercentAxis = (m_viewMode == UI_VIEW_TIMELINE);  // 分时模式在图内右侧绘制涨跌幅刻度
-			ctx.timelinePercentAxisWidth = timelinePercentAxisWidth;
 			ctx.baseFont = m_pfont;
 			ctx.realtimeData = realtimeData;
 			ctx.timelinePoint = &subTimeline;
@@ -1157,9 +1149,8 @@ void CFloatingWnd::OnPaint()
 				}
 
 				m_chipPeakPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, drawRealtime, drawChip, drawTimeline, m_viewMode);
-			}
-			else
-				m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
+			}				else if (IsInfoPanelVisible(isIndexKLine))
+					m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
 		}
 		else
 		{
@@ -1422,7 +1413,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		GetClientRect(&rect);
 		bool isIndex = (GetStockPriority(m_stock_id) < 200);
 		bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
-		const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
+		const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
 		const int chartWidth = rect.Width() - orderBookWidth;
 		const int headerHeight = g_data.RDPI(26);
 		const int relatedBarHeight = 0;  // 移除顶部关联股票栏
@@ -1430,7 +1421,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		const int yAxisWidth = g_data.RDPI(50);
 		const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 		const int chartLeft = stockListWidth + yAxisWidth;
-		const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
+		const int chartRight = chartWidth;
 
 		if (point.x >= chartLeft && point.x < chartRight && point.y >= headerHeight + relatedBarHeight)
 		{
@@ -1510,7 +1501,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		GetClientRect(&dragRect);
 		bool isIdx = (GetStockPriority(m_stock_id) < 200);
 		bool isIdxKLine = isIdx && m_viewMode >= UI_VIEW_DAY_KLINE;
-		const int dragOrderBookWidth = isIdxKLine ? 0 : ORDER_BOOK_WIDTH;
+		const int dragOrderBookWidth = IsInfoPanelVisible(isIdxKLine) ? ORDER_BOOK_WIDTH : 0;
 		const int dragChartWidth = dragRect.Width() - dragOrderBookWidth;
 		const int dragYAxisWidth = g_data.RDPI(50);
 		const int dragStockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
@@ -1730,7 +1721,7 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			CRect clientRect;
 			GetClientRect(&clientRect);
 			int yAxisW = g_data.RDPI(50);
-			int effectiveWidth = clientRect.Width() - yAxisW - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
+			int effectiveWidth = clientRect.Width() - yAxisW;
 			int pointsDelta = static_cast<int>(dx * static_cast<float>(visibleCount) / effectiveWidth);
 			int newOffset = m_timelineDragStartOffset - pointsDelta;
 			newOffset = max(0, min(newOffset, maxOffset));
@@ -1764,12 +1755,12 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 	GetClientRect(&rect);
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
-	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
+	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
 	const int chartWidth = rect.Width() - orderBookWidth;
 	const int yAxisWidth = g_data.RDPI(50);
 	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
 	const int chartLeft = stockListWidth + yAxisWidth;
-	const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
+	const int chartRight = chartWidth;
 	const int headerHeight = g_data.RDPI(26);
 	const int xAxisLabelHeight = g_data.RDPI(20);
 	const int singleBarHeight = g_data.RDPI(20);
@@ -2255,9 +2246,9 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
-	const int orderBookWidth = isIndexKLine ? 0 : ORDER_BOOK_WIDTH;
+	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
 	const int chartWidth = clientRect.Width() - orderBookWidth;
-	const int chartRight = chartWidth - (m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0);
+	const int chartRight = chartWidth;
 
 	// 1. 如果在非总览模式且左侧股票列表显示时，鼠标在左侧面板区域（包括左侧列表与Y轴左边缘），则滚动股票列表
 	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList &&
@@ -2517,6 +2508,12 @@ void CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn()
 	Invalidate();
 }
 
+bool CFloatingWnd::IsInfoPanelVisible(bool isIndexKLine) const
+{
+	// 右侧信息面板（盘口/筹码峰）可见性：大盘K线模式无盘口；PK隐藏时整体让位给图表
+	return !isIndexKLine && (m_showOrderBook || m_showChipPeak);
+}
+
 void CFloatingWnd::OnBnClickedChipPeakBtn()
 {
 	m_showChipPeak = !m_showChipPeak;
@@ -2527,7 +2524,17 @@ void CFloatingWnd::OnBnClickedChipPeakBtn()
 
 void CFloatingWnd::OnBnClickedOrderBookBtn()
 {
-	m_showChipPeak = !m_showChipPeak;
+	if (m_showChipPeak)
+	{
+		// 筹码峰显示中：PK切回盘口
+		m_showChipPeak = false;
+		m_showOrderBook = true;
+	}
+	else
+	{
+		// 盘口显示中：整体隐藏右侧面板，宽度让给图表；已隐藏则恢复盘口
+		m_showOrderBook = !m_showOrderBook;
+	}
 	UpdateModeButtons();
 	EnsureChipPeakData();
 	Invalidate();
@@ -2612,7 +2619,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_WEEK_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_WEEK_KLINE); }
 	else if (nID == IDC_MONTH_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MONTH_KLINE); }
 	else if (nID == IDC_CHIP_PEAK_BTN) { isActive = m_showChipPeak; }
-	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak; }
+	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak && m_showOrderBook; }
 	else if (nID == IDC_EXPAND_BTN) { isActive = m_expandedMode; }
 	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) { isActive = m_showStockList; }
 	else if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
@@ -3086,6 +3093,9 @@ void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 {
 	if (nIDEvent == IDC_REFRESH_TIMER)
 	{
+		// 鼠标移出图表区超过2秒自动清除悬停信息卡，避免长期遮挡图表
+		CheckHoverCardAutoHide();
+
 		// 1秒定时检查：图表和盘口分别判断，任一有变化才重绘
 		bool needRedraw = false;
 		if (m_chartDirty)
@@ -3102,6 +3112,47 @@ void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 			Invalidate();
 	}
 	CWnd::OnTimer(nIDEvent);
+}
+
+void CFloatingWnd::CheckHoverCardAutoHide()
+{
+	if (m_hoveredBarIndex < 0)
+	{
+		m_hoverCardOutsideSince = 0;
+		return;
+	}
+
+	CPoint cursorPt;
+	if (!GetCursorPos(&cursorPt))
+		return;
+
+	// 图表区 = 整个窗口剔除左侧分组列表面板与右侧买卖盘面板
+	CRect clientRect;
+	GetClientRect(&clientRect);
+	ClientToScreen(&clientRect);
+	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
+	bool isIndex = (GetStockPriority(m_stock_id) < 200);
+	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
+	CRect chartRect(clientRect.left + stockListWidth, clientRect.top,
+		clientRect.right - orderBookWidth, clientRect.bottom);
+
+	if (chartRect.PtInRect(cursorPt))
+	{
+		m_hoverCardOutsideSince = 0;
+		return;
+	}
+	ULONGLONG now = GetTickCount64();
+	if (m_hoverCardOutsideSince == 0)
+	{
+		m_hoverCardOutsideSince = now;
+	}
+	else if (now - m_hoverCardOutsideSince >= 2000)
+	{
+		m_hoverCardOutsideSince = 0;
+		ResetHoverState();
+		Invalidate();
+	}
 }
 
 void CFloatingWnd::EnsureStockListVisible()
