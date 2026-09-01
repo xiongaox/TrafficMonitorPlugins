@@ -669,6 +669,21 @@ int CDataManager::RDPI(int pixel)
 	return pixel * 96 / m_dpi;
 }
 
+void CDataManager::SetHostFont(HFONT hFont)
+{
+	if (hFont == nullptr)
+		return;
+	LOGFONT lf{};
+	if (::GetObject(hFont, sizeof(lf), &lf) != sizeof(lf) || lf.lfHeight >= 0)
+		return;
+	m_host_logfont = lf;
+	m_has_host_font = true;
+	// 主机字号换算成96DPI下的逻辑高度，与9pt（约12px）基准比较得到缩放比例，
+	// 使派生字体在主机字号变化时同步缩放
+	int logicalHeight = -lf.lfHeight * 96 / max(96, m_dpi);
+	m_font_scale_percent = max(75, min(300, logicalHeight * 100 / 12));
+}
+
 HICON CDataManager::GetIcon(UINT id)
 {
 	auto iter = m_icons.find(id);

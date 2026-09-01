@@ -90,6 +90,13 @@ public:
 	const CString& StringRes(UINT id); // 根据资源id获取一个字符串资源
 	int DPI(int pixel);
 	int RDPI(int pixel);
+	int GetDpi() const { return m_dpi; }
+	// 记录主机（TrafficMonitor）选择的显示字体，供 StockFont 派生字体按主机字号等比缩放
+	void SetHostFont(HFONT hFont);
+	bool HasHostFont() const { return m_has_host_font; }
+	const LOGFONT& GetHostLogFont() const { return m_host_logfont; }
+	// 主机字号相对96DPI下9pt基准的缩放百分比（100=不缩放）
+	int GetFontScalePercent() const { return m_font_scale_percent; }
 	HICON GetIcon(UINT id);
 	void ResetText();
 	std::shared_ptr<StockData> GetStockData(const std::wstring& code);
@@ -214,6 +221,11 @@ private:
 	std::map<UINT, CString> m_string_table;
 	std::map<UINT, HICON> m_icons;
 	int m_dpi{ 96 };
+
+	// 主机显示字体信息（浮动窗口创建时由主机传入），派生字体据此统一字面并缩放字号
+	LOGFONT m_host_logfont{};
+	bool m_has_host_font{ false };
+	int m_font_scale_percent{ 100 };
 
 	STOCK::StockMarket stockMarket;
 

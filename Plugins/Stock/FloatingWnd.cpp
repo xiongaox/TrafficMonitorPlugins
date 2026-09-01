@@ -273,6 +273,8 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	m_CTransparentWnd.SetParent(this);
 
 	m_pfont = font;
+	// 记录主机字体信息，供 StockFont 派生字体统一字面并按主机字号等比缩放
+	g_data.SetHostFont(font ? static_cast<HFONT>(font->GetSafeHandle()) : nullptr);
 
 	// 获取包含鼠标点的显示器
 	HMONITOR hMonitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
@@ -798,7 +800,8 @@ void CFloatingWnd::OnPaint()
 
 			TimelineDrawContext ctx;
 			ctx.chartLeft = stockListWidth + yAxisWidth;         // 左侧股票列表+Y轴留白
-			const int timelinePercentAxisWidth = m_viewMode == UI_VIEW_TIMELINE ? g_data.RDPI(64) : 0;
+			// 涨跌幅刻度改画在价格图内部右侧，不再单独留列，价格图与副图宽度完全对齐
+			const int timelinePercentAxisWidth = 0;
 			ctx.chartWidth = chartWidth - stockListWidth - yAxisWidth - timelinePercentAxisWidth;  // 图表宽度（不含左右价格轴）
 			ctx.windowWidth = w;
 			ctx.chartHeight = h;
@@ -816,7 +819,7 @@ void CFloatingWnd::OnPaint()
 			ctx.macdChartHeight = macdChartHeight - titleH;
 			// 时间标签位置：KDJ图下方
 			ctx.positionY = origKdjTop + kdjChartHeight + g_data.RDPI(2);
-			ctx.showTimelinePercentAxis = timelinePercentAxisWidth > 0;
+			ctx.showTimelinePercentAxis = (m_viewMode == UI_VIEW_TIMELINE);  // 分时模式在图内右侧绘制涨跌幅刻度
 			ctx.timelinePercentAxisWidth = timelinePercentAxisWidth;
 			ctx.baseFont = m_pfont;
 			ctx.realtimeData = realtimeData;
@@ -992,11 +995,8 @@ void CFloatingWnd::OnPaint()
 			if (subChartHeight > 0 && !m_expandedMode)
 			{
 				int subChartTop = origPriceTop + priceChartHeight;
-				// 右侧百分比轴只属于价格图，成交量/指标图继续使用完整宽度。
+				// 百分比刻度已画入价格图内部，副图与价格图共用同一宽度。
 				TimelineDrawContext indicatorCtx = ctx;
-				indicatorCtx.chartWidth += timelinePercentAxisWidth;
-				indicatorCtx.showTimelinePercentAxis = false;
-				indicatorCtx.timelinePercentAxisWidth = 0;
 				auto indicatorType = static_cast<CIndicatorChart::TimelineIndicator>(m_timelineIndicator);
 				CIndicatorChart::HoverState subHover;
 				subHover.isHoveringVolume = m_isHoveringVolume;
@@ -2682,17 +2682,66 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		dc.FillSolidRect(dotRect, signalColor);
 	}
 
-	// 关闭按钮不使用字体字符：某些系统字体没有“✕”字形，字体回退会显示成竖线。
-	if (isCloseBtn)
+
+	// ===== 顶栏三个图标按钮：参考 Fluent 图标库矢量绘制（收起分组 / 折叠副图 / 关闭） =====
+	// 不使用字体字符，避免字体回退导致字形缺失；用 GDI+ 抗锯齿渲染保证小尺寸下平滑。
+	if (isCloseBtn || nID == IDC_EXPAND_BTN || nID == IDC_TOGGLE_STOCK_LIST_BTN)
 	{
-		int margin = max(g_data.RDPI(5), min(rect.Width(), rect.Height()) / 4);
-		CPen closePen(PS_SOLID, max(1, g_data.RDPI(1)), textColor);
-		CPen* pOldClosePen = dc.SelectObject(&closePen);
-		dc.MoveTo(rect.left + margin, rect.top + margin);
-		dc.LineTo(rect.right - margin - 1, rect.bottom - margin - 1);
-		dc.MoveTo(rect.right - margin - 1, rect.top + margin);
-		dc.LineTo(rect.left + margin, rect.bottom - margin - 1);
-		dc.SelectObject(pOldClosePen);
+		Gdiplus::Graphics graphics(dc.GetSafeHdc());
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+		Gdiplus::Color iconColor(255, GetRValue(textColor), GetGValue(textColor), GetBValue(textColor));
+		float penW = max(1.4f, g_data.GetDpi() * 1.4f / 96.0f);
+		Gdiplus::Pen iconPen(iconColor, penW);
+		iconPen.SetStartCap(Gdiplus::LineCapRound);
+		iconPen.SetEndCap(Gdiplus::LineCapRound);
+		iconPen.SetLineJoin(Gdiplus::LineJoinRound);
+		auto P = [](float x, float y) { return Gdiplus::PointF(x, y); };
+		float fx = (float)rect.left, fy = (float)rect.top;
+		float fw = (float)rect.Width(), fh = (float)rect.Height();
+		float cx = fx + fw / 2.0f, cy = fy + fh / 2.0f;
+
+		if (isCloseBtn)
+		{
+			// Fluent "Dismiss"：圆头对角线 ✕，边距取短边的28%
+			float m = min(fw, fh) * 0.28f;
+			graphics.DrawLine(&iconPen, P(fx + m, fy + m), P(fx + fw - m, fy + fh - m));
+			graphics.DrawLine(&iconPen, P(fx + fw - m, fy + m), P(fx + m, fy + fh - m));
+		}
+		else if (nID == IDC_EXPAND_BTN)
+		{
+			// Fluent "ChevronDown/Up"：双 V 箭头。展开状态显示朝上（点击收起副图），
+			// 收起状态显示朝下（点击展开副图）
+			float hw = g_data.RDPI(3) + 0.5f;
+			float vh = g_data.RDPI(2) + 0.5f;
+			float dir = m_expandedMode ? -1.0f : 1.0f; // -1=尖头朝上，1=尖头朝下
+			Gdiplus::PointF pts[3];
+			for (int k = -1; k <= 1; k += 2)
+			{
+				float vy = cy + k * vh / 2.0f + dir * vh / 2.0f;
+				pts[0] = P(cx - hw, vy - dir * vh / 2.0f);
+				pts[1] = P(cx, vy + dir * vh / 2.0f);
+				pts[2] = P(cx + hw, vy - dir * vh / 2.0f);
+				graphics.DrawLines(&iconPen, pts, 3);
+			}
+		}
+		else
+		{
+			// Fluent "PanelLeft"：左侧面板边线 + 方向箭头。
+			// 列表已显示→箭头朝右（收起分组），已隐藏→箭头朝左（展开分组）
+			float barX = fx + g_data.RDPI(6);
+			float top = fy + g_data.RDPI(6);
+			float bottom = fy + fh - g_data.RDPI(6);
+			graphics.DrawLine(&iconPen, P(barX, top), P(barX, bottom));
+			float hw = g_data.RDPI(2) + 0.5f;
+			float vh = g_data.RDPI(2) + 0.5f;
+			float ax = cx + g_data.RDPI(2);
+			float dir = m_showStockList ? 1.0f : -1.0f; // 1=朝右，-1=朝左
+			Gdiplus::PointF pts[3] = {
+				P(ax - dir * hw, cy - vh), P(ax + dir * hw, cy), P(ax - dir * hw, cy + vh)
+			};
+			graphics.DrawLines(&iconPen, pts, 3);
+		}
+
 		dc.Detach();
 		return;
 	}
@@ -2704,9 +2753,6 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_KLINE_BTN) text = _T("日K");
 	else if (nID == IDC_WEEK_KLINE_BTN) text = _T("周K");
 	else if (nID == IDC_MONTH_KLINE_BTN) text = _T("月K");
-	else if (nID == IDC_CLOSE_BTN) text = _T("✕");
-	else if (nID == IDC_EXPAND_BTN) text = m_expandedMode ? _T("△") : _T("□");
-	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) text = m_showStockList ? _T("|>") : _T("<|");
 	else if (nID == IDC_CHIP_PEAK_BTN) text = _T("CM");
 	else if (nID == IDC_ORDER_BOOK_BTN) text = _T("PK");
 	else if (nID == IDC_INDICATOR_MACD_BTN) text = _T("VOL");
