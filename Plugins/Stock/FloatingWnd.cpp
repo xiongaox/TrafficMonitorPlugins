@@ -15,6 +15,7 @@
 #include "SmartSignalTestDlg.h"
 #include "ChartColors.h"
 #include "StockListPanel.h"
+#include "StockFont.h"
 #include "CallAuctionChart.h"
 #include "ManagerDialog.h"  // CDarkPopupMenu：顶栏“更多分组”暗色下拉菜单
 
@@ -2708,9 +2709,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	dc.SetTextColor(textColor);
 
 	CFont btnFont;
-	btnFont.CreateFont(-g_data.RDPI(10), 0, 0, 0, isActive ? FW_BOLD : FW_NORMAL, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(btnFont, dc, g_data.RDPI(10), isActive ? FW_BOLD : FW_NORMAL);
 	CFont* pOldFont = dc.SelectObject(&btnFont);
 	dc.DrawText(text, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	dc.SelectObject(pOldFont);

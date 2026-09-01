@@ -4,6 +4,7 @@
 #include "Common.h"
 #include "DataManager.h"
 #include "Stock.h"
+#include "StockFont.h"
 #include <algorithm>
 #include <mutex>
 
@@ -55,14 +56,9 @@ void COverviewPanel::DrawIndexSection(CDC& memDC, int x, int y, int w, const std
 
 	memDC.SetBkMode(TRANSPARENT);
 
-	// 创建大号字体用于显示价格
-	LOGFONT lf;
-	memset(&lf, 0, sizeof(LOGFONT));
-	lf.lfHeight = g_data.RDPI(22);
-	lf.lfWeight = FW_BOLD;
-	wcscpy_s(lf.lfFaceName, _T("Microsoft YaHei"));
+	// 创建大号字体用于显示价格，沿用当前界面的字体与渲染质量。
 	CFont largeFont;
-	largeFont.CreateFontIndirect(&lf);
+	CreateStockFont(largeFont, memDC, g_data.RDPI(22), FW_BOLD);
 
 	// 获取两种字体的高度，用于均匀分配垂直空间
 	TEXTMETRIC tmLarge, tmNormal;

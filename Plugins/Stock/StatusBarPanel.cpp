@@ -3,6 +3,7 @@
 #include "ChartColors.h"
 #include "Common.h"
 #include "DataManager.h"
+#include "StockFont.h"
 #include <Stock.h>
 #include <algorithm>
 #include <map>
@@ -35,9 +36,7 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 		macdTxt.Format(_T(" [%s]"), macdTrendSignal.GetString());
 
 	CFont headerFont;
-	headerFont.CreateFont(-g_data.RDPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(headerFont, memDC, g_data.RDPI(13), FW_BOLD);
 	CFont* pOldFont = memDC.SelectObject(&headerFont);
 
 	// 计算总宽度，在整个标题栏水平居中
@@ -166,17 +165,13 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 		// 右侧均幅区域始终使用最大字号
 		if (showAvgDiff)
 		{
-			avgFont.CreateFont(-g_data.RDPI(maxFont), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-				DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+			CreateStockFont(avgFont, memDC, g_data.RDPI(maxFont), FW_NORMAL);
 		}
 
 		if (!isRelatedMode)
 		{
 			// 非关联模式直接用最大字号
-			dynFont.CreateFont(-g_data.RDPI(maxFont), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-				DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+			CreateStockFont(dynFont, memDC, g_data.RDPI(maxFont), FW_NORMAL);
 			pOldFont = memDC.SelectObject(&dynFont);
 		}
 		else
@@ -190,9 +185,7 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 			while (fontSize >= minFont)
 			{
 				CFont testFont;
-				testFont.CreateFont(-g_data.RDPI(fontSize), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-					DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-					DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+				CreateStockFont(testFont, memDC, g_data.RDPI(fontSize), FW_NORMAL);
 				CFont* pPrev = memDC.SelectObject(&testFont);
 
 				int totalWidth = 0;
@@ -223,9 +216,7 @@ void CStatusBarPanel::DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int si
 
 			if (fontSize < minFont) fontSize = minFont;
 
-			dynFont.CreateFont(-g_data.RDPI(fontSize), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-				DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+			CreateStockFont(dynFont, memDC, g_data.RDPI(fontSize), FW_NORMAL);
 			pOldFont = memDC.SelectObject(&dynFont);
 		}
 	}
@@ -463,9 +454,7 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 	const int fontPx = (colWidth < g_data.RDPI(90)) ? g_data.RDPI(10) : ((colWidth < g_data.RDPI(110)) ? g_data.RDPI(11) : g_data.RDPI(12));
 
 	CFont statusFont;
-	statusFont.CreateFont(-fontPx, 0, 0, 0, FW_NORMAL, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(statusFont, memDC, fontPx, FW_NORMAL);
 	CFont* pOldFont = memDC.SelectObject(&statusFont);
 
 	CSize sampleSize = memDC.GetTextExtent(_T("00.00%"));

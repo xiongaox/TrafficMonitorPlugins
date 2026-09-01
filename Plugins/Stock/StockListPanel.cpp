@@ -3,6 +3,7 @@
 #include "ChartColors.h"
 #include "Common.h"
 #include "DataManager.h"
+#include "StockFont.h"
 #include <Stock.h>
 #include <mutex>
 #include <vector>
@@ -77,9 +78,7 @@ std::vector<FloatingGroupTab> CStockListPanel::LayoutGroupTabs(CDC& memDC, int w
 
 	// 布局：在标题栏内垂直居中，右侧预留窗口 40% 给居中的股票标题
 	CFont font;
-	font.CreateFont(-g_data.RDPI(9), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(font, memDC, g_data.RDPI(9), FW_SEMIBOLD);
 	HGDIOBJ oldFont = memDC.SelectObject(&font);
 
 	const int tabH = g_data.RDPI(18);
@@ -123,9 +122,7 @@ int CStockListPanel::GetPanelWidth()
 void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx)
 {
 	CFont font;
-	font.CreateFont(-g_data.RDPI(9), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(font, memDC, g_data.RDPI(9), FW_SEMIBOLD);
 	CFont* pOldFont = memDC.SelectObject(&font);
 	int oldBk = memDC.SetBkMode(TRANSPARENT);
 
@@ -177,9 +174,7 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	std::wstring groupTitle = GetGroupTabName(groupTab);
 
 	CFont titleFont;
-	titleFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_SEMIBOLD, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(titleFont, memDC, g_data.RDPI(11), FW_SEMIBOLD);
 	CFont* pOldBaseFont = memDC.SelectObject(&titleFont);
 	memDC.TextOut(x + g_data.RDPI(6), y + g_data.RDPI(2), groupTitle.c_str());
 	memDC.SelectObject(pOldBaseFont);
@@ -218,14 +213,10 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	int effectiveScrollOffset = max(0, min(scrollOffset, maxScrollOffset));
 
 	CFont nameFont;
-	nameFont.CreateFont(-g_data.RDPI(11), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CreateStockFont(nameFont, memDC, g_data.RDPI(11), FW_NORMAL);
 
 	CFont codeFont;
-	codeFont.CreateFont(-g_data.RDPI(9), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CreateStockFont(codeFont, memDC, g_data.RDPI(9), FW_NORMAL);
 
 	// 裁剪区域：防止滚动时文字超出列表区域或覆盖标题栏
 	CRect listClipRect(x, listTop + 1, x + w, y + h);
