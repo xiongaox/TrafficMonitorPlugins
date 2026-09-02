@@ -37,6 +37,7 @@ namespace
 	const int MA_CARD_GAP = 14;  // 卡片间距
 	const int MA_CARD2_H = 118;  // 卡片2「添加均线周期」高度
 	const int MA_CARD3_H = 104;  // 卡片3「快捷添加常用周期」高度
+	const int MA_CARD4_H = 102;  // 卡片4「分时图布林带显示」高度（标题 + 单行三复选框）
 	const int MA_FIELD_Y = 48;   // 卡片2 输入框字段上缘（相对卡片）
 	const int MA_FIELD_X = 160;  // 卡片2 输入框字段左缘（相对卡片）
 	const int MA_FIELD_W = 140;  // 卡片2 输入框字段宽
@@ -1639,10 +1640,11 @@ BOOL CManagerDialog::OnInitDialog()
 	}
 
 	// 设置窗口默认大小和最小尺寸
+	// 高度需容纳均线日配置页 4 张卡片（116+118+104+132 + 3*14 = 512 DPI + 头部/按钮区）
 	int initWidth = g_data.DPI(800);
-	int initHeight = g_data.DPI(590);
+	int initHeight = g_data.DPI(680);
 	m_min_size.cx = g_data.DPI(720);
-	m_min_size.cy = g_data.DPI(550);
+	m_min_size.cy = g_data.DPI(640);
 
 	CRect curRect;
 	GetWindowRect(curRect);
@@ -3019,6 +3021,7 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 	m_ma_tag_del_rects.resize(m_data.m_ma_days.size());
 	m_ma_slot_rects.clear();
 	m_ma_preset_rects.clear();
+	m_boll_vis_check_rects.clear();
 
 	int rightLeft = contentRect.left;
 	int rightWidth = contentRect.Width();
@@ -3235,6 +3238,89 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 		}
 
 		preLeft += preW + preGap;
+	}
+
+	// ===== 卡片 4: 分时图布林带显示 =====
+	// 单行三复选框（上轨红/中轨蓝/下轨绿），色块与分时图布林虚线颜色一一对应；不设总开关。
+	int card4Top = card1Top + g_data.DPI(MA_CARD1_H + MA_CARD_GAP + MA_CARD2_H + MA_CARD_GAP + MA_CARD3_H + MA_CARD_GAP);
+	Gdiplus::RectF card4Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card4Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(g_data.DPI(MA_CARD4_H)));
+	g.FillRectangle(&cardBg, card4Rf);
+	g.DrawRectangle(&cardBorder, card4Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card4Top + g_data.DPI(14), L"分时图布林带显示");
+
+	CFont chkFont;    chkFont.CreateFont(-g_data.DPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+
+	// 直角复选框：选中蓝底白勾，未选中深底描边
+	auto drawVisCheckBox = [&](int cx, int cy, bool checked) {
+		int half = g_data.DPI(8);
+		CRect rc(cx - half, cy - half, cx + half, cy + half);
+		Gdiplus::RectF rf(static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
+			static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+		if (checked)
+		{
+			Gdiplus::SolidBrush bg(Gdiplus::Color(255, 37, 99, 235));
+			g.FillRectangle(&bg, rf);
+			drawGdiText(rc, L"✓", chkFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+		}
+		else
+		{
+			Gdiplus::SolidBrush bg(Gdiplus::Color(255, 13, 15, 21));
+			g.FillRectangle(&bg, rf);
+			g.DrawRectangle(&cardBorder, rf);
+		}
+	};
+
+	// 单行三复选框：色块颜色与 TimelineChart 绘制 Pen RGB 一致（上轨红/中轨蓝/下轨绿）
+	struct BollVisItem
+	{
+		const wchar_t* label;
+		COLORREF color;
+		bool visible;
+	};
+	const BollVisItem bollItems[3] = {
+		{ L"上轨", RGB(248, 113, 113), m_data.m_boll_upper_visible },
+		{ L"中轨", RGB(96, 165, 250), m_data.m_boll_mid_visible },
+		{ L"下轨", RGB(52, 211, 153), m_data.m_boll_lower_visible },
+	};
+
+	int rowH = g_data.DPI(30);
+	int cy = card4Top + g_data.DPI(66);
+	int curX = rightLeft + g_data.DPI(24);
+	int itemGap = g_data.DPI(14);
+
+	for (int k = 0; k < 3; ++k)
+	{
+		CString txt;
+		txt.Format(L"%s", bollItems[k].label);
+		int textW = 0;
+		{
+			HDC hdc = g.GetHDC();
+			CDC* pDC = CDC::FromHandle(hdc);
+			CFont* pOld = pDC->SelectObject(&chkFont);
+			textW = pDC->GetTextExtent(txt).cx;
+			pDC->SelectObject(pOld);
+			g.ReleaseHDC(hdc);
+		}
+
+		int itemW = g_data.DPI(22) + g_data.DPI(6) + g_data.DPI(12) + g_data.DPI(6) + textW;
+		CRect item(curX, cy - rowH / 2, curX + itemW, cy + rowH / 2);
+		m_boll_vis_check_rects.push_back(item);
+
+		drawVisCheckBox(curX + g_data.DPI(10), cy, bollItems[k].visible);
+
+		Gdiplus::SolidBrush swatch(Gdiplus::Color(255, GetRValue(bollItems[k].color), GetGValue(bollItems[k].color), GetBValue(bollItems[k].color)));
+		int sw = g_data.DPI(12);
+		int swx = curX + g_data.DPI(22) + g_data.DPI(6);
+		g.FillRectangle(&swatch, static_cast<Gdiplus::REAL>(swx), static_cast<Gdiplus::REAL>(cy - sw / 2),
+			static_cast<Gdiplus::REAL>(sw), static_cast<Gdiplus::REAL>(sw));
+
+		COLORREF txtCol = bollItems[k].visible ? RGB(241, 245, 249) : RGB(148, 163, 184);
+		drawGdiText(CRect(swx + sw + g_data.DPI(6), cy - rowH / 2, curX + itemW, cy + rowH / 2),
+			txt, chkFont, txtCol, DT_LEFT | DT_VCENTER);
+
+		curX += itemW + itemGap;
 	}
 }
 
@@ -3615,6 +3701,22 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 			{
 				if (TryAddMaDay(kMaPresetDays[i]))
 					Invalidate();
+				return;
+			}
+		}
+
+		// 分时图布林带显隐：[0]=上轨、[1]=中轨、[2]=下轨；仅修改编辑副本 m_data，保存由「确定」承担
+		for (size_t i = 0; i < m_boll_vis_check_rects.size(); ++i)
+		{
+			if (m_boll_vis_check_rects[i].PtInRect(point))
+			{
+				if (i == 0)
+					m_data.m_boll_upper_visible = !m_data.m_boll_upper_visible;
+				else if (i == 1)
+					m_data.m_boll_mid_visible = !m_data.m_boll_mid_visible;
+				else if (i == 2)
+					m_data.m_boll_lower_visible = !m_data.m_boll_lower_visible;
+				Invalidate();
 				return;
 			}
 		}

@@ -366,3 +366,7 @@ vgt_*.png
 *.py
 !Plugins/Stock/getPrice.py
 check_tm_crash.ps1
+
+# Local tool cache/temp files
+.codegraph/
+.freebuff/

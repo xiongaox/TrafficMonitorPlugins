@@ -881,8 +881,10 @@ void CFloatingWnd::OnPaint()
 				}
 
 				// 开启BOLL时，Y轴范围同时包含可见区间的布林上下轨，避免窄幅区间下BOLL被映射到价格图区外
+				// 分时走势类视图下，被「均线日配置」页取消勾选的轨道不再纳入扩展（日K蜡烛视图维持既有行为）
 				if (m_showBollBands && !timelinePoint.empty())
 				{
+					bool bollCfgScope = (m_viewMode < UI_VIEW_DAY_KLINE) || m_showTrendView;
 					const int N = 20;
 					const int K = 2;
 					const int totalCount = static_cast<int>(timelinePoint.size());
@@ -906,9 +908,9 @@ void CFloatingWnd::OnPaint()
 						double stddev = std::sqrt(variance / N);
 						double upperBand = ma + K * stddev;
 						double lowerBand = ma - K * stddev;
-						if (upperBand > 0)
+						if (upperBand > 0 && (!bollCfgScope || g_data.m_setting_data.m_boll_upper_visible))
 							visMax = (std::max)(visMax, upperBand);
-						if (lowerBand > 0)
+						if (lowerBand > 0 && (!bollCfgScope || g_data.m_setting_data.m_boll_lower_visible))
 							visMin = (std::min)(visMin, lowerBand);
 					}
 				}

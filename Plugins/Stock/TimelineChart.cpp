@@ -428,20 +428,29 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			graphics.FillPath(&areaBrush, &areaPath);
 		}
 
-		// (2) 布林带（半透明抗锯齿平滑虚线）
+		// (2) 布林带（半透明抗锯齿平滑虚线）：BL 按钮为总开关，各轨道再按「均线日配置」页勾选独立显隐
 		if (hover.showBollBands && midPoints.size() >= 2)
 		{
-			Gdiplus::Pen upperPen(Gdiplus::Color(190, 248, 113, 113), 1.1f);
-			upperPen.SetDashStyle(Gdiplus::DashStyleDash);
-			graphics.DrawCurve(&upperPen, upperPoints.data(), static_cast<int>(upperPoints.size()), 0.25f);
+			if (g_data.m_setting_data.m_boll_upper_visible && upperPoints.size() >= 2)
+			{
+				Gdiplus::Pen upperPen(Gdiplus::Color(190, 248, 113, 113), 1.1f);
+				upperPen.SetDashStyle(Gdiplus::DashStyleDash);
+				graphics.DrawCurve(&upperPen, upperPoints.data(), static_cast<int>(upperPoints.size()), 0.25f);
+			}
 
-			Gdiplus::Pen midPen(Gdiplus::Color(190, 96, 165, 250), 1.1f);
-			midPen.SetDashStyle(Gdiplus::DashStyleDash);
-			graphics.DrawCurve(&midPen, midPoints.data(), static_cast<int>(midPoints.size()), 0.25f);
+			if (g_data.m_setting_data.m_boll_mid_visible && midPoints.size() >= 2)
+			{
+				Gdiplus::Pen midPen(Gdiplus::Color(190, 96, 165, 250), 1.1f);
+				midPen.SetDashStyle(Gdiplus::DashStyleDash);
+				graphics.DrawCurve(&midPen, midPoints.data(), static_cast<int>(midPoints.size()), 0.25f);
+			}
 
-			Gdiplus::Pen lowerPen(Gdiplus::Color(190, 52, 211, 153), 1.1f);
-			lowerPen.SetDashStyle(Gdiplus::DashStyleDash);
-			graphics.DrawCurve(&lowerPen, lowerPoints.data(), static_cast<int>(lowerPoints.size()), 0.25f);
+			if (g_data.m_setting_data.m_boll_lower_visible && lowerPoints.size() >= 2)
+			{
+				Gdiplus::Pen lowerPen(Gdiplus::Color(190, 52, 211, 153), 1.1f);
+				lowerPen.SetDashStyle(Gdiplus::DashStyleDash);
+				graphics.DrawCurve(&lowerPen, lowerPoints.data(), static_cast<int>(lowerPoints.size()), 0.25f);
+			}
 		}
 
 		// (3) MA均线（平滑抗锯齿实线，周期/颜色来自配置）

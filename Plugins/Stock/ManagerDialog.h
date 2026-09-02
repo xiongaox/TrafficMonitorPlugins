@@ -207,6 +207,7 @@ private:
 	std::vector<CRect> m_ma_tag_del_rects;
 	std::vector<CRect> m_ma_slot_rects;   // 均线页空槽位（点击聚焦输入框）
 	std::vector<CRect> m_ma_preset_rects; // 均线页常用周期快捷添加按钮
+	std::vector<CRect> m_boll_vis_check_rects; // 均线页「分时图布林带显示」点击区域（固定3项：[0]=上轨、[1]=中轨、[2]=下轨）
 	std::vector<CRect> m_group_tab_rects;
 	CRect m_about_link_rect;
 

@@ -135,6 +135,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	if (m_setting_data.m_ma_days.empty())
 		m_setting_data.m_ma_days = { 5, 17, 60 };
 
+	// 分时图布林带三轨显隐（缺省全部显示；旧配置/云端旧备份无键时自动回退）
+	m_setting_data.m_boll_upper_visible = ini.GetBool(L"config", L"boll_upper_visible", true);
+	m_setting_data.m_boll_mid_visible = ini.GetBool(L"config", L"boll_mid_visible", true);
+	m_setting_data.m_boll_lower_visible = ini.GetBool(L"config", L"boll_lower_visible", true);
+
 	m_setting_data.m_custom_groups.clear();
 	int custom_group_count = ini.GetInt(L"config", L"custom_group_count", 0);
 	for (int i = 0; i < custom_group_count; ++i)
@@ -547,6 +552,9 @@ void CDataManager::SaveConfig()
 		for (int ma : m_setting_data.m_ma_days)
 			ma_str_list.push_back(std::to_wstring(ma));
 		ini.WriteStringList(L"config", L"ma_days", ma_str_list);
+		ini.WriteBool(L"config", L"boll_upper_visible", m_setting_data.m_boll_upper_visible);
+		ini.WriteBool(L"config", L"boll_mid_visible", m_setting_data.m_boll_mid_visible);
+		ini.WriteBool(L"config", L"boll_lower_visible", m_setting_data.m_boll_lower_visible);
 		ini.WriteInt(L"config", L"custom_group_count", static_cast<int>(m_setting_data.m_custom_groups.size()));
 		for (size_t i = 0; i < m_setting_data.m_custom_groups.size(); ++i)
 		{

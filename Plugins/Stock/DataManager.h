@@ -51,6 +51,10 @@ struct SettingData
 	std::vector<std::wstring> m_selected_indices; // 选中的指数列表
 	int m_index_display_mode{ INDEX_DISP_ALL };   // 指数状态栏显示模式 (0:全显, 1:数字, 2:百分比)
 	std::vector<int> m_ma_days;         // 均线日列表，例如 {5, 17, 60}
+	// 分时图布林带三轨显隐（缺省全部显示；键名 boll_upper_visible/boll_mid_visible/boll_lower_visible）
+	bool m_boll_upper_visible{ true };  // 布林上轨（红虚线）显示
+	bool m_boll_mid_visible{ true };    // 布林中轨（蓝虚线）显示
+	bool m_boll_lower_visible{ true };  // 布林下轨（绿虚线）显示
 	std::vector<std::wstring> m_position_codes; // 持仓分组代码列表（独立于自选股）
 	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表(向后兼容)
 	std::vector<CustomGroup> m_custom_groups; // 多自定义分组列表
