@@ -1595,25 +1595,40 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 		if (ctx.realtimeData.IsETF())
 		{
 			COLORREF iopvColor = COLOR_WHITE;
-			if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
-				iopvColor = COLOR_RED_UP;
-			else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
-				iopvColor = COLOR_GREEN_DOWN;
-
 			CString iopvLabel = _T("净:");
 			CString iopvVal;
-			iopvVal.Format(_T("%.4f"), ctx.realtimeData.iopv);
+			if (ctx.realtimeData.iopv > 0)
+			{
+				if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
+					iopvColor = COLOR_RED_UP;
+				else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
+					iopvColor = COLOR_GREEN_DOWN;
+				iopvVal.Format(_T("%.4f"), ctx.realtimeData.iopv);
+			}
+			else
+			{
+				iopvColor = COLOR_TEXT_MUTED;
+				iopvVal = _T("--");
+			}
 			CSize iopvLs = memDC.GetTextExtent(iopvLabel);
 			CSize iopvVs = memDC.GetTextExtent(iopvVal);
 
 			CString premLabel = _T(" 溢:");
 			CString premVal;
-			double premRate = ctx.realtimeData.iopvPremiumRate;
-			if (premRate >= 0)
-				premVal.Format(_T("+%.2f%%"), premRate);
+			COLORREF premColor = COLOR_TEXT_MUTED;
+			if (ctx.realtimeData.iopv > 0)
+			{
+				double premRate = ctx.realtimeData.iopvPremiumRate;
+				if (premRate >= 0)
+					premVal.Format(_T("+%.2f%%"), premRate);
+				else
+					premVal.Format(_T("%.2f%%"), premRate);
+				premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_WHITE);
+			}
 			else
-				premVal.Format(_T("%.2f%%"), premRate);
-			COLORREF premColor = premRate > 0 ? COLOR_RED_UP : (premRate < 0 ? COLOR_GREEN_DOWN : COLOR_WHITE);
+			{
+				premVal = _T("--");
+			}
 			CSize premLs = memDC.GetTextExtent(premLabel);
 			CSize premVs = memDC.GetTextExtent(premVal);
 

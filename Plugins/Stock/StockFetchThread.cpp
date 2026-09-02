@@ -375,6 +375,8 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 			CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
 			CStockFetchThread::Instance().FetchWeekKLine(stockId, 750);
 			CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
+			if (CCommon::IsFundCode(stockId))
+				CStockFetchThread::Instance().FetchFundIOPV(stockId);
 			});
 	}
 }
@@ -392,7 +394,7 @@ time_t CStockFetchThread::GetChartInterval(int type)
 	case CHART_TIMELINE:		return 10;		// 分时图：盘中实时变化，10秒
 	case CHART_MIN5_KLINE:		return 60;		// 5分钟K线：60秒
 	case CHART_MIN30_KLINE:		return 600;		// 30分钟K线：10分钟
-	case CHART_IOPV:			return 3;		// ETF基金IOPV：实时估值，3秒
+	case CHART_IOPV:			return CCommon::IsMarketSession() ? 3 : 60;		// ETF基金IOPV：盘中3秒，盘后60秒
 	default: return 10;
 	}
 }
@@ -477,9 +479,8 @@ void CStockFetchThread::Run()
 				// enum 按间隔从短到长排列，从前往后遍历保证短间隔任务优先执行
 				for (int i = 0; i < CHART_COUNT; i++)
 				{
-					// IOPV 仅对基金代码获取，且仅在交易时段获取
-					if (i == CHART_IOPV &&
-						(!CCommon::IsFundCode(stockId) || !CCommon::IsMarketSession()))
+					// IOPV 仅对基金代码获取
+					if (i == CHART_IOPV && !CCommon::IsFundCode(stockId))
 						continue;
 
 					time_t interval = GetChartInterval(i);

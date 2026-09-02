@@ -204,7 +204,8 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 
 		std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=" + txCode;
 		CString strHeaders = _T("Referer: https://finance.qq.com");
-		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"minute\"") != std::string::npos)
+		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && 
+			(outResp.find("\"data\"") != std::string::npos || outResp.find("\"minute\"") != std::string::npos))
 		{
 			return true;
 		}
@@ -496,11 +497,11 @@ bool CStockHttpFetcher::FetchFundIOPV(const std::wstring& stock_id, std::string&
 
 	std::wstring url;
 	CString strHeaders;
+	time_t now = time(nullptr);
 
 	if (stock_id.find(L"sh") == 0)
 	{
 		// 1. 上交所ETF：yunhq.sse.com.cn接口，含真实IOPV
-		time_t now = time(nullptr);
 		url = L"https://yunhq.sse.com.cn:32042/v1/sh1/snap/" + pureCode
 			+ L"?callback=jQuery&select=name,last,chg_rate,change,open,prev_close,high,low,volume,amount,iopv&_="
 			+ std::to_wstring(now);
@@ -510,9 +511,17 @@ bool CStockHttpFetcher::FetchFundIOPV(const std::wstring& stock_id, std::string&
 			return true;
 		}
 
-		// 2. 保底：天天基金
+		// 2. 一级保底：天天基金
 		url = L"http://fundgz.1234567.com.cn/js/" + pureCode + L".js?_=" + std::to_wstring(now);
 		strHeaders = _T("Referer: http://fund.eastmoney.com");
+		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
+		{
+			return true;
+		}
+
+		// 3. 二级保底：腾讯ETF分时/IOPV
+		url = L"https://web.ifzq.gtimg.cn/appstock/app/Minute/query?code=" + stock_id;
+		strHeaders = _T("Referer: https://gu.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
 			return true;
@@ -521,9 +530,16 @@ bool CStockHttpFetcher::FetchFundIOPV(const std::wstring& stock_id, std::string&
 	else
 	{
 		// 1. 深交所ETF：天天基金实时估值接口（JSONP格式）
-		time_t now = time(nullptr);
 		url = L"http://fundgz.1234567.com.cn/js/" + pureCode + L".js?_=" + std::to_wstring(now);
 		strHeaders = _T("Referer: http://fund.eastmoney.com");
+		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
+		{
+			return true;
+		}
+
+		// 2. 一级保底：腾讯ETF分时/IOPV
+		url = L"https://web.ifzq.gtimg.cn/appstock/app/Minute/query?code=" + stock_id;
+		strHeaders = _T("Referer: https://gu.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
 			return true;

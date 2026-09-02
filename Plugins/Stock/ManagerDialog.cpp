@@ -1522,7 +1522,7 @@ IMPLEMENT_DYNAMIC(CManagerDialog, CDialog)
 CManagerDialog::CManagerDialog(CWnd* pParent /*=nullptr*/)
 	: CDialog(IDD_MANAGER_DIALOG, pParent)
 {
-	m_menu_rects.resize(6);
+	m_menu_rects.resize(7);
 	m_dark_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
 	m_card_brush.CreateSolidBrush(COLOR_BG_CARD);     // #181B22
 	m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));   // 输入框内嵌底色（略深于卡片，形成下沉观感）
@@ -1894,7 +1894,7 @@ BOOL CManagerDialog::OnInitDialog()
 	m_display_area_combo.AddString(L"右下角");
 	m_display_area_combo.AddString(L"居中");
 	m_display_area_combo.SetItemHeight(-1, g_data.DPI(26));
-	m_display_area_combo.SetItemHeight(0, g_data.DPI(24));
+	m_display_area_combo.SetItemHeight(0, g_data.DPI(26)); 
 	int selArea = m_data.m_display_area;
 	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
 		selArea = AREA_RIGHT_BOTTOM;
@@ -1911,6 +1911,9 @@ BOOL CManagerDialog::OnInitDialog()
 
 	if (m_data.m_ma_days.empty())
 		m_data.m_ma_days = { 5, 17, 60 };
+
+	if (m_data.m_header_metrics.empty())
+		m_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
 
 	RefreshStockList();
 	RefreshPositionList();
@@ -2275,21 +2278,38 @@ void CManagerDialog::UpdateControlsLayout()
 		CWnd* pKHLbl = GetDlgItem(IDC_KLINE_HEIGHT_STATIC);
 		CWnd* pPosLbl = GetDlgItem(IDC_DISPLAY_AREA_STATIC);
 
-		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), card2Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
-		PlaceEditInField(IDC_KLINE_WIDTH_EDIT, CRect(rightLeft + g_data.DPI(85), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(145), card2Top + g_data.DPI(64)));
-		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(160), card2Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
-		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(227), card2Top + g_data.DPI(38), rightLeft + g_data.DPI(287), card2Top + g_data.DPI(64)));
-		if (pPosLbl && pPosLbl->GetSafeHwnd()) pPosLbl->MoveWindow(rightLeft + g_data.DPI(302), card2Top + g_data.DPI(42), g_data.DPI(60), g_data.DPI(20));
-		if (m_display_area_combo.GetSafeHwnd()) m_display_area_combo.MoveWindow(rightLeft + g_data.DPI(364), card2Top + g_data.DPI(38), g_data.DPI(85), g_data.DPI(160));
+		int rowTop = card2Top + g_data.DPI(38);
+		int rowH = g_data.DPI(26);
+		int lblH = g_data.DPI(20);
+		int lblY = rowTop + (rowH - lblH) / 2;
+
+		if (pKWLbl && pKWLbl->GetSafeHwnd()) pKWLbl->MoveWindow(rightLeft + g_data.DPI(18), lblY, g_data.DPI(65), lblH);
+		PlaceEditInField(IDC_KLINE_WIDTH_EDIT, CRect(rightLeft + g_data.DPI(85), rowTop, rightLeft + g_data.DPI(145), rowTop + rowH));
+
+		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(160), lblY, g_data.DPI(65), lblH);
+		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(227), rowTop, rightLeft + g_data.DPI(287), rowTop + rowH));
+
+		if (pPosLbl && pPosLbl->GetSafeHwnd()) pPosLbl->MoveWindow(rightLeft + g_data.DPI(302), lblY, g_data.DPI(60), lblH);
+		if (m_display_area_combo.GetSafeHwnd())
+		{
+			// OnNcCalcSize 已消除非客户区边框，client 区域等于窗口区域，
+			// 直接对齐 rowTop 即可与左侧输入框字段框垂直对齐
+			m_display_area_combo.SetItemHeight(-1, rowH);
+			m_display_area_combo.m_field_height = rowH;
+			m_display_area_combo.MoveWindow(rightLeft + g_data.DPI(364), rowTop, g_data.DPI(90), g_data.DPI(160));
+		}
 
 		// 卡片 3: SOCKS5 代理网络
 		int card3Top = card1Top + g_data.DPI(192);
 		CWnd* pProxyChk = GetDlgItem(IDC_USE_SOCKS5_PROXY_CHECK);
 		CWnd* pProxyLbl = GetDlgItem(IDC_SOCKS5_PROXY_STATIC);
 
-		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), card3Top + g_data.DPI(40), g_data.DPI(150), chkH);
-		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(180), card3Top + g_data.DPI(42), g_data.DPI(65), g_data.DPI(20));
-		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(250), card3Top + g_data.DPI(38), rightLeft + g_data.DPI(250) + min(g_data.DPI(210), rightWidth - g_data.DPI(268)), card3Top + g_data.DPI(64)));
+		int row3Top = card3Top + g_data.DPI(38);
+		int lbl3Y = row3Top + (rowH - lblH) / 2;
+
+		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), lbl3Y, g_data.DPI(135), lblH);
+		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(160), lbl3Y, g_data.DPI(65), lblH);
+		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(227), row3Top, rightLeft + g_data.DPI(227) + min(g_data.DPI(220), rightWidth - g_data.DPI(245)), row3Top + rowH));
 	}
 
 	// 分组管理控件布局
@@ -2539,6 +2559,9 @@ void CManagerDialog::OnPaint()
 	case PAGE_MA:
 		DrawMaPage(g, contentRect);
 		break;
+	case PAGE_METRICS:
+		DrawMetricPage(g, contentRect);
+		break;
 	case PAGE_WEBDAV:
 		DrawWebDavPage(g, contentRect);
 		break;
@@ -2584,8 +2607,8 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
 	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(13))), &titleBrush);
 
-	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"云端备份", L"关于插件" };
-	int menuCount = 6;
+	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"关于插件" };
+	int menuCount = 7;
 	int itemH = g_data.DPI(40);
 	int itemTop = g_data.DPI(54);
 	int itemPadX = g_data.DPI(8);
@@ -2644,12 +2667,13 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 	int rightLeft = m_menu_width + g_data.DPI(18);
 	int headerTop = g_data.DPI(14);
 
-	const wchar_t* titles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"云端备份", L"关于插件" };
+	const wchar_t* titles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"关于插件" };
 	const wchar_t* subs[] = {
 		L"配置全天更新、代理网络及走势图尺寸参数",
 		L"点击卡片选择展示的指数，前 5 个展示在首页顶部",
 		L"管理自选股票列表、持仓配置与自定义分组",
 		L"自定义均线周期（最多 5 条；点标签右上角 × 删除；在下方输入添加）",
+		L"自定义股票图表顶部指标栏显示内容（最多允许显示 4 项）",
 		L"基于 WebDAV 协议在多台电脑间安全备份与同步配置",
 		L"TrafficMonitor 专业级股票行情监控插件"
 	};
@@ -2662,7 +2686,7 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 	g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(headerTop + g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
 	g.DrawString(titles[m_current_page], -1, &headFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(10)), static_cast<Gdiplus::REAL>(headerTop)), &headBrush);
 
-	Gdiplus::Font subFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font subFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush subBrush(Gdiplus::Color(255, 148, 163, 184));
 
 	std::wstring subText = subs[m_current_page];
@@ -2737,6 +2761,10 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 		if (m_current_page == PAGE_MA)
 		{
 			subText = L"自定义 K 线图叠加的均线周期，最多 5 条 (1~250)";
+		}
+		else if (m_current_page == PAGE_METRICS)
+		{
+			subText = L"自定义股票图表顶部指标栏显示内容，最多允许显示 4 项";
 		}
 	}
 
@@ -3324,6 +3352,247 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 	}
 }
 
+void CManagerDialog::DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRect)
+{
+	int rightLeft = contentRect.left;
+	int rightWidth = contentRect.Width();
+
+	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));
+	Gdiplus::Pen cardBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+
+	m_metric_tag_rects.clear();
+	m_metric_tag_del_rects.clear();
+	m_metric_tag_rects.resize(m_data.m_header_metrics.size());
+	m_metric_tag_del_rects.resize(m_data.m_header_metrics.size());
+	m_metric_slot_rects.clear();
+	m_metric_candidates.clear();
+
+	CFont chipFont;   chipFont.CreateFont(-g_data.DPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont delFont;    delFont.CreateFont(-g_data.DPI(13), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont plusFont;   plusFont.CreateFont(-g_data.DPI(16), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Segoe UI"));
+	CFont badgeFont;  badgeFont.CreateFont(-g_data.DPI(11), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont preFont;    preFont.CreateFont(-g_data.DPI(12), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+	CFont grpFont;    grpFont.CreateFont(-g_data.DPI(11), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("微软雅黑"));
+
+	auto drawGdiText = [&](const CRect& rc, const CString& txt, CFont& fnt, COLORREF col, UINT fmt) {
+		HDC hdc = g.GetHDC();
+		CDC* pDC = CDC::FromHandle(hdc);
+		CFont* pOld = pDC->SelectObject(&fnt);
+		pDC->SetBkMode(TRANSPARENT);
+		pDC->SetTextColor(col);
+		CRect tempRc = rc;
+		pDC->DrawText(txt, &tempRc, fmt | DT_SINGLELINE);
+		pDC->SelectObject(pOld);
+		g.ReleaseHDC(hdc);
+	};
+
+	// ===== 卡片 1: 当前显示指标 =====
+	int card1Top = contentRect.top;
+	int card1H = g_data.DPI(120);
+	Gdiplus::RectF card1Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card1Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card1H));
+	g.FillRectangle(&cardBg, card1Rf);
+	g.DrawRectangle(&cardBorder, card1Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card1Top + g_data.DPI(14), L"当前显示指标");
+
+	// 右上角 "已选 N / 4" 徽标
+	{
+		CString cntText;
+		cntText.Format(L"已选 %d / 4", static_cast<int>(m_data.m_header_metrics.size()));
+		int badgeW = g_data.DPI(76);
+		int badgeH = g_data.DPI(24);
+		CRect badgeRect(rightLeft + rightWidth - g_data.DPI(16) - badgeW, card1Top + g_data.DPI(10),
+			rightLeft + rightWidth - g_data.DPI(16), card1Top + g_data.DPI(10) + badgeH);
+		Gdiplus::SolidBrush badgeBg(Gdiplus::Color(255, 13, 15, 21));
+		g.FillRectangle(&badgeBg, Gdiplus::RectF(static_cast<Gdiplus::REAL>(badgeRect.left), static_cast<Gdiplus::REAL>(badgeRect.top),
+			static_cast<Gdiplus::REAL>(badgeRect.Width()), static_cast<Gdiplus::REAL>(badgeRect.Height())));
+		g.DrawRectangle(&cardBorder, Gdiplus::RectF(static_cast<Gdiplus::REAL>(badgeRect.left), static_cast<Gdiplus::REAL>(badgeRect.top),
+			static_cast<Gdiplus::REAL>(badgeRect.Width()), static_cast<Gdiplus::REAL>(badgeRect.Height())));
+
+		bool full = (static_cast<int>(m_data.m_header_metrics.size()) >= 4);
+		drawGdiText(badgeRect, cntText, badgeFont, full ? RGB(245, 158, 11) : RGB(148, 163, 184), DT_CENTER | DT_VCENTER);
+	}
+
+	int tagLeft = rightLeft + g_data.DPI(18);
+	int tagTop = card1Top + g_data.DPI(50);
+	int tagH = g_data.DPI(42);
+	int tagGap = g_data.DPI(12);
+
+	Gdiplus::Color tagColors[4];
+	for (int k = 0; k < 4; k++)
+	{
+		COLORREF c = MaIndexColor(k);
+		tagColors[k] = Gdiplus::Color(255, GetRValue(c), GetGValue(c), GetBValue(c));
+	}
+
+	for (size_t i = 0; i < m_data.m_header_metrics.size(); ++i)
+	{
+		const std::wstring& name = m_data.m_header_metrics[i];
+		CString tagText(name.c_str());
+
+		int textW = 0;
+		{
+			HDC hdc = g.GetHDC();
+			CDC* pDC = CDC::FromHandle(hdc);
+			CFont* pOld = pDC->SelectObject(&chipFont);
+			textW = pDC->GetTextExtent(tagText).cx;
+			pDC->SelectObject(pOld);
+			g.ReleaseHDC(hdc);
+		}
+		int tagW = g_data.DPI(14) + textW + g_data.DPI(6) + g_data.DPI(16) + g_data.DPI(8);
+
+		CRect tagRect(tagLeft, tagTop, tagLeft + tagW, tagTop + tagH);
+		m_metric_tag_rects[i] = tagRect;
+
+		Gdiplus::RectF tagRf(static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
+			static_cast<Gdiplus::REAL>(tagW), static_cast<Gdiplus::REAL>(tagH));
+		Gdiplus::SolidBrush tagBg(tagColors[i % 4]);
+		g.FillRectangle(&tagBg, tagRf);
+
+		// 右侧 × 删除区
+		int delCx = tagLeft + tagW - g_data.DPI(14);
+		int delCy = tagTop + tagH / 2;
+		int delR = g_data.DPI(8);
+		CRect delRect(delCx - delR - g_data.DPI(2), delCy - delR - g_data.DPI(2),
+			delCx + delR + g_data.DPI(2), delCy + delR + g_data.DPI(2));
+		m_metric_tag_del_rects[i] = delRect;
+
+		if (static_cast<int>(i) == m_hover_metric_tag_del)
+		{
+			Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
+			g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
+		}
+		drawGdiText(CRect(delCx - delR, delCy - delR, delCx + delR, delCy + delR), L"×", delFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+
+		drawGdiText(CRect(tagLeft + g_data.DPI(12), tagTop, delRect.left - g_data.DPI(2), tagTop + tagH),
+			tagText, chipFont, RGB(255, 255, 255), DT_LEFT | DT_VCENTER);
+
+		tagLeft += tagW + tagGap;
+	}
+
+	// 空槽位：虚线直角框 + “+”，提示剩余容量
+	if (static_cast<int>(m_data.m_header_metrics.size()) < 4)
+	{
+		int slotW = g_data.DPI(64);
+		int slotIdx = 0;
+		for (int s = static_cast<int>(m_data.m_header_metrics.size()); s < 4; ++s, ++slotIdx)
+		{
+			CRect slotRect(tagLeft, tagTop, tagLeft + slotW, tagTop + tagH);
+			m_metric_slot_rects.push_back(slotRect);
+
+			bool slotHover = (slotIdx == m_hover_metric_slot);
+			Gdiplus::Pen slotPen(slotHover ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 58, 65, 82), 1.0f);
+			slotPen.SetDashStyle(Gdiplus::DashStyleDash);
+			g.DrawRectangle(&slotPen, static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
+				static_cast<Gdiplus::REAL>(slotW), static_cast<Gdiplus::REAL>(tagH));
+
+			drawGdiText(slotRect, L"+", plusFont, slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99), DT_CENTER | DT_VCENTER);
+
+			tagLeft += slotW + tagGap;
+		}
+	}
+
+	// ===== 卡片 2: 候选指标库 =====
+	int card2Top = card1Top + card1H + g_data.DPI(12);
+	int card2H = contentRect.bottom - card2Top;
+	Gdiplus::RectF card2Rf(static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(card2Top),
+		static_cast<Gdiplus::REAL>(rightWidth), static_cast<Gdiplus::REAL>(card2H));
+	g.FillRectangle(&cardBg, card2Rf);
+	g.DrawRectangle(&cardBorder, card2Rf);
+	DrawSectionTitle(g, rightLeft + g_data.DPI(14), card2Top + g_data.DPI(14), L"候选指标库");
+
+	struct MetricGroupDef {
+		const wchar_t* groupName;
+		std::vector<const wchar_t*> items;
+	};
+	const MetricGroupDef candGroups[] = {
+		{ L"行情量价", { L"总市值", L"成交额", L"成交量", L"换手率", L"量比", L"委比", L"振幅", L"今开", L"昨收", L"最高", L"最低", L"涨停", L"跌停", L"盘后量", L"盘后额" } },
+		{ L"估值股本", { L"流通值", L"市盈率(动)", L"市盈率(TTM)", L"市盈率(静)", L"市净率", L"股息率(TTM)", L"总股本", L"流通股" } },
+		{ L"ETF与基金", { L"溢价率", L"IOPV净值", L"基金规模" } },
+		{ L"财务与区间", { L"每股收益", L"每股净资产", L"52周最高", L"52周最低" } }
+	};
+
+	int curY = card2Top + g_data.DPI(46);
+	int chipH = g_data.DPI(32);
+	int chipGap = g_data.DPI(8);
+	int rowGap = g_data.DPI(8);
+	int rightBound = rightLeft + rightWidth - g_data.DPI(18);
+
+	for (const auto& grp : candGroups)
+	{
+		CString grpTitle;
+		grpTitle.Format(L"● %s", grp.groupName);
+		drawGdiText(CRect(rightLeft + g_data.DPI(18), curY, rightBound, curY + g_data.DPI(18)),
+			grpTitle, grpFont, RGB(96, 165, 250), DT_LEFT | DT_VCENTER);
+		curY += g_data.DPI(22);
+
+		int curX = rightLeft + g_data.DPI(18);
+		for (const wchar_t* item : grp.items)
+		{
+			bool added = std::find(m_data.m_header_metrics.begin(), m_data.m_header_metrics.end(), item) != m_data.m_header_metrics.end();
+			CString itemText;
+			itemText.Format(L"%s%s", item, added ? L" ✓" : L"");
+
+			int textW = 0;
+			{
+				HDC hdc = g.GetHDC();
+				CDC* pDC = CDC::FromHandle(hdc);
+				CFont* pOld = pDC->SelectObject(&preFont);
+				textW = pDC->GetTextExtent(itemText).cx;
+				pDC->SelectObject(pOld);
+				g.ReleaseHDC(hdc);
+			}
+			int chipW = g_data.DPI(20) + textW;
+			if (curX + chipW > rightBound)
+			{
+				curX = rightLeft + g_data.DPI(18);
+				curY += chipH + rowGap;
+			}
+
+			CRect chipRect(curX, curY, curX + chipW, curY + chipH);
+			int candIdx = static_cast<int>(m_metric_candidates.size());
+			m_metric_candidates.push_back({ item, chipRect });
+
+			Gdiplus::RectF chipRf(static_cast<Gdiplus::REAL>(curX), static_cast<Gdiplus::REAL>(curY),
+				static_cast<Gdiplus::REAL>(chipW), static_cast<Gdiplus::REAL>(chipH));
+
+			bool hot = (candIdx == m_hover_metric_preset);
+			if (added)
+			{
+				Gdiplus::SolidBrush selBg(Gdiplus::Color(255, 28, 45, 75)); // #1C2D4B
+				g.FillRectangle(&selBg, chipRf);
+				Gdiplus::Pen selPen(Gdiplus::Color(255, 37, 99, 235), 1.0f);
+				g.DrawRectangle(&selPen, chipRf);
+				drawGdiText(chipRect, itemText, preFont, RGB(147, 197, 253), DT_CENTER | DT_VCENTER);
+			}
+			else if (hot)
+			{
+				Gdiplus::SolidBrush hotBg(Gdiplus::Color(255, 30, 41, 59));
+				g.FillRectangle(&hotBg, chipRf);
+				Gdiplus::Pen hotPen(Gdiplus::Color(255, 37, 99, 235), 1.0f);
+				g.DrawRectangle(&hotPen, chipRf);
+				drawGdiText(chipRect, itemText, preFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+			}
+			else
+			{
+				Gdiplus::SolidBrush normalBg(Gdiplus::Color(255, 13, 15, 21));
+				g.FillRectangle(&normalBg, chipRf);
+				g.DrawRectangle(&cardBorder, chipRf);
+				drawGdiText(chipRect, itemText, preFont, RGB(148, 163, 184), DT_CENTER | DT_VCENTER);
+			}
+
+			curX += chipW + chipGap;
+		}
+		curY += chipH + g_data.DPI(10);
+	}
+}
+
 void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
 	int rightLeft = contentRect.left;
@@ -3497,6 +3766,42 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 		}
 	}
 
+	int oldHoverMetricDel = m_hover_metric_tag_del;
+	int oldHoverMetricSlot = m_hover_metric_slot;
+	int oldHoverMetricPreset = m_hover_metric_preset;
+	m_hover_metric_tag_del = -1;
+	m_hover_metric_slot = -1;
+	m_hover_metric_preset = -1;
+	if (m_current_page == PAGE_METRICS)
+	{
+		for (size_t i = 0; i < m_metric_tag_del_rects.size(); ++i)
+		{
+			if (m_metric_tag_del_rects[i].PtInRect(point))
+			{
+				m_hover_metric_tag_del = static_cast<int>(i);
+				break;
+			}
+		}
+
+		for (size_t i = 0; i < m_metric_slot_rects.size(); ++i)
+		{
+			if (m_metric_slot_rects[i].PtInRect(point))
+			{
+				m_hover_metric_slot = static_cast<int>(i);
+				break;
+			}
+		}
+
+		for (size_t i = 0; i < m_metric_candidates.size(); ++i)
+		{
+			if (m_metric_candidates[i].rect.PtInRect(point))
+			{
+				m_hover_metric_preset = static_cast<int>(i);
+				break;
+			}
+		}
+	}
+
 	m_hover_group_tab = -1;
 	if (m_current_page == PAGE_GROUPS)
 	{
@@ -3512,8 +3817,10 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 
 	if (oldHoverMenu != m_hover_menu || oldHoverCard != m_hover_index_card ||
 		oldHoverMa != m_hover_ma_tag_del || oldHoverMaSlot != m_hover_ma_slot ||
-		oldHoverMaPreset != m_hover_ma_preset || oldHoverTab != m_hover_group_tab ||
-		oldHoverMode != m_hover_index_mode)
+		oldHoverMaPreset != m_hover_ma_preset ||
+		oldHoverMetricDel != m_hover_metric_tag_del || oldHoverMetricSlot != m_hover_metric_slot ||
+		oldHoverMetricPreset != m_hover_metric_preset ||
+		oldHoverTab != m_hover_group_tab || oldHoverMode != m_hover_index_mode)
 	{
 		Invalidate();
 	}
@@ -3529,6 +3836,9 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_ma_tag_del = -1;
 	m_hover_ma_slot = -1;
 	m_hover_ma_preset = -1;
+	m_hover_metric_tag_del = -1;
+	m_hover_metric_slot = -1;
+	m_hover_metric_preset = -1;
 	m_hover_group_tab = -1;
 	m_hover_index_mode = -1;
 	Invalidate();
@@ -3543,6 +3853,7 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 
 	if (m_hover_menu >= 0 || m_hover_index_card >= 0 || m_hover_ma_tag_del >= 0 ||
 		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
+		m_hover_metric_tag_del >= 0 || m_hover_metric_slot >= 0 || m_hover_metric_preset >= 0 ||
 		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
@@ -3717,6 +4028,55 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 				else if (i == 2)
 					m_data.m_boll_lower_visible = !m_data.m_boll_lower_visible;
 				Invalidate();
+				return;
+			}
+		}
+	}
+
+	if (m_current_page == PAGE_METRICS)
+	{
+		// 点击已选指标上的 × 删除
+		for (size_t i = 0; i < m_metric_tag_del_rects.size(); ++i)
+		{
+			if (m_metric_tag_del_rects[i].PtInRect(point))
+			{
+				if (m_data.m_header_metrics.size() > 1)
+				{
+					m_data.m_header_metrics.erase(m_data.m_header_metrics.begin() + i);
+					Invalidate();
+				}
+				else
+				{
+					MessageBox(L"至少保留 1 个指标项！", L"提示", MB_ICONINFORMATION);
+				}
+				return;
+			}
+		}
+
+		// 点击候选指标
+		for (size_t i = 0; i < m_metric_candidates.size(); ++i)
+		{
+			if (m_metric_candidates[i].rect.PtInRect(point))
+			{
+				const std::wstring& name = m_metric_candidates[i].name;
+				auto it = std::find(m_data.m_header_metrics.begin(), m_data.m_header_metrics.end(), name);
+				if (it != m_data.m_header_metrics.end())
+				{
+					if (m_data.m_header_metrics.size() > 1)
+					{
+						m_data.m_header_metrics.erase(it);
+						Invalidate();
+					}
+					else
+					{
+						MessageBox(L"至少保留 1 个指标项！", L"提示", MB_ICONINFORMATION);
+					}
+				}
+				else
+				{
+					if (TryAddMetric(name))
+						Invalidate();
+				}
 				return;
 			}
 		}
@@ -4373,6 +4733,25 @@ bool CManagerDialog::TryAddMaDay(int val)
 	return true;
 }
 
+// 添加指标项（上限 4 项）
+bool CManagerDialog::TryAddMetric(const std::wstring& name)
+{
+	if (m_data.m_header_metrics.size() >= 4)
+	{
+		MessageBox(L"顶部指标栏最多配置 4 项！请先点击已选标签上的「×」删除不需要的指标。", L"提示", MB_ICONINFORMATION);
+		return false;
+	}
+
+	if (std::find(m_data.m_header_metrics.begin(), m_data.m_header_metrics.end(), name) != m_data.m_header_metrics.end())
+	{
+		MessageBox(L"该指标已在显示列表中！", L"提示", MB_ICONINFORMATION);
+		return false;
+	}
+
+	m_data.m_header_metrics.push_back(name);
+	return true;
+}
+
 void CManagerDialog::OnClickedFullDayCheck()
 {
 	SetCheck(IDC_FULL_DAY_CHECK, !IsChecked(IDC_FULL_DAY_CHECK));
@@ -4735,6 +5114,9 @@ void CManagerDialog::OnBnClickedOk()
 	{
 		Stock::Instance().SendStockInfoRequest();
 	}
+
+	Stock::Instance().NotifyFloatingWndUpdate();
+	Stock::Instance().NotifyFloatingWndOrderBookUpdate();
 
 	CDialog::OnOK();
 }
@@ -5558,12 +5940,25 @@ BEGIN_MESSAGE_MAP(CDarkComboBox, CComboBox)
 	ON_WM_MOUSELEAVE()
 	ON_WM_SETFOCUS()
 	ON_WM_KILLFOCUS()
+	ON_WM_NCCALCSIZE()
+	ON_WM_NCPAINT()
 END_MESSAGE_MAP()
 
 void CDarkComboBox::PreSubclassWindow()
 {
 	CComboBox::PreSubclassWindow();
+	ModifyStyle(WS_BORDER, 0);
+	ModifyStyleEx(WS_EX_CLIENTEDGE | WS_EX_STATICEDGE, 0);
 	::SetWindowTheme(GetSafeHwnd(), L"", L"");
+}
+
+void CDarkComboBox::OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS* lpncsp)
+{
+	// 彻底消除 Windows ComboBox 原生 3D 边框预留边距，让 client 区域填满窗口
+}
+
+void CDarkComboBox::OnNcPaint()
+{
 }
 
 void CDarkComboBox::OnPaint()
@@ -5571,6 +5966,12 @@ void CDarkComboBox::OnPaint()
 	CPaintDC dc(this);
 	CRect rc;
 	GetClientRect(&rc);
+
+	// 只有闭合态需要绘制：字段区域高度 = 布局方设定的字段高（m_field_height），
+	// 避免把整窗高度（含下拉列表预留区）画成一个高大的框体而下坠
+	int fieldH = (m_field_height > 0) ? m_field_height : GetItemHeight(-1);
+	if (fieldH > 0 && fieldH < rc.Height())
+		rc.bottom = rc.top + fieldH;
 
 	CDC memDC;
 	memDC.CreateCompatibleDC(&dc);
@@ -5728,7 +6129,8 @@ void CDarkComboBox::DrawItem(LPDRAWITEMSTRUCT lp)
 
 void CDarkComboBox::MeasureItem(LPMEASUREITEMSTRUCT lp)
 {
-	lp->itemHeight = g_data.DPI(24);
+	// 与单行输入框字段框高度一致(26)，否则关闭态框体会比输入框矮
+	lp->itemHeight = g_data.DPI(26);
 }
 
 bool CManagerDialog::IsChecked(UINT nID) const
@@ -5855,12 +6257,17 @@ void CManagerDialog::DrawControlBorder(Gdiplus::Graphics& g, UINT nID)
 		Gdiplus::SolidBrush fieldFill(Gdiplus::Color(255, 13, 15, 21));
 		g.FillRectangle(&fieldFill, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
 			static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
-	}
 
-	rc.InflateRect(1, 1);
-	Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
-	g.DrawRectangle(&pen, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
-		static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+		Gdiplus::Pen pen(focused ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 52, 58, 72), 1.0f);
+		g.DrawRectangle(&pen, 0.5f + rc.left, 0.5f + rc.top, static_cast<Gdiplus::REAL>(rc.Width() - 1), static_cast<Gdiplus::REAL>(rc.Height() - 1));
+	}
+	else
+	{
+		rc.InflateRect(1, 1);
+		Gdiplus::Pen pen(Gdiplus::Color(255, 52, 58, 72), 1.0f);
+		g.DrawRectangle(&pen, static_cast<Gdiplus::REAL>(rc.left), static_cast<Gdiplus::REAL>(rc.top),
+			static_cast<Gdiplus::REAL>(rc.Width()), static_cast<Gdiplus::REAL>(rc.Height()));
+	}
 }
 
 // 在字段矩形内垂直居中放置单行编辑控件（控件高=18DPI居中，水平各留 6px 呼吸边距）

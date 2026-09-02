@@ -406,8 +406,8 @@ void CFloatingWnd::OnPaint()
 	const int singleBarHeight = g_data.RDPI(20);  // 单行状态栏高度
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（单行4个）
-	const bool showPositionSummary = CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1;
-	const int positionSummaryHeight = showPositionSummary ? singleBarHeight : 0;
+	const bool showPositionSummary = (CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1);
+	const int positionSummaryHeight = singleBarHeight;  // 所有分组统一保留单行高度，避免PK收起时的UI覆盖
 
 	// 统一现代双层布局：标题栏 + 主走势图(约62%) + 单一副图(约38%) + 时间标签 + 底部系统状态栏
 	int chartArea = h - headerHeight - relatedBarHeight - positionSummaryHeight - xAxisLabelHeight - indexBarHeight;
@@ -527,44 +527,8 @@ void CFloatingWnd::OnPaint()
 			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab);
 		}
 
-		// 持仓分组汇总行：位于主图标题栏下方，仅占图表区域，不覆盖左侧列表和右侧盘口。
-		if (showPositionSummary)
+		// 顶部汇总/指标信息行：位于主图标题栏上方，仅占图表区域，不覆盖左侧列表和右侧盘口。
 		{
-			double totalMarketValue = 0.0;
-			double floatingProfitLoss = 0.0;
-			double todayProfitLoss = 0.0;
-			std::vector<std::wstring> positionCodes = CStockListPanel::GetStockListCodes(1);
-			{
-				std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-				for (const auto& code : positionCodes)
-				{
-					auto stockData = g_data.GetStockData(code);
-					if (!stockData)
-						continue;
-					double holdingCount = g_data.GetHoldingCount(code);
-					double costPrice = g_data.GetCostPrice(code);
-					double currentPrice = stockData->info.currentPrice > 0 ? stockData->info.currentPrice : stockData->info.prevClosePrice;
-					if (holdingCount <= 0 || currentPrice <= 0)
-						continue;
-					totalMarketValue += currentPrice * holdingCount;
-					if (costPrice > 0)
-						floatingProfitLoss += (currentPrice - costPrice) * holdingCount;
-					if (stockData->info.prevClosePrice > 0)
-						todayProfitLoss += (currentPrice - stockData->info.prevClosePrice) * holdingCount;
-				}
-			}
-
-			// 总市值显示完整数值，不使用 FormatAmount 的“万/亿”缩写。
-			CString marketText = CCommon::FormatNumber(totalMarketValue, 2);
-			CString floatingText = CCommon::FormatAmount(std::abs(floatingProfitLoss));
-			CString todayText = CCommon::FormatAmount(std::abs(todayProfitLoss));
-			if (floatingProfitLoss > 0.0001) floatingText = _T("+") + floatingText;
-			else if (floatingProfitLoss < -0.0001) floatingText = _T("-") + floatingText;
-			else floatingText = _T("0.00");
-			if (todayProfitLoss > 0.0001) todayText = _T("+") + todayText;
-			else if (todayProfitLoss < -0.0001) todayText = _T("-") + todayText;
-			else todayText = _T("0.00");
-
 			const int summaryX = stockListWidth;
 			const int summaryW = chartWidth - stockListWidth;
 			const int summaryY = headerHeight + relatedBarHeight;
@@ -572,25 +536,324 @@ void CFloatingWnd::OnPaint()
 			memDC.FillSolidRect(summaryX, summaryY, summaryW, 1, COLOR_DARK_GRAY_BORDER);
 			int textH = memDC.GetTextExtent(_T("Ay")).cy;
 			int textY = summaryY + max(0, (positionSummaryHeight - textH) / 2);
-			const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: ") };
-			const CString values[] = { marketText, floatingText, todayText };
-			const COLORREF valueColors[] = {
-				COLOR_TEXT_PRIMARY,
-				floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-				todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
-			};
 			memDC.SetBkMode(TRANSPARENT);
-			// 三项数据左对齐排布（固定宽松间距），盘口收起后末端不会顶到PK按钮
-			int drawX = summaryX + g_data.RDPI(12);
-			const int itemGap = g_data.RDPI(48);
-			for (int i = 0; i < 3; ++i)
+
+			const int obBtnW = g_data.RDPI(34);
+			const bool showObBtns = !isIndexKLine;
+			const int summaryContentRight = min(chartWidth, showObBtns ? (w - obBtnW * 2 - g_data.RDPI(6)) : w);
+			const int summaryContentW = max(0, summaryContentRight - summaryX);
+
+			if (showPositionSummary)
 			{
-				memDC.SetTextColor(COLOR_TEXT_MUTED);
-				memDC.TextOut(drawX, textY, labels[i]);
-				drawX += memDC.GetTextExtent(labels[i]).cx;
-				memDC.SetTextColor(valueColors[i]);
-				memDC.TextOut(drawX, textY, values[i]);
-				drawX += memDC.GetTextExtent(values[i]).cx + itemGap;
+				double totalMarketValue = 0.0;
+				double floatingProfitLoss = 0.0;
+				double todayProfitLoss = 0.0;
+				std::vector<std::wstring> positionCodes = CStockListPanel::GetStockListCodes(1);
+				{
+					std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+					for (const auto& code : positionCodes)
+					{
+						auto stockData = g_data.GetStockData(code);
+						if (!stockData)
+							continue;
+						double holdingCount = g_data.GetHoldingCount(code);
+						double costPrice = g_data.GetCostPrice(code);
+						double currentPrice = stockData->info.currentPrice > 0 ? stockData->info.currentPrice : stockData->info.prevClosePrice;
+						if (holdingCount <= 0 || currentPrice <= 0)
+							continue;
+						totalMarketValue += currentPrice * holdingCount;
+						if (costPrice > 0)
+							floatingProfitLoss += (currentPrice - costPrice) * holdingCount;
+						if (stockData->info.prevClosePrice > 0)
+							todayProfitLoss += (currentPrice - stockData->info.prevClosePrice) * holdingCount;
+					}
+				}
+
+				// 总市值显示完整数值，不使用 FormatAmount 的“万/亿”缩写。
+				CString marketText = CCommon::FormatNumber(totalMarketValue, 2);
+				CString floatingText = CCommon::FormatAmount(std::abs(floatingProfitLoss));
+				CString todayText = CCommon::FormatAmount(std::abs(todayProfitLoss));
+				if (floatingProfitLoss > 0.0001) floatingText = _T("+") + floatingText;
+				else if (floatingProfitLoss < -0.0001) floatingText = _T("-") + floatingText;
+				else floatingText = _T("0.00");
+				if (todayProfitLoss > 0.0001) todayText = _T("+") + todayText;
+				else if (todayProfitLoss < -0.0001) todayText = _T("-") + todayText;
+				else todayText = _T("0.00");
+
+				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: ") };
+				const CString values[] = { marketText, floatingText, todayText };
+				const COLORREF valueColors[] = {
+					COLOR_TEXT_PRIMARY,
+					floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
+					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
+				};
+
+				const int columnWidth = summaryContentW / 3;
+				for (int i = 0; i < 3; ++i)
+				{
+					const int columnX = summaryX + i * columnWidth;
+					const int currentColumnWidth = (i == 2) ? (summaryContentW - i * columnWidth) : columnWidth;
+					const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
+					int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
+
+					memDC.SetTextColor(COLOR_TEXT_MUTED);
+					memDC.TextOut(drawX, textY, labels[i]);
+					drawX += memDC.GetTextExtent(labels[i]).cx;
+					memDC.SetTextColor(valueColors[i]);
+					memDC.TextOut(drawX, textY, values[i]);
+				}
+			}
+			else
+			{
+				// 非持仓分组：展示配置的指标（最多4项，默认：总市值、成交额、成交量、换手率）
+				std::vector<std::wstring> headerMetrics = g_data.m_setting_data.m_header_metrics;
+				if (headerMetrics.empty())
+					headerMetrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+				int metricCount = min(4, static_cast<int>(headerMetrics.size()));
+				if (metricCount > 0 && summaryContentW > 0)
+				{
+					const int columnWidth = summaryContentW / metricCount;
+					for (int i = 0; i < metricCount; ++i)
+					{
+						const std::wstring& mName = headerMetrics[i];
+						CString label = (mName + L": ").c_str();
+						CString val = _T("--");
+						COLORREF valColor = COLOR_TEXT_PRIMARY;
+
+						if (mName == L"总市值")
+						{
+							double tmv = (realtimeData.totalMarketValue > 0) ? realtimeData.totalMarketValue :
+								(realtimeData.circulatingMarketValue > 0 ? realtimeData.circulatingMarketValue :
+								(realtimeData.circulatingAShares > 0 && realtimeData.currentPrice > 0 ? realtimeData.circulatingAShares * realtimeData.currentPrice : 0.0));
+							if (tmv > 0) val = CCommon::FormatAmount(tmv);
+						}
+						else if (mName == L"成交额")
+						{
+							if (realtimeData.turnover > 0) val = CCommon::FormatAmount(realtimeData.turnover);
+						}
+						else if (mName == L"成交量")
+						{
+							if (realtimeData.volume > 0)
+							{
+								if (realtimeData.volume >= 100000000)
+									val.Format(_T("%.2f亿手"), realtimeData.volume / 100000000.0 / 100.0);
+								else if (realtimeData.volume >= 1000000)
+									val.Format(_T("%.2f万手"), realtimeData.volume / 10000.0 / 100.0);
+								else
+									val.Format(_T("%lld手"), realtimeData.volume / 100);
+							}
+						}
+						else if (mName == L"换手率")
+						{
+							if (realtimeData.turnoverRate > 0)
+								val.Format(_T("%.2f%%"), realtimeData.turnoverRate);
+						}
+						else if (mName == L"量比")
+						{
+							if (realtimeData.volumeRatio > 0)
+								val.Format(_T("%.2f"), realtimeData.volumeRatio);
+						}
+						else if (mName == L"委比")
+						{
+							Volume bidSum = 0, askSum = 0;
+							for (int k = 0; k < 5; ++k)
+							{
+								if (realtimeData.bidLevels[k].price > 0) bidSum += realtimeData.bidLevels[k].volume;
+								if (realtimeData.askLevels[k].price > 0) askSum += realtimeData.askLevels[k].volume;
+							}
+							if (bidSum + askSum > 0)
+							{
+								double commRatio = (static_cast<double>(bidSum) - askSum) / (bidSum + askSum) * 100.0;
+								val.Format(_T("%+.2f%%"), commRatio);
+								valColor = (commRatio >= 0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"振幅")
+						{
+							double amp = (realtimeData.amplitude > 0) ? realtimeData.amplitude :
+								(realtimeData.prevClosePrice > 0 && realtimeData.highPrice > 0 && realtimeData.lowPrice > 0 ?
+									(realtimeData.highPrice - realtimeData.lowPrice) / realtimeData.prevClosePrice * 100.0 : 0.0);
+							if (amp > 0) val.Format(_T("%.2f%%"), amp);
+						}
+						else if (mName == L"今开")
+						{
+							if (realtimeData.openPrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.openPrice);
+								if (realtimeData.prevClosePrice > 0)
+									valColor = (realtimeData.openPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"昨收")
+						{
+							if (realtimeData.prevClosePrice > 0)
+								val.Format(_T("%.2f"), realtimeData.prevClosePrice);
+						}
+						else if (mName == L"最高")
+						{
+							if (realtimeData.highPrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.highPrice);
+								if (realtimeData.prevClosePrice > 0)
+									valColor = (realtimeData.highPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"最低")
+						{
+							if (realtimeData.lowPrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.lowPrice);
+								if (realtimeData.prevClosePrice > 0)
+									valColor = (realtimeData.lowPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"涨停")
+						{
+							if (realtimeData.highLimitPrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.highLimitPrice);
+								valColor = COLOR_RED_UP;
+							}
+							else if (realtimeData.prevClosePrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.prevClosePrice * 1.10);
+								valColor = COLOR_RED_UP;
+							}
+						}
+						else if (mName == L"跌停")
+						{
+							if (realtimeData.lowLimitPrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.lowLimitPrice);
+								valColor = COLOR_GREEN_DOWN;
+							}
+							else if (realtimeData.prevClosePrice > 0)
+							{
+								val.Format(_T("%.2f"), realtimeData.prevClosePrice * 0.90);
+								valColor = COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"盘后量")
+						{
+							if (realtimeData.afterMarketVol > 0)
+								val.Format(_T("%lld手"), realtimeData.afterMarketVol / 100);
+						}
+						else if (mName == L"盘后额")
+						{
+							if (realtimeData.afterMarketAmount > 0)
+								val = CCommon::FormatAmount(realtimeData.afterMarketAmount);
+						}
+						else if (mName == L"流通值")
+						{
+							double cmv = (realtimeData.circulatingMarketValue > 0) ? realtimeData.circulatingMarketValue :
+								(realtimeData.circulatingAShares > 0 && realtimeData.currentPrice > 0 ? realtimeData.circulatingAShares * realtimeData.currentPrice : 0.0);
+							if (cmv > 0) val = CCommon::FormatAmount(cmv);
+						}
+						else if (mName == L"市盈率(动)")
+						{
+							if (realtimeData.peDynamic > 0) val.Format(_T("%.2f"), realtimeData.peDynamic);
+						}
+						else if (mName == L"市盈率(TTM)")
+						{
+							if (realtimeData.peTTM > 0) val.Format(_T("%.2f"), realtimeData.peTTM);
+							else if (realtimeData.peDynamic > 0) val.Format(_T("%.2f"), realtimeData.peDynamic);
+						}
+						else if (mName == L"市盈率(静)")
+						{
+							if (realtimeData.peStatic > 0) val.Format(_T("%.2f"), realtimeData.peStatic);
+						}
+						else if (mName == L"市净率")
+						{
+							if (realtimeData.pb > 0) val.Format(_T("%.2f"), realtimeData.pb);
+						}
+						else if (mName == L"股息率(TTM)")
+						{
+							if (realtimeData.dividendYield > 0) val.Format(_T("%.2f%%"), realtimeData.dividendYield);
+						}
+						else if (mName == L"总股本")
+						{
+							Volume ts = (realtimeData.totalShares > 0) ? realtimeData.totalShares :
+								(realtimeData.totalMarketValue > 0 && realtimeData.currentPrice > 0 ? static_cast<Volume>(realtimeData.totalMarketValue / realtimeData.currentPrice) : 0);
+							if (ts > 0)
+							{
+								if (ts >= 100000000) val.Format(_T("%.2f亿股"), ts / 100000000.0);
+								else val.Format(_T("%.2f万股"), ts / 10000.0);
+							}
+						}
+						else if (mName == L"流通股")
+						{
+							Volume cs = (realtimeData.circulatingShares > 0) ? realtimeData.circulatingShares :
+								(realtimeData.circulatingAShares > 0 ? realtimeData.circulatingAShares :
+								(realtimeData.circulatingMarketValue > 0 && realtimeData.currentPrice > 0 ? static_cast<Volume>(realtimeData.circulatingMarketValue / realtimeData.currentPrice) : 0));
+							if (cs > 0)
+							{
+								if (cs >= 100000000) val.Format(_T("%.2f亿股"), cs / 100000000.0);
+								else val.Format(_T("%.2f万股"), cs / 10000.0);
+							}
+						}
+						else if (mName == L"溢价率")
+						{
+							if (realtimeData.iopvPremiumRate != 0)
+							{
+								val.Format(_T("%+.2f%%"), realtimeData.iopvPremiumRate);
+								valColor = (realtimeData.iopvPremiumRate >= 0) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+							}
+						}
+						else if (mName == L"IOPV净值")
+						{
+							if (realtimeData.iopv > 0) val.Format(_T("%.4f"), realtimeData.iopv);
+						}
+						else if (mName == L"基金规模")
+						{
+							double fsize = (realtimeData.totalMarketValue > 0) ? realtimeData.totalMarketValue : realtimeData.circulatingMarketValue;
+							if (fsize > 0) val = CCommon::FormatAmount(fsize);
+						}
+						else if (mName == L"每股收益")
+						{
+							double pe = (realtimeData.peTTM > 0) ? realtimeData.peTTM : realtimeData.peDynamic;
+							if (realtimeData.currentPrice > 0 && pe > 0)
+								val.Format(_T("%.2f元"), realtimeData.currentPrice / pe);
+						}
+						else if (mName == L"每股净资产")
+						{
+							if (realtimeData.currentPrice > 0 && realtimeData.pb > 0)
+								val.Format(_T("%.2f元"), realtimeData.currentPrice / realtimeData.pb);
+						}
+						else if (mName == L"52周最高")
+						{
+							if (realtimeData.week52High > 0) val.Format(_T("%.2f"), realtimeData.week52High);
+							else if (!klineData.empty())
+							{
+								double maxP = 0;
+								size_t start = klineData.size() > 250 ? klineData.size() - 250 : 0;
+								for (size_t k = start; k < klineData.size(); ++k) maxP = (std::max)(maxP, klineData[k].high);
+								if (maxP > 0) val.Format(_T("%.2f"), maxP);
+							}
+						}
+						else if (mName == L"52周最低")
+						{
+							if (realtimeData.week52Low > 0) val.Format(_T("%.2f"), realtimeData.week52Low);
+							else if (!klineData.empty())
+							{
+								double minP = 9999999;
+								size_t start = klineData.size() > 250 ? klineData.size() - 250 : 0;
+								for (size_t k = start; k < klineData.size(); ++k) if (klineData[k].low > 0) minP = (std::min)(minP, klineData[k].low);
+								if (minP < 999999) val.Format(_T("%.2f"), minP);
+							}
+						}
+
+						const int columnX = summaryX + i * columnWidth;
+						const int currentColumnWidth = (i == metricCount - 1) ? (summaryContentW - i * columnWidth) : columnWidth;
+						const int textWidth = memDC.GetTextExtent(label + val).cx;
+						int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
+
+						memDC.SetTextColor(COLOR_TEXT_MUTED);
+						memDC.TextOut(drawX, textY, label);
+						drawX += memDC.GetTextExtent(label).cx;
+						memDC.SetTextColor(valColor);
+						memDC.TextOut(drawX, textY, val);
+					}
+				}
 			}
 		}
 

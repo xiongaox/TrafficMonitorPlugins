@@ -404,6 +404,25 @@ namespace STOCK
 		double iopvPremiumRate;  // 溢折率 = (当前价 - IOPV) / IOPV * 100(%)
 		double iopvChange;       // IOPV涨跌幅 = (IOPV - iopvPrevClose) / iopvPrevClose * 100(%)
 
+		// 扩展行情与财务指标数据
+		double peDynamic = 0.0;             // 市盈率(动)
+		double peTTM = 0.0;                 // 市盈率(TTM)
+		double peStatic = 0.0;              // 市盈率(静)
+		double pb = 0.0;                    // 市净率
+		double dividendYield = 0.0;         // 股息率(TTM) (%)
+		double totalMarketValue = 0.0;       // 总市值(元)
+		double circulatingMarketValue = 0.0; // 流通市值(元)
+		Volume totalShares = 0;              // 总股本(股)
+		Volume circulatingShares = 0;        // 流通股(股)
+		Price highLimitPrice = 0.0;          // 涨停价
+		Price lowLimitPrice = 0.0;           // 跌停价
+		double volumeRatio = 0.0;           // 量比
+		double amplitude = 0.0;             // 振幅(%)
+		Volume afterMarketVol = 0;          // 盘后量(股)
+		Amount afterMarketAmount = 0.0;     // 盘后额(元)
+		Price week52High = 0.0;             // 52周最高
+		Price week52Low = 0.0;              // 52周最低
+
 		static const int MAX_LEVEL = 5;
 
 		OrderLevel askLevels[MAX_LEVEL]; // 卖盘(5档)
@@ -425,7 +444,24 @@ namespace STOCK
 			iopvPrevClose(0.0),
 			iopvPremium(0.0),
 			iopvPremiumRate(0.0),
-			iopvChange(0.0)
+			iopvChange(0.0),
+			peDynamic(0.0),
+			peTTM(0.0),
+			peStatic(0.0),
+			pb(0.0),
+			dividendYield(0.0),
+			totalMarketValue(0.0),
+			circulatingMarketValue(0.0),
+			totalShares(0),
+			circulatingShares(0),
+			highLimitPrice(0.0),
+			lowLimitPrice(0.0),
+			volumeRatio(0.0),
+			amplitude(0.0),
+			afterMarketVol(0),
+			afterMarketAmount(0.0),
+			week52High(0.0),
+			week52Low(0.0)
 		{
 			// bidLevels.resize(MAX_LEVEL);
 			// askLevels.resize(MAX_LEVEL);
@@ -1080,6 +1116,24 @@ namespace STOCK
 				data.iopv = it.second->info.iopv;
 				data.iopvPrevClose = it.second->info.iopvPrevClose;
 				data.iopvPremiumRate = it.second->info.iopvPremiumRate;
+				data.peDynamic = it.second->info.peDynamic;
+				data.peTTM = it.second->info.peTTM;
+				data.peStatic = it.second->info.peStatic;
+				data.pb = it.second->info.pb;
+				data.dividendYield = it.second->info.dividendYield;
+				data.totalMarketValue = it.second->info.totalMarketValue;
+				data.circulatingMarketValue = it.second->info.circulatingMarketValue;
+				data.totalShares = it.second->info.totalShares;
+				data.circulatingShares = it.second->info.circulatingShares;
+				data.circulatingAShares = it.second->info.circulatingAShares;
+				data.highLimitPrice = it.second->info.highLimitPrice;
+				data.lowLimitPrice = it.second->info.lowLimitPrice;
+				data.volumeRatio = it.second->info.volumeRatio;
+				data.amplitude = it.second->info.amplitude;
+				data.afterMarketVol = it.second->info.afterMarketVol;
+				data.afterMarketAmount = it.second->info.afterMarketAmount;
+				data.week52High = it.second->info.week52High;
+				data.week52Low = it.second->info.week52Low;
 				it.second->info = data;
 			}
 		}

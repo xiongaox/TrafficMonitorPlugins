@@ -140,6 +140,19 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_boll_mid_visible = ini.GetBool(L"config", L"boll_mid_visible", true);
 	m_setting_data.m_boll_lower_visible = ini.GetBool(L"config", L"boll_lower_visible", true);
 
+	// 顶部指标栏指标列表（最多4个）
+	ini.GetStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics, std::vector<std::wstring>{
+		L"总市值", L"成交额", L"成交量", L"换手率"
+	});
+	if (m_setting_data.m_header_metrics.empty())
+	{
+		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+	}
+	else if (m_setting_data.m_header_metrics.size() > 4)
+	{
+		m_setting_data.m_header_metrics.resize(4);
+	}
+
 	m_setting_data.m_custom_groups.clear();
 	int custom_group_count = ini.GetInt(L"config", L"custom_group_count", 0);
 	for (int i = 0; i < custom_group_count; ++i)
@@ -568,6 +581,7 @@ void CDataManager::SaveConfig()
 			m_setting_data.m_custom_group_codes.clear();
 		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
 
 		// 保存 WebDAV 云端备份配置

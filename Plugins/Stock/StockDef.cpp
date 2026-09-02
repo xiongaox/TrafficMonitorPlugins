@@ -292,6 +292,67 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 		{
 			stockData->info.turnoverRate = { convert<Amount>(data_arr[38]) };
 		}
+		if (data_arr.size() > 39 && !data_arr[39].empty())
+			stockData->info.peDynamic = atof(data_arr[39].c_str());
+		if (data_arr.size() > 42 && !data_arr[42].empty())
+			stockData->info.amplitude = atof(data_arr[42].c_str());
+		if (data_arr.size() > 43 && !data_arr[43].empty())
+			stockData->info.circulatingMarketValue = atof(data_arr[43].c_str()) * 100000000.0;
+		if (data_arr.size() > 44 && !data_arr[44].empty())
+			stockData->info.totalMarketValue = atof(data_arr[44].c_str()) * 100000000.0;
+		if (data_arr.size() > 45 && !data_arr[45].empty())
+			stockData->info.pb = atof(data_arr[45].c_str());
+		if (data_arr.size() > 46 && !data_arr[46].empty())
+			stockData->info.highLimitPrice = convert<Price>(data_arr[46]);
+		if (data_arr.size() > 47 && !data_arr[47].empty())
+			stockData->info.lowLimitPrice = convert<Price>(data_arr[47]);
+		if (data_arr.size() > 48 && !data_arr[48].empty())
+			stockData->info.volumeRatio = atof(data_arr[48].c_str());
+		if (data_arr.size() > 51 && !data_arr[51].empty())
+			stockData->info.afterMarketVol = convert<Volume>(data_arr[51]) * 100;
+		if (data_arr.size() > 52 && !data_arr[52].empty())
+			stockData->info.afterMarketAmount = convert<Amount>(data_arr[52]) * 10000.0;
+		if (data_arr.size() > 53 && !data_arr[53].empty())
+			stockData->info.peStatic = atof(data_arr[53].c_str());
+		if (data_arr.size() > 54 && !data_arr[54].empty())
+			stockData->info.peTTM = atof(data_arr[54].c_str());
+		if (data_arr.size() > 55 && !data_arr[55].empty())
+			stockData->info.dividendYield = atof(data_arr[55].c_str());
+		if (data_arr.size() > 68 && !data_arr[68].empty())
+			stockData->info.week52High = convert<Price>(data_arr[68]);
+		if (data_arr.size() > 69 && !data_arr[69].empty())
+			stockData->info.week52Low = convert<Price>(data_arr[69]);
+
+		if (data_arr.size() > 74 && !data_arr[74].empty())
+		{
+			stockData->info.totalShares = convert<Volume>(data_arr[74]);
+			stockData->info.circulatingShares = convert<Volume>(data_arr[73]);
+			if (stockData->info.circulatingShares > 0)
+				stockData->info.circulatingAShares = stockData->info.circulatingShares;
+		}
+		else if (stockData->info.currentPrice > 0)
+		{
+			if (stockData->info.totalMarketValue > 0)
+				stockData->info.totalShares = static_cast<Volume>(stockData->info.totalMarketValue / stockData->info.currentPrice);
+			if (stockData->info.circulatingMarketValue > 0)
+				stockData->info.circulatingShares = static_cast<Volume>(stockData->info.circulatingMarketValue / stockData->info.currentPrice);
+			if (stockData->info.circulatingShares > 0)
+				stockData->info.circulatingAShares = stockData->info.circulatingShares;
+		}
+
+		// ETF基金：腾讯直接返回IOPV(索引79)与折溢价率%(索引81)
+		if (data_arr.size() > 81 && !data_arr[79].empty())
+		{
+			Price iopvVal = convert<Price>(data_arr[79]);
+			if (iopvVal > 0)
+			{
+				stockData->info.iopv = iopvVal;
+				if (!data_arr[81].empty())
+					stockData->info.iopvPremiumRate = atof(data_arr[81].c_str());
+				else if (stockData->info.currentPrice > 0)
+					stockData->info.iopvPremiumRate = (stockData->info.currentPrice - iopvVal) / iopvVal * 100.0;
+			}
+		}
 
 		// A股(SH/SZ/BJ)：从腾讯API数据中提取完整行情，替代新浪API
 		// 腾讯A股格式: [0]=市场 [1]=名称 [2]=代码 [3]=现价 [4]=昨收 [5]=今开 [6]=成交量(手)
@@ -312,17 +373,6 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 			{
 				stockData->callAuctionData.limitUpPrice = { convert<Price>(data_arr[47]) };
 				stockData->callAuctionData.limitDownPrice = { convert<Price>(data_arr[48]) };
-			}
-
-			// 流通股本：索引44为流通市值（亿元），流通股本(股) = 流通市值 / 现价 * 1e8
-			// 东方财富接口被 WAF 拦截时，用腾讯接口的流通市值作为替代
-			if (data_arr.size() > 44 && !data_arr[44].empty() && info.currentPrice > 0)
-			{
-				double flowMarketValue = atof(data_arr[44].c_str());
-				if (flowMarketValue > 0)
-				{
-					info.circulatingAShares = static_cast<STOCK::Volume>(flowMarketValue / info.currentPrice * 100000000.0);
-				}
 			}
 		}
 
@@ -757,12 +807,79 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	if (data.size() > 38 && !data[38].empty())
 		turnoverRate = { convert<Amount>(data[38]) };
 
-	if (data.size() > 44 && !data[44].empty() && currentPrice > 0)
+	if (data.size() > 39 && !data[39].empty())
+		peDynamic = atof(data[39].c_str());
+
+	if (data.size() > 42 && !data[42].empty())
+		amplitude = atof(data[42].c_str());
+
+	if (data.size() > 43 && !data[43].empty())
+		circulatingMarketValue = atof(data[43].c_str()) * 100000000.0;
+
+	if (data.size() > 44 && !data[44].empty())
+		totalMarketValue = atof(data[44].c_str()) * 100000000.0;
+
+	if (data.size() > 45 && !data[45].empty())
+		pb = atof(data[45].c_str());
+
+	if (data.size() > 46 && !data[46].empty())
+		highLimitPrice = convert<Price>(data[46]);
+
+	if (data.size() > 47 && !data[47].empty())
+		lowLimitPrice = convert<Price>(data[47]);
+
+	if (data.size() > 48 && !data[48].empty())
+		volumeRatio = atof(data[48].c_str());
+
+	if (data.size() > 51 && !data[51].empty())
+		afterMarketVol = convert<Volume>(data[51]) * 100;
+
+	if (data.size() > 52 && !data[52].empty())
+		afterMarketAmount = convert<Amount>(data[52]) * 10000.0;
+
+	if (data.size() > 53 && !data[53].empty())
+		peStatic = atof(data[53].c_str());
+
+	if (data.size() > 54 && !data[54].empty())
+		peTTM = atof(data[54].c_str());
+
+	if (data.size() > 55 && !data[55].empty())
+		dividendYield = atof(data[55].c_str());
+
+	if (data.size() > 68 && !data[68].empty())
+		week52High = convert<Price>(data[68]);
+
+	if (data.size() > 69 && !data[69].empty())
+		week52Low = convert<Price>(data[69]);
+
+	if (data.size() > 74 && !data[74].empty())
 	{
-		double flowMarketValue = atof(data[44].c_str());
-		if (flowMarketValue > 0)
+		totalShares = convert<Volume>(data[74]);
+		circulatingShares = convert<Volume>(data[73]);
+		if (circulatingShares > 0)
+			circulatingAShares = circulatingShares;
+	}
+	else if (currentPrice > 0)
+	{
+		if (totalMarketValue > 0)
+			totalShares = static_cast<Volume>(totalMarketValue / currentPrice);
+		if (circulatingMarketValue > 0)
+			circulatingShares = static_cast<Volume>(circulatingMarketValue / currentPrice);
+		if (circulatingShares > 0)
+			circulatingAShares = circulatingShares;
+	}
+
+	// ETF基金：腾讯直接返回IOPV(索引79)与折溢价率%(索引81)
+	if (data.size() > 81 && !data[79].empty())
+	{
+		Price iopvVal = convert<Price>(data[79]);
+		if (iopvVal > 0)
 		{
-			circulatingAShares = static_cast<STOCK::Volume>(flowMarketValue / currentPrice * 100000000.0);
+			iopv = iopvVal;
+			if (!data[81].empty())
+				iopvPremiumRate = atof(data[81].c_str());
+			else if (currentPrice > 0)
+				iopvPremiumRate = (currentPrice - iopvVal) / iopvVal * 100.0;
 		}
 	}
 
@@ -1135,17 +1252,33 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 					yyjson_val* item;
 					yyjson_arr_iter iter;
 					yyjson_arr_iter_init(data, &iter);
+					double cumVolume = 0.0;
+					double cumAmount = 0.0;
+					Price lastValidAvgPrice = 0.0;
 					while ((item = yyjson_arr_iter_next(&iter)))
 					{
 						if (item != nullptr)
 						{
 							TimelinePoint point = TimelinePoint();
 							point.time = utilities::JsonHelper::GetJsonString(item, "m");
+							if (point.time.size() > 5 && point.time.find(':') != std::string::npos)
+								point.time = point.time.substr(0, 5);
 							if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
 							point.volume = GetJsonVolume(item, "v");
 							point.price = GetJsonPrice(item, "p");
-							point.averagePrice = GetJsonPrice(item, "avg_p");
 							point.amount = point.price * point.volume;
+							cumVolume += point.volume;
+							cumAmount += point.amount;
+							if (cumVolume > 0)
+							{
+								point.averagePrice = static_cast<Price>(cumAmount / cumVolume);
+								lastValidAvgPrice = point.averagePrice;
+							}
+							else
+							{
+								Price apiAvg = GetJsonPrice(item, "avg_p");
+								point.averagePrice = (apiAvg > 0) ? apiAvg : (lastValidAvgPrice > 0 ? lastValidAvgPrice : point.price);
+							}
 							outPoints.push_back(point);
 						}
 					}
@@ -1168,6 +1301,8 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 						pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "m");
 						if (pt.time.empty())
 							pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "time");
+						if (pt.time.size() > 5 && pt.time.find(':') != std::string::npos)
+							pt.time = pt.time.substr(0, 5);
 						pt.iopv = GetJsonPrice(iopvItem, "iopv");
 						if (!pt.time.empty() && pt.iopv > 0)
 							iopvPoints.push_back(pt);
@@ -1200,14 +1335,14 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 					}
 				}
 			}
-			// 2. 腾讯格式: { "code": 0, "data": { "sh600519": { "data": { "minute": [ "0930 1500.00 123 184500.00", ... ] } } } }
+			// 2. 腾讯格式: { "code": 0, "data": { "sh600519": { "data": { "data": [ "0930 1500.00 123 184500.00", ... ] } } } }
 			// 3. 东方财富格式: { "data": { "trends": [ "2026-08-28 09:30,1500.00,1500.00,1500.00,1500.00,123,184500.00,1500.00", ... ] } }
 			else
 			{
 				yyjson_val* dataVal = yyjson_obj_get(root, "data");
 				if (dataVal != nullptr && yyjson_is_obj(dataVal))
 				{
-					// 查找包含 minute 的腾讯结构
+					// 查找包含 minute 或 data 的腾讯结构
 					yyjson_obj_iter dataIter;
 					yyjson_obj_iter_init(dataVal, &dataIter);
 					yyjson_val* keyVal;
@@ -1220,14 +1355,17 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 							if (!innerData || !yyjson_is_obj(innerData))
 								innerData = stockObj;
 
-							yyjson_val* minuteArr = yyjson_obj_get(innerData, "minute");
+							yyjson_val* minuteArr = yyjson_obj_get(innerData, "data");
+							if (!minuteArr || !yyjson_is_arr(minuteArr))
+								minuteArr = yyjson_obj_get(innerData, "minute");
+
 							if (minuteArr && yyjson_is_arr(minuteArr))
 							{
 								yyjson_val* minItem;
 								yyjson_arr_iter minIter;
 								yyjson_arr_iter_init(minuteArr, &minIter);
-								double cumVolume = 0.0;
-								double cumAmount = 0.0;
+								double prevCumVolume = 0.0;
+								double prevCumAmount = 0.0;
 								while ((minItem = yyjson_arr_iter_next(&minIter)))
 								{
 									const char* minStr = yyjson_get_str(minItem);
@@ -1239,28 +1377,37 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										std::string t = parts[0];
 										if (t.size() == 4)
 											pt.time = t.substr(0, 2) + ":" + t.substr(2, 2);
+										else if (t.size() > 5 && t.find(':') != std::string::npos)
+											pt.time = t.substr(0, 5);
 										else
 											pt.time = t;
 										if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
 										pt.price = static_cast<Price>(atof(parts[1].c_str()));
-										if (parts.size() >= 3)
-										{
-											double volVal = atof(parts[2].c_str());
-											pt.volume = static_cast<Volume>(volVal * 100);
-										}
 										if (parts.size() >= 4)
 										{
-											pt.amount = atof(parts[3].c_str());
-											cumAmount += pt.amount;
-											cumVolume += pt.volume;
-											if (cumVolume > 0)
-												pt.averagePrice = static_cast<Price>(cumAmount / cumVolume);
+											double cumVolLots = atof(parts[2].c_str());
+											double cumVolShares = cumVolLots * 100.0;
+											double cumAmt = atof(parts[3].c_str());
+											pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
+											pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
+											prevCumVolume = cumVolShares;
+											prevCumAmount = cumAmt;
+											if (cumVolShares > 0.0)
+												pt.averagePrice = static_cast<Price>(cumAmt / cumVolShares);
 											else
 												pt.averagePrice = pt.price;
 										}
+										else if (parts.size() >= 3)
+										{
+											double volVal = atof(parts[2].c_str());
+											pt.volume = static_cast<Volume>(volVal * 100.0);
+											pt.amount = pt.price * pt.volume;
+											pt.averagePrice = pt.price;
+										}
 										else
 										{
-											pt.amount = pt.price * pt.volume;
+											pt.volume = 0;
+											pt.amount = 0;
 											pt.averagePrice = pt.price;
 										}
 										outPoints.push_back(pt);
@@ -1280,6 +1427,8 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 							yyjson_val* tItem;
 							yyjson_arr_iter tIter;
 							yyjson_arr_iter_init(trendsArr, &tIter);
+							double prevCumVolume = 0.0;
+							double prevCumAmount = 0.0;
 							while ((tItem = yyjson_arr_iter_next(&tIter)))
 							{
 								const char* tStr = yyjson_get_str(tItem);
@@ -1295,9 +1444,17 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										pt.time = dt;
 									if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
 									pt.price = static_cast<Price>(atof(parts[2].c_str()));
-									pt.volume = static_cast<Volume>(atof(parts[5].c_str()) * 100);
-									pt.amount = atof(parts[6].c_str());
-									pt.averagePrice = static_cast<Price>(atof(parts[7].c_str()));
+									double cumVolLots = atof(parts[5].c_str());
+									double cumVolShares = cumVolLots * 100.0;
+									double cumAmt = atof(parts[6].c_str());
+									pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
+									pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
+									prevCumVolume = cumVolShares;
+									prevCumAmount = cumAmt;
+									if (cumVolShares > 0.0)
+										pt.averagePrice = static_cast<Price>(cumAmt / cumVolShares);
+									else
+										pt.averagePrice = static_cast<Price>(atof(parts[7].c_str()));
 									outPoints.push_back(pt);
 								}
 							}

@@ -217,10 +217,18 @@ void COrderBookPanel::DrawNetRatioRows(CDC& memDC, const LayoutContext& lc, cons
 	STOCK::Volume diff05 = 0;
 	double ratio05 = 0;
 	bool has05 = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(5, diff05, ratio05);
+	if (!has05 && stockDataPtr)
+	{
+		has05 = stockDataPtr->GetSecNetDiff(5, diff05, ratio05);
+	}
 
 	STOCK::Volume diff99 = 0;
 	double ratio99 = 0;
 	bool has99 = stockDataPtr && stockDataPtr->GetInnerOuterNetDiff(99, diff99, ratio99);
+	if (!has99 && stockDataPtr)
+	{
+		has99 = stockDataPtr->GetSecNetDiff(20, diff99, ratio99);
+	}
 
 	// 1. 准备右侧文本（99/全天净差）
 	CString label99 = _T("99: ");

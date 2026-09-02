@@ -104,6 +104,9 @@ public:
 	CDarkComboBox() = default;
 	virtual ~CDarkComboBox() = default;
 
+	// 关闭态字段框高度（像素），由布局方设置，用于让闭合框体与输入框字段框等高
+	int m_field_height{ 0 };
+
 protected:
 	bool m_is_hovered{ false };
 
@@ -114,6 +117,8 @@ protected:
 	afx_msg void OnMouseLeave();
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnKillFocus(CWnd* pNewWnd);
+	afx_msg void OnNcCalcSize(BOOL bCalcValidRects, NCCALCSIZE_PARAMS* lpncsp);
+	afx_msg void OnNcPaint();
 	virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct) override;
 	virtual void MeasureItem(LPMEASUREITEMSTRUCT lpMeasureItemStruct) override;
 };
@@ -131,8 +136,9 @@ public:
 		PAGE_INDEX = 1,   // 指数编辑
 		PAGE_GROUPS = 2,  // 分组管理 (自选股/持仓/自定义)
 		PAGE_MA = 3,      // 均线日配置
-		PAGE_WEBDAV = 4,  // 云端备份 (WebDAV)
-		PAGE_ABOUT = 5    // 关于插件
+		PAGE_METRICS = 4, // 指标栏配置
+		PAGE_WEBDAV = 5,  // 云端备份 (WebDAV)
+		PAGE_ABOUT = 6    // 关于插件
 	};
 
 	enum GroupSubTab
@@ -161,6 +167,9 @@ private:
 	int m_hover_ma_tag_del{ -1 };
 	int m_hover_ma_slot{ -1 };
 	int m_hover_ma_preset{ -1 };
+	int m_hover_metric_tag_del{ -1 };
+	int m_hover_metric_slot{ -1 };
+	int m_hover_metric_preset{ -1 };
 	int m_hover_group_tab{ -1 };
 	int m_hover_index_mode{ -1 };
 	CRect m_index_mode_rects[3];
@@ -208,6 +217,14 @@ private:
 	std::vector<CRect> m_ma_slot_rects;   // 均线页空槽位（点击聚焦输入框）
 	std::vector<CRect> m_ma_preset_rects; // 均线页常用周期快捷添加按钮
 	std::vector<CRect> m_boll_vis_check_rects; // 均线页「分时图布林带显示」点击区域（固定3项：[0]=上轨、[1]=中轨、[2]=下轨）
+	std::vector<CRect> m_metric_tag_rects;
+	std::vector<CRect> m_metric_tag_del_rects;
+	std::vector<CRect> m_metric_slot_rects;
+	struct MetricCandidateItem {
+		std::wstring name;
+		CRect rect;
+	};
+	std::vector<MetricCandidateItem> m_metric_candidates;
 	std::vector<CRect> m_group_tab_rects;
 	CRect m_about_link_rect;
 
@@ -227,6 +244,7 @@ private:
 	// 字段整框（底色+边框）由 DrawControlBorder 绘制，文字自然居中
 	void PlaceEditInField(UINT nID, const CRect& fieldRect);
 	bool TryAddMaDay(int day); // 校验并添加均线周期，失败时弹出对应提示，返回是否成功
+	bool TryAddMetric(const std::wstring& name); // 添加指标项（上限4项）
 	void SwitchPage(PageIndex page);
 	void SwitchGroupTab(int tab);
 	void UpdateControlsLayout();
@@ -240,6 +258,7 @@ private:
 	void DrawIndexPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect);
+	void DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRect);
 

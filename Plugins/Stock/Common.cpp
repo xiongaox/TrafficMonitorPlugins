@@ -326,7 +326,7 @@ bool CCommon::IsFundCode(const std::wstring& code)
 		return false;
 
 	std::wstring first2 = pureCode.substr(0, 2);
-	const std::vector<std::wstring> fundPrefixes = { L"50", L"51", L"56", L"15", L"16", L"18" };
+	const std::vector<std::wstring> fundPrefixes = { L"50", L"51", L"56", L"58", L"15", L"16", L"18" };
 	for (const auto& prefix : fundPrefixes)
 	{
 		if (first2 == prefix)
