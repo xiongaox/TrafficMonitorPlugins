@@ -2304,18 +2304,17 @@ void CManagerDialog::UpdateControlsLayout()
 		if (pKHLbl && pKHLbl->GetSafeHwnd()) pKHLbl->MoveWindow(rightLeft + g_data.DPI(160), lblY, g_data.DPI(65), lblH);
 		PlaceEditInField(IDC_KLINE_HEIGHT_EDIT, CRect(rightLeft + g_data.DPI(227), rowTop, rightLeft + g_data.DPI(287), rowTop + rowH));
 
-		if (pPosLbl && pPosLbl->GetSafeHwnd()) pPosLbl->MoveWindow(rightLeft + g_data.DPI(302), lblY, g_data.DPI(60), lblH);
+		int row2Top = card2Top + g_data.DPI(72);
+		int lbl2Y = row2Top + (rowH - lblH) / 2;
+		if (pPosLbl && pPosLbl->GetSafeHwnd()) pPosLbl->MoveWindow(rightLeft + g_data.DPI(18), lbl2Y, g_data.DPI(65), lblH);
 		if (m_display_area_combo.GetSafeHwnd())
 		{
-			// OnNcCalcSize 已消除非客户区边框，client 区域等于窗口区域，
-			// 直接对齐 rowTop 即可与左侧输入框字段框垂直对齐
-			m_display_area_combo.SetItemHeight(-1, rowH);
-			m_display_area_combo.m_field_height = rowH;
-			m_display_area_combo.MoveWindow(rightLeft + g_data.DPI(364), rowTop, g_data.DPI(90), g_data.DPI(160));
+			// 保留原生下拉框用于兼容已有序列化逻辑，界面改由下方自绘按钮呈现。
+			m_display_area_combo.ShowWindow(SW_HIDE);
 		}
 
 		// 卡片 3: SOCKS5 代理网络
-		int card3Top = card1Top + g_data.DPI(192);
+		int card3Top = card1Top + g_data.DPI(230);
 		CWnd* pProxyChk = GetDlgItem(IDC_USE_SOCKS5_PROXY_CHECK);
 		CWnd* pProxyLbl = GetDlgItem(IDC_SOCKS5_PROXY_STATIC);
 
@@ -2821,8 +2820,43 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	// 卡片位置/高度与 UpdateControlsLayout 严格对应
 	int card1Top = contentRect.top;
 	drawCard(card1Top, g_data.DPI(100), L"行情与走势图展示");
-	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(72), L"走势图尺寸与显示位置");
-	drawCard(contentRect.top + g_data.DPI(192), g_data.DPI(72), L"SOCKS5 代理网络");
+	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(110), L"走势图尺寸与显示位置");
+	drawCard(contentRect.top + g_data.DPI(230), g_data.DPI(72), L"SOCKS5 代理网络");
+
+	// 显示位置按钮与第二行控件对齐：左侧标签后平铺五个固定尺寸选项。
+	const wchar_t* displayAreas[] = { L"左上角", L"右上角", L"左下角", L"右下角", L"居中" };
+	const int buttonW = g_data.DPI(66);
+	const int buttonH = g_data.DPI(26);
+	const int buttonGap = g_data.DPI(8);
+	const int buttonLeft = rightLeft + g_data.DPI(85);
+	const int buttonTop = contentRect.top + g_data.DPI(182);
+
+	Gdiplus::Font areaFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font areaBoldFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::StringFormat areaFormat(Gdiplus::StringFormat::GenericTypographic());
+	areaFormat.SetAlignment(Gdiplus::StringAlignmentCenter);
+	areaFormat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	areaFormat.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+
+	for (int i = 0; i < 5; ++i)
+	{
+		int x = buttonLeft + i * (buttonW + buttonGap);
+		CRect buttonRect(x, buttonTop, x + buttonW, buttonTop + buttonH);
+		m_display_area_rects[i] = buttonRect;
+		Gdiplus::RectF buttonRf(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(buttonTop),
+			static_cast<Gdiplus::REAL>(buttonW), static_cast<Gdiplus::REAL>(buttonH));
+
+		const bool isSelected = (m_data.m_display_area == i);
+		const bool isHovered = (m_hover_display_area == i);
+		Gdiplus::SolidBrush buttonBg(isSelected ? Gdiplus::Color(255, 37, 99, 235) :
+			(isHovered ? Gdiplus::Color(255, 30, 41, 59) : Gdiplus::Color(255, 13, 15, 21)));
+		Gdiplus::Pen buttonBorder(isSelected || isHovered ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 38, 42, 54), 1.0f);
+		Gdiplus::SolidBrush buttonText(isSelected || isHovered ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 148, 163, 184));
+
+		g.FillRectangle(&buttonBg, buttonRf);
+		g.DrawRectangle(&buttonBorder, buttonRf);
+		g.DrawString(displayAreas[i], -1, isSelected ? &areaBoldFont : &areaFont, buttonRf, &areaFormat, &buttonText);
+	}
 
 	// 绘制「当天持仓收益」说明文案
 	Gdiplus::Font tipFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -3956,6 +3990,7 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	int oldHoverMaPreset = m_hover_ma_preset;
 	int oldHoverTab = m_hover_group_tab;
 	int oldHoverMode = m_hover_index_mode;
+	int oldHoverDisplayArea = m_hover_display_area;
 
 	m_hover_menu = -1;
 	for (size_t i = 0; i < m_menu_rects.size(); ++i)
@@ -3969,6 +4004,7 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 
 	m_hover_index_card = -1;
 	m_hover_index_mode = -1;
+	m_hover_display_area = -1;
 	if (m_current_page == PAGE_INDEX)
 	{
 		for (int i = 0; i < 3; ++i)
@@ -3985,6 +4021,17 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 			if (m_index_card_rects[i].PtInRect(point))
 			{
 				m_hover_index_card = static_cast<int>(i);
+				break;
+			}
+		}
+	}
+	else if (m_current_page == PAGE_BASIC)
+	{
+		for (int i = 0; i < 5; ++i)
+		{
+			if (m_display_area_rects[i].PtInRect(point))
+			{
+				m_hover_display_area = i;
 				break;
 			}
 		}
@@ -4077,7 +4124,8 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 		oldHoverMaPreset != m_hover_ma_preset ||
 		oldHoverMetricDel != m_hover_metric_tag_del || oldHoverMetricSlot != m_hover_metric_slot ||
 		oldHoverMetricPreset != m_hover_metric_preset ||
-		oldHoverTab != m_hover_group_tab || oldHoverMode != m_hover_index_mode)
+		oldHoverTab != m_hover_group_tab || oldHoverMode != m_hover_index_mode ||
+		oldHoverDisplayArea != m_hover_display_area)
 	{
 		Invalidate(FALSE);
 	}
@@ -4098,6 +4146,7 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_metric_preset = -1;
 	m_hover_group_tab = -1;
 	m_hover_index_mode = -1;
+	m_hover_display_area = -1;
 	Invalidate(FALSE);
 	CDialog::OnMouseLeave();
 }
@@ -4111,7 +4160,8 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 	if (m_hover_menu >= 0 || m_hover_index_card >= 0 || m_hover_ma_tag_del >= 0 ||
 		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
 		m_hover_metric_tag_del >= 0 || m_hover_metric_slot >= 0 || m_hover_metric_preset >= 0 ||
-		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
+		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || m_hover_display_area >= 0 ||
+		(m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
 		return TRUE;
@@ -4128,6 +4178,21 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		{
 			SwitchPage(static_cast<PageIndex>(i));
 			return;
+		}
+	}
+
+	if (m_current_page == PAGE_BASIC)
+	{
+		for (int i = 0; i < 5; ++i)
+		{
+			if (m_display_area_rects[i].PtInRect(point))
+			{
+				m_data.m_display_area = i;
+				if (m_display_area_combo.GetSafeHwnd())
+					m_display_area_combo.SetCurSel(i);
+				Invalidate(FALSE);
+				return;
+			}
 		}
 	}
 
