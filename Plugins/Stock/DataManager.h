@@ -130,6 +130,8 @@ public:
 	void ApplyMin30KLine(const std::wstring& code, const std::string& resp, bool ok);
 	// ETF基金IOPV：ok=true 解析并保存净值缓存+更新分时iopv，ok=false 仅记录失败日志
 	void ApplyFundIOPV(const std::wstring& code, const std::string& resp, bool ok);
+	// ETF持仓：应用ETF持仓数据
+	void ApplyEtfHoldings(const std::wstring& code, const STOCK::EtfHoldingsData& holdingsData);
 	// 流通股本：ok=true且shares>0 写入并入库；否则回退到内存已有值/数据库缓存
 	void ApplyStockBasic(const std::wstring& code, STOCK::Volume circulatingAShares, bool ok);
 	// 筹码分布：若数据库有当日缓存则应用并返回 true（避免重复抓取）

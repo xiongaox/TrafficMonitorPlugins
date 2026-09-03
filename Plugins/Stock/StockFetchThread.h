@@ -39,6 +39,9 @@ public:
 	// 投递一个后台任务到工作线程（排队执行，不丢弃）
 	// 用于预加载、筹码峰等不可丢弃的任务
 	void PostBackgroundTask(Task task);
+	// 投递一个高优先级后台任务（插队到队列最前端，立刻优先执行）
+	// 用于用户交互触发的 ETF 持仓等即时请求
+	void PostHighPriorityBackgroundTask(Task task);
 
 	// 工作线程是否正忙于执行常规任务
 	bool IsBusy() const { return m_busy.load(); }
@@ -73,6 +76,8 @@ public:
 	void FetchMin30KLine(const std::wstring& code, int datalen = 250);
 	// ETF基金IOPV
 	void FetchFundIOPV(const std::wstring& code);
+	// ETF持仓数据
+	void FetchEtfHoldings(const std::wstring& code);
 	// 流通股本（东方财富 f85）
 	void FetchStockBasic(const std::wstring& code);
 	// 筹码分布（含DB缓存检查+K线获取+计算入库）

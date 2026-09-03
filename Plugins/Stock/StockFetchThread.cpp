@@ -354,6 +354,20 @@ void CStockFetchThread::PostBackgroundTask(Task task)
 	m_cv.notify_one();
 }
 
+void CStockFetchThread::PostHighPriorityBackgroundTask(Task task)
+{
+	if (!m_started.load() || m_stopping.load())
+		return;
+
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_stopping.load())
+			return;
+		m_background_tasks.push_front(std::move(task));
+	}
+	m_cv.notify_one();
+}
+
 void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 {
 	bool changed = false;
@@ -887,6 +901,21 @@ void CStockFetchThread::FetchFundIOPV(const std::wstring& code)
 	std::string resp;
 	bool ok = g_http_fetcher.FetchFundIOPV(code, resp);
 	g_data.ApplyFundIOPV(code, resp, ok);
+}
+
+void CStockFetchThread::FetchEtfHoldings(const std::wstring& code)
+{
+	STOCK::EtfHoldingsData holdingsData;
+	if (g_http_fetcher.FetchEtfHoldings(code, holdingsData))
+	{
+		g_data.ApplyEtfHoldings(code, holdingsData);
+	}
+	else
+	{
+		holdingsData.fetchFailed = true;
+		holdingsData.lastUpdateTime = time(nullptr);
+		g_data.ApplyEtfHoldings(code, holdingsData);
+	}
 }
 
 void CStockFetchThread::FetchAllFundsIOPV()

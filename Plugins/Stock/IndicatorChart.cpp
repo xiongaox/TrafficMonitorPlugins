@@ -1294,8 +1294,19 @@ void CIndicatorChart::DrawVolumeChart(CDC& memDC, int x, int y, int width, int h
 		// K线模式下openPrice>0，使用收盘价vs开盘价判断涨跌，与K线柱颜色一致
 		if (item.openPrice > 0)
 		{
-			if (item.price >= item.openPrice)
+			if (item.price > item.openPrice)
+			{
 				color = COLOR_RED_UP;
+			}
+			else if (item.price < item.openPrice)
+			{
+				color = COLOR_GREEN_DOWN;
+			}
+			else
+			{
+				STOCK::Price prev = (i > 0) ? timelinePoint[i - 1].price : item.openPrice;
+				color = (item.price >= prev) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+			}
 		}
 		else if (i > 0)
 		{
@@ -1320,8 +1331,19 @@ void CIndicatorChart::DrawVolumeChart(CDC& memDC, int x, int y, int width, int h
 		COLORREF color = COLOR_GREEN_DOWN;
 		if (item.openPrice > 0)
 		{
-			if (item.price >= item.openPrice)
+			if (item.price > item.openPrice)
+			{
 				color = COLOR_RED_UP;
+			}
+			else if (item.price < item.openPrice)
+			{
+				color = COLOR_GREEN_DOWN;
+			}
+			else
+			{
+				STOCK::Price prev = (hoveredBarIndex > 0) ? timelinePoint[hoveredBarIndex - 1].price : item.openPrice;
+				color = (item.price >= prev) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+			}
 		}
 		else if (hoveredBarIndex > 0)
 		{

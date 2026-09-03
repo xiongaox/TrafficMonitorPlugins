@@ -111,6 +111,9 @@
     <ClInclude Include="ChipPeakPanel.h">
       <Filter>FloatingWnd</Filter>
     </ClInclude>
+    <ClInclude Include="EtfHoldingsPanel.h">
+      <Filter>FloatingWnd</Filter>
+    </ClInclude>
     <ClInclude Include="OrderBookPanel.h">
       <Filter>FloatingWnd</Filter>
     </ClInclude>
@@ -133,6 +136,9 @@
       <Filter>DataManager</Filter>
     </ClInclude>
     <ClInclude Include="StockHttpFetcher.h">
+      <Filter>DataManager</Filter>
+    </ClInclude>
+    <ClInclude Include="ApiHealthManager.h">
       <Filter>DataManager</Filter>
     </ClInclude>
     <ClInclude Include="TdxTcpClient.h">
@@ -209,6 +215,9 @@
     <ClCompile Include="ChipPeakPanel.cpp">
       <Filter>FloatingWnd</Filter>
     </ClCompile>
+    <ClCompile Include="EtfHoldingsPanel.cpp">
+      <Filter>FloatingWnd</Filter>
+    </ClCompile>
     <ClCompile Include="OrderBookPanel.cpp">
       <Filter>FloatingWnd</Filter>
     </ClCompile>
@@ -231,6 +240,9 @@
       <Filter>DataManager</Filter>
     </ClCompile>
     <ClCompile Include="StockHttpFetcher.cpp">
+      <Filter>DataManager</Filter>
+    </ClCompile>
+    <ClCompile Include="ApiHealthManager.cpp">
       <Filter>DataManager</Filter>
     </ClCompile>
     <ClCompile Include="TdxTcpClient.cpp">

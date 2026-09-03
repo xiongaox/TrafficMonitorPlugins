@@ -335,6 +335,18 @@ bool CCommon::IsFundCode(const std::wstring& code)
 	return false;
 }
 
+bool CCommon::IsStarMarketStock(const std::wstring& code)
+{
+	size_t start = 0;
+	while (start < code.size() && !iswdigit(code[start]))
+		start++;
+	std::wstring numPart = code.substr(start);
+	if (numPart.length() < 3)
+		return false;
+	std::wstring first3 = numPart.substr(0, 3);
+	return first3 == L"688" || first3 == L"689";
+}
+
 COLORREF CCommon::GetProfitLossColor(double percent)
 {
 	const COLORREF COLOR_LIGHT_RED = RGB(179, 64, 65);      // 浅红色 0~3%

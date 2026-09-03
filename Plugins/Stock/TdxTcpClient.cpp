@@ -1,5 +1,6 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "TdxTcpClient.h"
+#include "ApiHealthManager.h"
 #include "Common.h"
 #include <cstring>
 
@@ -211,7 +212,15 @@ void CTdxTcpClient::ListenProc()
 
 			// seq 变化才回调，避免重复处理相同数据
 			if (cur_seq != 0 && cur_seq != old_seq && !items.empty() && m_callback)
+			{
+				static DWORD s_lastRecordTdx = 0;
+				if (GetTickCount() - s_lastRecordTdx > 10000)
+				{
+					s_lastRecordTdx = GetTickCount();
+					CApiHealthManager::Instance().RecordPoint(API_TDX, 3, 200, LEVEL_OK, L"PyTDX 共享内存行情同步中 (3ms)");
+				}
 				m_callback(items);
+			}
 		}
 	}
 }

@@ -302,12 +302,22 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 	for (int i = 0; i < totalPoints; i++)
 	{
 		STOCK::Price ap = timelinePoint[i].averagePrice;
-		if (ap > 0)
+		STOCK::Price ptPrice = timelinePoint[i].price;
+		// 校验均价量纲：若因旧缓存导致缩小约100倍，自动愈合乘回100；极端偏离时使用前值或当前价
+		if (ap > 0 && ptPrice > 0)
+		{
+			if (ap < ptPrice * 0.4 && std::abs(ap * 100.0 - ptPrice) < ptPrice * 0.3)
+				ap *= 100.0;
+			else if (ap > ptPrice * 2.5 && std::abs(ap / 100.0 - ptPrice) < ptPrice * 0.3)
+				ap /= 100.0;
+		}
+
+		if (ap > 0 && (ptPrice <= 0 || (ap >= ptPrice * 0.5 && ap <= ptPrice * 2.0)))
 			lastValidAvgPrice = ap;
 		else if (lastValidAvgPrice > 0)
 			ap = lastValidAvgPrice;
-		else if (timelinePoint[i].price > 0)
-			ap = timelinePoint[i].price;
+		else if (ptPrice > 0)
+			ap = ptPrice;
 
 		float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
 		float yVal = static_cast<float>((ap - minPrice) * unitY);
@@ -533,10 +543,20 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		const auto& fullTimeline = *ctx.fullTimeline;
 		std::map<int, double> iopvByIndex;
 
+		STOCK::Price refPrice = ctx.realtimeData.currentPrice > 0 ? ctx.realtimeData.currentPrice : ctx.realtimeData.prevClosePrice;
+		if (refPrice <= 0 && !fullTimeline.empty())
+			refPrice = fullTimeline[0].price;
+
+		auto isValidIopv = [refPrice](double val) {
+			if (val <= 0) return false;
+			if (refPrice <= 0) return true;
+			return (val >= refPrice * 0.7 && val <= refPrice * 1.3);
+		};
+
 		// 优先使用内存中fullTimeline的iopv字段（ApplyTimeline/ApplyFundIOPV已填充）
 		for (int i = 0; i < static_cast<int>(fullTimeline.size()); i++)
 		{
-			if (fullTimeline[i].iopv > 0)
+			if (isValidIopv(fullTimeline[i].iopv))
 			{
 				iopvByIndex[i] = fullTimeline[i].iopv;
 			}
@@ -557,17 +577,20 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 
 				for (const auto& nav : navPoints)
 				{
-					auto it = fullTimeIndexMap.find(nav.time);
-					if (it != fullTimeIndexMap.end())
+					if (isValidIopv(nav.iopv))
 					{
-						iopvByIndex[it->second] = nav.iopv;
+						auto it = fullTimeIndexMap.find(nav.time);
+						if (it != fullTimeIndexMap.end())
+						{
+							iopvByIndex[it->second] = nav.iopv;
+						}
 					}
 				}
 			}
 		}
 
 		// 追加实时IOPV到最后一个分时点
-		if (ctx.realtimeData.iopv > 0 && !fullTimeline.empty())
+		if (isValidIopv(ctx.realtimeData.iopv) && !fullTimeline.empty())
 		{
 			int lastIdx = static_cast<int>(fullTimeline.size()) - 1;
 			iopvByIndex[lastIdx] = ctx.realtimeData.iopv;
@@ -1339,7 +1362,8 @@ void CTimelineChart::DrawDayKLinePriceChart(CDC& memDC, const TimelineDrawContex
 		int centerX = static_cast<int>(ctx.chartWidth / static_cast<float>(totalPoints) * i) + static_cast<int>(barTotalWidth / 2);
 		int leftX = centerX - barWidth / 2;
 
-		bool isUp = (kp.close >= kp.open);
+		STOCK::Price itemPrevClose = (klineStartIdx + i > 0) ? klineData[klineStartIdx + i - 1].close : (kp.open > 0 ? kp.open : prevClose);
+		bool isUp = (kp.close > kp.open) || (kp.close == kp.open && kp.close >= itemPrevClose);
 		COLORREF barColor = isUp ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 
 		int openY = priceToY(kp.open);
@@ -1539,7 +1563,7 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 		if (klineIdx >= 0 && klineIdx < static_cast<int>(klineData.size()))
 		{
 			const auto& kp = klineData[klineIdx];
-			STOCK::Price prevClose = ctx.realtimeData.prevClosePrice;
+			STOCK::Price prevClose = (klineIdx > 0) ? klineData[klineIdx - 1].close : (kp.open > 0 ? kp.open : ctx.realtimeData.prevClosePrice);
 
 			auto drawKLineLabel = [&](const CString& label, STOCK::Price value, COLORREF labelColor, COLORREF valueColor) {
 				CString valStr = CCommon::FormatFloat(value);
@@ -1553,8 +1577,15 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 				xPos += vs.cx + g_data.RDPI(4);
 				};
 
-			drawKLineLabel(_T("开:"), kp.open, COLOR_TEXT_MUTED, (kp.open >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
-			drawKLineLabel(_T("收:"), kp.close, COLOR_TEXT_MUTED, (kp.close >= prevClose ? COLOR_RED_UP : COLOR_GREEN_DOWN));
+			auto cmpPrev = [prevClose](STOCK::Price p) -> COLORREF {
+				if (prevClose <= 0) return COLOR_WHITE;
+				if (p > prevClose + 0.00001) return COLOR_RED_UP;
+				if (p < prevClose - 0.00001) return COLOR_GREEN_DOWN;
+				return COLOR_WHITE;
+				};
+
+			drawKLineLabel(_T("开:"), kp.open, COLOR_TEXT_MUTED, cmpPrev(kp.open));
+			drawKLineLabel(_T("收:"), kp.close, COLOR_TEXT_MUTED, cmpPrev(kp.close));
 		}
 	}
 	else if (!timelinePoint.empty())
@@ -1563,6 +1594,12 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 
 		bool isHovering = (hover.hoveredBarIndex >= 0 && hover.isHoveringVolume);
 		STOCK::Price dispAvgPrice = isHovering ? hover.hoveredData.averagePrice : timelinePoint.back().averagePrice;
+		STOCK::Price refPrice = isHovering ? hover.hoveredData.price : timelinePoint.back().price;
+		if (dispAvgPrice > 0 && refPrice > 0)
+		{
+			if (dispAvgPrice < refPrice * 0.4 && std::abs(dispAvgPrice * 100.0 - refPrice) < refPrice * 0.3)
+				dispAvgPrice *= 100.0;
+		}
 		if (dispAvgPrice <= 0)
 			dispAvgPrice = isHovering ? hover.hoverMa1 : ctx.ma1;
 
@@ -1597,13 +1634,16 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			COLORREF iopvColor = COLOR_WHITE;
 			CString iopvLabel = _T("净:");
 			CString iopvVal;
-			if (ctx.realtimeData.iopv > 0)
+			STOCK::Price curP = ctx.realtimeData.currentPrice;
+			STOCK::Price iopvP = ctx.realtimeData.iopv;
+			bool iopvValid = (iopvP > 0 && (curP <= 0 || (iopvP >= curP * 0.7 && iopvP <= curP * 1.3)));
+			if (iopvValid)
 			{
-				if (ctx.realtimeData.iopv > ctx.realtimeData.currentPrice)
+				if (iopvP > curP)
 					iopvColor = COLOR_RED_UP;
-				else if (ctx.realtimeData.iopv < ctx.realtimeData.currentPrice)
+				else if (iopvP < curP)
 					iopvColor = COLOR_GREEN_DOWN;
-				iopvVal.Format(_T("%.4f"), ctx.realtimeData.iopv);
+				iopvVal.Format(_T("%.4f"), iopvP);
 			}
 			else
 			{
@@ -1616,9 +1656,12 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CString premLabel = _T(" 溢:");
 			CString premVal;
 			COLORREF premColor = COLOR_TEXT_MUTED;
-			if (ctx.realtimeData.iopv > 0)
+			if (iopvValid)
 			{
 				double premRate = ctx.realtimeData.iopvPremiumRate;
+				// 若溢价率未计算或严重偏离（如历史脏数据），现场依据现价与IOPV自适应计算
+				if (curP > 0 && (premRate == 0.0 || std::abs(premRate) > 30.0))
+					premRate = (curP - iopvP) / iopvP * 100.0;
 				if (premRate >= 0)
 					premVal.Format(_T("+%.2f%%"), premRate);
 				else

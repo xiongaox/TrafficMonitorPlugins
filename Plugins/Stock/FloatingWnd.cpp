@@ -101,6 +101,7 @@ enum {
 	IDC_INDICATOR_MACD_SIGNAL_BTN = 1017,
 	IDC_CHIP_PEAK_BTN = 1018,
 	IDC_ORDER_BOOK_BTN = 1019,
+	IDC_ETF_HOLDINGS_BTN = 1024,
 	IDC_EXPAND_BTN = 1020,
 	IDC_TOGGLE_STOCK_LIST_BTN = 1021,
 	IDC_CALL_AUCTION_BTN = 1022,
@@ -141,6 +142,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_BN_CLICKED(IDC_INDICATOR_RSI_BTN, &CFloatingWnd::OnBnClickedIndicatorRSIBtn)
 	ON_BN_CLICKED(IDC_CHIP_PEAK_BTN, &CFloatingWnd::OnBnClickedChipPeakBtn)
 	ON_BN_CLICKED(IDC_ORDER_BOOK_BTN, &CFloatingWnd::OnBnClickedOrderBookBtn)
+	ON_BN_CLICKED(IDC_ETF_HOLDINGS_BTN, &CFloatingWnd::OnBnClickedEtfHoldingsBtn)
 	ON_BN_CLICKED(IDC_EXPAND_BTN, &CFloatingWnd::OnBnClickedExpandBtn)
 	ON_BN_CLICKED(IDC_TOGGLE_STOCK_LIST_BTN, &CFloatingWnd::OnBnClickedToggleStockListBtn)
 END_MESSAGE_MAP()
@@ -190,6 +192,10 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	CRect orderBookBtnRect(0, 0, rightBtnWidth, btnHeight);
 	m_btnOrderBook.Create(_T("PK"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, orderBookBtnRect, this, IDC_ORDER_BOOK_BTN);
+
+	CRect etfHoldingsBtnRect(0, 0, rightBtnWidth, btnHeight);
+	m_btnEtfHoldings.Create(_T("CC"), WS_CHILD | BS_OWNERDRAW, etfHoldingsBtnRect, this, IDC_ETF_HOLDINGS_BTN);
+	m_btnEtfHoldings.ShowWindow(SW_HIDE);
 
 	CRect bollBtnRect(0, 0, rightBtnWidth, btnHeight);
 	m_btnBoll.Create(_T("BL"), WS_CHILD | BS_OWNERDRAW, bollBtnRect, this, IDC_BOLL_BTN);
@@ -505,16 +511,19 @@ void CFloatingWnd::OnPaint()
 			SafeSetWindowPos(m_btnClose, w - closeBtnW, headerBtnTop, closeBtnW, closeBtnH);
 			SafeSetWindowPos(m_btnExpand, w - closeBtnW * 2, headerBtnTop, closeBtnW, closeBtnH);
 			SafeSetWindowPos(m_btnToggleStockList, w - closeBtnW * 3, headerBtnTop, closeBtnW, closeBtnH);
-			// 筹码峰/盘口按钮定位到盘口标题栏
+			// 筹码峰/盘口/持仓按钮定位到盘口标题栏
 			int obTitleH = g_data.RDPI(16);
 			int obBtnW = g_data.RDPI(34);
 			int obBtnH = min(obTitleH, g_data.RDPI(16));
 			int obBtnTop = headerHeight + relatedBarHeight + (obTitleH - obBtnH) / 2;
 			bool showObBtns = !isIndexKLine;
+			bool isEtf = CCommon::IsFundCode(m_stock_id);
 			SafeSetWindowPos(m_btnChipPeak, w - obBtnW, obBtnTop, obBtnW, obBtnH);
 			SafeShowWindow(m_btnChipPeak, showObBtns);
 			SafeSetWindowPos(m_btnOrderBook, w - obBtnW * 2, obBtnTop, obBtnW, obBtnH);
 			SafeShowWindow(m_btnOrderBook, showObBtns);
+			SafeSetWindowPos(m_btnEtfHoldings, w - obBtnW * 3, obBtnTop, obBtnW, obBtnH);
+			SafeShowWindow(m_btnEtfHoldings, showObBtns && isEtf);
 		}
 
 		// 左侧股票列表面板（无论分时数据是否加载都绘制）
@@ -540,7 +549,9 @@ void CFloatingWnd::OnPaint()
 
 			const int obBtnW = g_data.RDPI(34);
 			const bool showObBtns = !isIndexKLine;
-			const int summaryContentRight = min(chartWidth, showObBtns ? (w - obBtnW * 2 - g_data.RDPI(6)) : w);
+			const bool isEtf = CCommon::IsFundCode(m_stock_id);
+			const int rightBtnsW = showObBtns ? ((isEtf ? 3 : 2) * obBtnW) : 0;
+			const int summaryContentRight = min(chartWidth, showObBtns ? (w - rightBtnsW) : w);
 			const int summaryContentW = max(0, summaryContentRight - summaryX);
 
 			if (showPositionSummary)
@@ -992,10 +1003,13 @@ void CFloatingWnd::OnPaint()
 				int obBtnH = min(obTitleH, g_data.RDPI(16));
 				int obBtnTop = headerHeight + relatedBarHeight + (obTitleH - obBtnH) / 2;
 				bool showObBtns = !isIndexKLine;
+				bool isEtf = CCommon::IsFundCode(m_stock_id);
 				SafeSetWindowPos(m_btnChipPeak, w - obBtnW, obBtnTop, obBtnW, obBtnH);
 				SafeShowWindow(m_btnChipPeak, showObBtns);
 				SafeSetWindowPos(m_btnOrderBook, w - obBtnW * 2, obBtnTop, obBtnW, obBtnH);
 				SafeShowWindow(m_btnOrderBook, showObBtns);
+				SafeSetWindowPos(m_btnEtfHoldings, w - obBtnW * 3, obBtnTop, obBtnW, obBtnH);
+				SafeShowWindow(m_btnEtfHoldings, showObBtns && isEtf);
 			}
 			// 定位模式切换标签到副图标题栏右侧 [竞价] [分时] [日K] [周K] [月K]
 			int modeTabW = g_data.RDPI(38);
@@ -1099,17 +1113,13 @@ void CFloatingWnd::OnPaint()
 			{
 				STOCK::Price visMax = 0;
 				STOCK::Price visMin = (std::numeric_limits<STOCK::Price>::max)();
+				// 1. 先统计主价格数据（分时实际成交价或K线high/low），确定图表的核心主价格坐标
 				for (const auto& tp : subTimeline)
 				{
 					if (tp.price > 0)
 					{
 						visMax = (std::max)(visMax, tp.price);
 						visMin = (std::min)(visMin, tp.price);
-					}
-					if (m_viewMode < UI_VIEW_DAY_KLINE && tp.averagePrice > 0)
-					{
-						visMax = (std::max)(visMax, tp.averagePrice);
-						visMin = (std::min)(visMin, tp.averagePrice);
 					}
 				}
 				// K线模式：Y轴范围需要包含K线柱的high/low
@@ -1127,14 +1137,43 @@ void CFloatingWnd::OnPaint()
 					}
 				}
 
-				// 开启MA均线时，Y轴范围同时包含可见区间的MA均线值，避免均线超出价格图区发生截断或异常
+				// 全标的通用主价格锚定与安全包络：
+				// 走势图的核心主体永远是标的真实交易价格。任何衍生辅助曲线（均价、基金净值IOPV、MA均线、BOLL轨道）
+				// 仅允许在合理的价格安全包络范围内自适应扩展Y轴。超出包络的极端异常数据（如API字段错位、历史脏缓存）
+				// 坚决不参与Y轴极值计算，从架构根源上杜绝任何标的出现分时图被压扁或占满全屏的异常。
+				STOCK::Price refPrice = ctx.realtimeData.currentPrice > 0 ? ctx.realtimeData.currentPrice : ctx.realtimeData.prevClosePrice;
+				if (refPrice <= 0 && visMax > 0 && visMin < (std::numeric_limits<STOCK::Price>::max)())
+					refPrice = (visMin + visMax) / 2.0;
+
+				STOCK::Price safeMin = (refPrice > 0) ? refPrice * 0.5 : 0;
+				STOCK::Price safeMax = (refPrice > 0) ? refPrice * 2.0 : (std::numeric_limits<STOCK::Price>::max)();
+				if (visMin < (std::numeric_limits<STOCK::Price>::max)() && visMax > 0)
+				{
+					safeMin = (std::min)(safeMin, visMin * 0.7);
+					safeMax = (std::max)(safeMax, visMax * 1.3);
+				}
+
+				// 2. 均价线扩展（安全包络约束）
+				if (m_viewMode < UI_VIEW_DAY_KLINE)
+				{
+					for (const auto& tp : subTimeline)
+					{
+						if (tp.averagePrice >= safeMin && tp.averagePrice <= safeMax)
+						{
+							visMax = (std::max)(visMax, tp.averagePrice);
+							visMin = (std::min)(visMin, tp.averagePrice);
+						}
+					}
+				}
+
+				// 3. 开启MA均线时，Y轴范围包含安全包络内的MA均线值
 				if (m_showMA && !subTimeline.empty())
 				{
 					for (const auto& tp : subTimeline)
 					{
 						for (STOCK::Price maVal : tp.maValues)
 						{
-							if (maVal > 0)
+							if (maVal >= safeMin && maVal <= safeMax)
 							{
 								visMax = (std::max)(visMax, maVal);
 								visMin = (std::min)(visMin, maVal);
@@ -1143,8 +1182,7 @@ void CFloatingWnd::OnPaint()
 					}
 				}
 
-				// 开启BOLL时，Y轴范围同时包含可见区间的布林上下轨，避免窄幅区间下BOLL被映射到价格图区外
-				// 分时走势类视图下，被「均线日配置」页取消勾选的轨道不再纳入扩展（日K蜡烛视图维持既有行为）
+				// 4. 开启BOLL时，Y轴范围包含安全包络内的布林上下轨
 				if (m_showBollBands && !timelinePoint.empty())
 				{
 					bool bollCfgScope = (m_viewMode < UI_VIEW_DAY_KLINE) || m_showTrendView;
@@ -1171,18 +1209,19 @@ void CFloatingWnd::OnPaint()
 						double stddev = std::sqrt(variance / N);
 						double upperBand = ma + K * stddev;
 						double lowerBand = ma - K * stddev;
-						if (upperBand > 0 && (!bollCfgScope || g_data.m_setting_data.m_boll_upper_visible))
+						if (upperBand >= safeMin && upperBand <= safeMax && (!bollCfgScope || g_data.m_setting_data.m_boll_upper_visible))
 							visMax = (std::max)(visMax, upperBand);
-						if (lowerBand > 0 && (!bollCfgScope || g_data.m_setting_data.m_boll_lower_visible))
+						if (lowerBand >= safeMin && lowerBand <= safeMax && (!bollCfgScope || g_data.m_setting_data.m_boll_lower_visible))
 							visMin = (std::min)(visMin, lowerBand);
 					}
 				}
-				// 开启基金净值曲线时，Y轴范围同时包含可见区间的IOPV值，避免净值曲线绘制到图表区外
+
+				// 5. 开启基金净值曲线时，Y轴范围包含安全包络内的IOPV值，避免异常净值拉伸坐标轴
 				if (m_showJZCurve && m_viewMode < UI_VIEW_DAY_KLINE)
 				{
 					for (const auto& tp : subTimeline)
 					{
-						if (tp.iopv > 0)
+						if (tp.iopv >= safeMin && tp.iopv <= safeMax)
 						{
 							visMax = (std::max)(visMax, tp.iopv);
 							visMin = (std::min)(visMin, tp.iopv);
@@ -1355,17 +1394,20 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnToggleStockList, w - closeBtnW * 3, top, closeBtnW, closeBtnH);
 			}
 
-			// 盘口标题栏右侧按钮定位（筹码峰、盘口按钮）
+			// 盘口标题栏右侧按钮定位（筹码峰、盘口、持仓按钮）
 			{
 				int obTitleH = g_data.RDPI(16);
 				int obBtnW = g_data.RDPI(34);
 				int obBtnH = min(obTitleH, g_data.RDPI(16));
 				int obBtnTop = headerHeight + relatedBarHeight + (obTitleH - obBtnH) / 2;
 				bool showObBtns = !isIndexKLine;
+				bool isEtf = CCommon::IsFundCode(m_stock_id);
 				SafeSetWindowPos(m_btnChipPeak, w - obBtnW, obBtnTop, obBtnW, obBtnH);
 				SafeShowWindow(m_btnChipPeak, showObBtns);
 				SafeSetWindowPos(m_btnOrderBook, w - obBtnW * 2, obBtnTop, obBtnW, obBtnH);
 				SafeShowWindow(m_btnOrderBook, showObBtns);
+				SafeSetWindowPos(m_btnEtfHoldings, w - obBtnW * 3, obBtnTop, obBtnW, obBtnH);
+				SafeShowWindow(m_btnEtfHoldings, showObBtns && isEtf);
 			}
 
 			// 右侧盘口高度：不减xAxisLabelHeight（那是左侧走势图的时间标签，右侧不需要）
@@ -1414,8 +1456,18 @@ void CFloatingWnd::OnPaint()
 				}
 
 				m_chipPeakPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, drawRealtime, drawChip, drawTimeline, m_viewMode);
-			}				else if (IsInfoPanelVisible(isIndexKLine))
-					m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
+			}
+			else if (m_showEtfHoldings)
+			{
+				auto stockData = g_data.GetStockData(m_stock_id);
+				STOCK::EtfHoldingsData holdingsData;
+				if (stockData) holdingsData = stockData->etfHoldings;
+				m_etfHoldingsPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, holdingsData, m_etfHoldingsScrollOffset, m_stock_id);
+			}
+			else if (IsInfoPanelVisible(isIndexKLine))
+			{
+				m_orderBookPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, realtimeData, klineData, m_viewMode);
+			}
 		}
 		else
 		{
@@ -1580,6 +1632,30 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
+	// 右侧 ETF 持仓列表拖动
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showEtfHoldings)
+	{
+		CRect clRect;
+		GetClientRect(&clRect);
+		bool isIndex = (GetStockPriority(m_stock_id) < 200);
+		bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+		const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
+		const int chartWidth = clRect.Width() - orderBookWidth;
+		const int headerHeight = g_data.RDPI(26);
+		const int obTitleH = g_data.RDPI(16);
+		const int listTop = headerHeight + obTitleH + CEtfHoldingsPanel::GetTableHeaderHeight();
+		const int listBottom = clRect.Height() - g_data.RDPI(20);
+
+		if (point.x >= chartWidth && point.x < clRect.Width() && point.y >= listTop && point.y < listBottom)
+		{
+			m_isEtfHoldingsDragging = true;
+			m_isEtfHoldingsDragMoved = false;
+			m_etfHoldingsDragStartPos = point;
+			m_etfHoldingsDragStartOffset = m_etfHoldingsScrollOffset;
+			SetCapture();
+			return;
+		}
+	}
 
 	// 底部系统状态栏指数点击切换（单行四个）
 	if (m_viewMode != UI_VIEW_OVERVIEW)
@@ -1837,6 +1913,40 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 		return;
 	}
 
+	if (m_isEtfHoldingsDragging)
+	{
+		m_isEtfHoldingsDragging = false;
+		ReleaseCapture();
+
+		if (!m_isEtfHoldingsDragMoved)
+		{
+			auto stockData = g_data.GetStockData(m_stock_id);
+			if (stockData && stockData->etfHoldings.isValid && !stockData->etfHoldings.items.empty())
+			{
+				CRect clRect;
+				GetClientRect(&clRect);
+				bool isIndex = (GetStockPriority(m_stock_id) < 200);
+				bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+				const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
+				const int chartWidth = clRect.Width() - orderBookWidth;
+				const int height = clRect.Height() - g_data.RDPI(26) - g_data.RDPI(20);
+				int hitIdx = CEtfHoldingsPanel::HitTest(point, chartWidth, clRect.Width(), height, m_etfHoldingsScrollOffset, static_cast<int>(stockData->etfHoldings.items.size()));
+				if (hitIdx >= 0 && hitIdx < static_cast<int>(stockData->etfHoldings.items.size()))
+				{
+					const std::wstring& clickedFullCode = stockData->etfHoldings.items[hitIdx].fullCode;
+					if (!clickedFullCode.empty() && clickedFullCode != m_stock_id)
+					{
+						SetStockId(clickedFullCode);
+						UpdateModeButtons();
+					}
+				}
+			}
+		}
+		Invalidate();
+		CWnd::OnLButtonUp(nFlags, point);
+		return;
+	}
+
 	bool wasDragging = m_isTimelineDragging || m_isKLineDragging;
 	m_isTimelineDragging = false;
 	m_isKLineDragging = false;
@@ -1924,6 +2034,39 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 		if (newOffset != m_stockListScrollOffset)
 		{
 			m_stockListScrollOffset = newOffset;
+			Invalidate();
+		}
+		CWnd::OnMouseMove(nFlags, point);
+		return;
+	}
+
+	// 右侧 ETF 持仓列表拖动处理
+	if (m_isEtfHoldingsDragging)
+	{
+		int dy = point.y - m_etfHoldingsDragStartPos.y;
+		if (abs(dy) > 3)
+		{
+			m_isEtfHoldingsDragMoved = true;
+		}
+
+		CRect clRect;
+		GetClientRect(&clRect);
+		const int headerHeight = g_data.RDPI(26);
+		const int relatedBarHeight = 0;
+		const int indexBarHeight = g_data.RDPI(20);
+		const int obTitleH = g_data.RDPI(16);
+		int listAreaH = (clRect.Height() - headerHeight - relatedBarHeight - indexBarHeight - obTitleH) - CEtfHoldingsPanel::GetTableHeaderHeight();
+		const int rowHeight = CEtfHoldingsPanel::GetRowHeight();
+		auto stockData = g_data.GetStockData(m_stock_id);
+		int itemCount = (stockData && stockData->etfHoldings.isValid) ? static_cast<int>(stockData->etfHoldings.items.size()) : 0;
+		int totalH = itemCount * rowHeight;
+		int maxOffset = max(0, totalH - listAreaH);
+
+		int newOffset = m_etfHoldingsDragStartOffset - dy;
+		newOffset = max(0, min(newOffset, maxOffset));
+		if (newOffset != m_etfHoldingsScrollOffset)
+		{
+			m_etfHoldingsScrollOffset = newOffset;
 			Invalidate();
 		}
 		CWnd::OnMouseMove(nFlags, point);
@@ -2387,6 +2530,16 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 		// 分时模式下，根据新股票是否为基金自动切换净值曲线显示
 		m_showJZCurve = CCommon::IsFundCode(m_stock_id);
 	}
+	m_etfHoldingsScrollOffset = 0;
+	if (!CCommon::IsFundCode(m_stock_id))
+	{
+		m_showEtfHoldings = false;
+	}
+	else if (m_showEtfHoldings)
+	{
+		EnsureEtfHoldingsData();
+	}
+	UpdatePeriodComboVisibility();
 	Invalidate();
 }
 
@@ -2433,6 +2586,7 @@ void CFloatingWnd::UpdateModeButtons()
 		if (m_btnIndicatorRSI.GetSafeHwnd()) m_btnIndicatorRSI.Invalidate();
 		if (m_btnChipPeak.GetSafeHwnd()) m_btnChipPeak.Invalidate();
 		if (m_btnOrderBook.GetSafeHwnd()) m_btnOrderBook.Invalidate();
+		if (m_btnEtfHoldings.GetSafeHwnd()) m_btnEtfHoldings.Invalidate();
 
 		m_btnExpand.SetWindowText(m_expandedMode ? _T("△") : _T("□"));
 		if (m_btnExpand.GetSafeHwnd()) m_btnExpand.Invalidate();
@@ -2479,6 +2633,7 @@ void CFloatingWnd::UpdatePeriodComboVisibility()
 	SafeShowWindow(m_btnBoll, showIndicatorBtns);
 	SafeShowWindow(m_btnChipPeak, m_viewMode != UI_VIEW_OVERVIEW);
 	SafeShowWindow(m_btnOrderBook, m_viewMode != UI_VIEW_OVERVIEW);
+	SafeShowWindow(m_btnEtfHoldings, m_viewMode != UI_VIEW_OVERVIEW && CCommon::IsFundCode(m_stock_id));
 }
 
 BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
@@ -2541,6 +2696,42 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 			{
 				m_stockListScrollOffset = newOffset;
 				Invalidate();
+			}
+		}
+		return TRUE;
+	}
+
+	// 1.1 如果在非总览模式且右侧ETF持仓面板显示时，鼠标在右侧面板区域，则滚动持仓列表
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showEtfHoldings &&
+		clientPt.x >= chartRight && clientPt.x < clientRect.Width() &&
+		clientPt.y >= headerHeight + relatedBarHeight &&
+		clientPt.y < clientRect.Height() - indexBarHeight)
+	{
+		auto stockData = g_data.GetStockData(m_stock_id);
+		if (stockData && stockData->etfHoldings.isValid && !stockData->etfHoldings.items.empty())
+		{
+			int itemCount = static_cast<int>(stockData->etfHoldings.items.size());
+			int rowHeight = CEtfHoldingsPanel::GetRowHeight();
+			int tableHeaderH = CEtfHoldingsPanel::GetTableHeaderHeight();
+			int obTitleH = g_data.RDPI(16);
+			int listAreaH = (clientRect.Height() - headerHeight - relatedBarHeight - indexBarHeight - obTitleH) - tableHeaderH;
+			int totalH = itemCount * rowHeight;
+			int maxOffset = max(0, totalH - listAreaH);
+
+			if (maxOffset > 0)
+			{
+				int newOffset = m_etfHoldingsScrollOffset;
+				if (zDelta > 0)
+					newOffset -= rowHeight;  // 向上滚
+				else
+					newOffset += rowHeight;  // 向下滚
+
+				newOffset = max(0, min(newOffset, maxOffset));
+				if (newOffset != m_etfHoldingsScrollOffset)
+				{
+					m_etfHoldingsScrollOffset = newOffset;
+					Invalidate();
+				}
 			}
 		}
 		return TRUE;
@@ -2775,33 +2966,57 @@ void CFloatingWnd::OnBnClickedIndicatorMACDSignalBtn()
 
 bool CFloatingWnd::IsInfoPanelVisible(bool isIndexKLine) const
 {
-	// 右侧信息面板（盘口/筹码峰）可见性：大盘K线模式无盘口；PK隐藏时整体让位给图表
-	return !isIndexKLine && (m_showOrderBook || m_showChipPeak);
+	// 右侧信息面板（盘口/筹码峰/持仓）可见性：大盘K线模式无盘口；PK隐藏时整体让位给图表
+	return !isIndexKLine && (m_showOrderBook || m_showChipPeak || m_showEtfHoldings);
 }
 
 void CFloatingWnd::OnBnClickedChipPeakBtn()
 {
-	m_showChipPeak = !m_showChipPeak;
+	if (m_showChipPeak)
+	{
+		m_showChipPeak = false;
+	}
+	else
+	{
+		m_showChipPeak = true;
+		m_showEtfHoldings = false;
+		m_showOrderBook = false;
+		EnsureChipPeakData();
+	}
 	UpdateModeButtons();
-	EnsureChipPeakData();
 	Invalidate();
 }
 
 void CFloatingWnd::OnBnClickedOrderBookBtn()
 {
-	if (m_showChipPeak)
+	if (m_showOrderBook)
 	{
-		// 筹码峰显示中：PK切回盘口
-		m_showChipPeak = false;
-		m_showOrderBook = true;
+		m_showOrderBook = false;
 	}
 	else
 	{
-		// 盘口显示中：整体隐藏右侧面板，宽度让给图表；已隐藏则恢复盘口
-		m_showOrderBook = !m_showOrderBook;
+		m_showOrderBook = true;
+		m_showChipPeak = false;
+		m_showEtfHoldings = false;
 	}
 	UpdateModeButtons();
-	EnsureChipPeakData();
+	Invalidate();
+}
+
+void CFloatingWnd::OnBnClickedEtfHoldingsBtn()
+{
+	if (m_showEtfHoldings)
+	{
+		m_showEtfHoldings = false;
+	}
+	else
+	{
+		m_showEtfHoldings = true;
+		m_showChipPeak = false;
+		m_showOrderBook = false;
+		EnsureEtfHoldingsData();
+	}
+	UpdateModeButtons();
 	Invalidate();
 }
 
@@ -2884,7 +3099,8 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_WEEK_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_WEEK_KLINE); }
 	else if (nID == IDC_MONTH_KLINE_BTN) { isActive = (m_viewMode == UI_VIEW_MONTH_KLINE); }
 	else if (nID == IDC_CHIP_PEAK_BTN) { isActive = m_showChipPeak; }
-	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak && m_showOrderBook; }
+	else if (nID == IDC_ORDER_BOOK_BTN) { isActive = !m_showChipPeak && !m_showEtfHoldings && m_showOrderBook; }
+	else if (nID == IDC_ETF_HOLDINGS_BTN) { isActive = m_showEtfHoldings; }
 	else if (nID == IDC_EXPAND_BTN) { isActive = m_expandedMode; }
 	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) { isActive = m_showStockList; }
 	else if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
@@ -3027,6 +3243,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_MONTH_KLINE_BTN) text = _T("月K");
 	else if (nID == IDC_CHIP_PEAK_BTN) text = _T("CM");
 	else if (nID == IDC_ORDER_BOOK_BTN) text = _T("PK");
+	else if (nID == IDC_ETF_HOLDINGS_BTN) text = _T("CC");
 	else if (nID == IDC_INDICATOR_MACD_BTN) text = _T("VOL");
 	else if (nID == IDC_INDICATOR_MACD_SIGNAL_BTN) text = _T("MACD");
 	else if (nID == IDC_INDICATOR_KDJ_BTN) text = _T("KDJ");
@@ -3087,6 +3304,42 @@ void CFloatingWnd::EnsureChipPeakData()
 				CStockFetchThread::Instance().FetchChipDistribution(stockId);
 				// UI刷新由1秒定时器检查dirty标识驱动，此处仅更新数据
 				});
+		}
+	}
+}
+
+void CFloatingWnd::EnsureEtfHoldingsData()
+{
+	if (m_showEtfHoldings && CCommon::IsFundCode(m_stock_id))
+	{
+		bool needRequest = true;
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			auto stockData = g_data.GetStockData(m_stock_id);
+			if (stockData)
+			{
+				time_t now = time(nullptr);
+				if (stockData->etfHoldings.isValid && !stockData->etfHoldings.items.empty())
+				{
+					if (CCommon::IsMarketSession())
+						needRequest = (now - stockData->etfHoldings.lastUpdateTime > 30);
+					else
+						needRequest = false;
+				}
+				else if (stockData->etfHoldings.fetchFailed)
+				{
+					int retryInterval = CCommon::IsMarketSession() ? 15 : 60;
+					needRequest = (now - stockData->etfHoldings.lastUpdateTime > retryInterval);
+				}
+			}
+		}
+
+		if (needRequest)
+		{
+			std::wstring stockId = m_stock_id;
+			CStockFetchThread::Instance().PostHighPriorityBackgroundTask([stockId]() {
+				CStockFetchThread::Instance().FetchEtfHoldings(stockId);
+			});
 		}
 	}
 }

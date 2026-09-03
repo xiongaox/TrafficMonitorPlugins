@@ -278,8 +278,9 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 		std::vector<std::string> data_arr = CCommon::split(values, "~");
 		if (data_arr.size() >= 9 && !data_arr[7].empty() && !data_arr[8].empty())
 		{
-			Volume innerVolume = convert<Volume>(data_arr[8]) * 100;
-			Volume outerVolume = convert<Volume>(data_arr[7]) * 100;
+			Volume volMultiplier = CCommon::IsStarMarketStock(stockData->info.code) ? 1 : 100;
+			Volume innerVolume = convert<Volume>(data_arr[8]) * volMultiplier;
+			Volume outerVolume = convert<Volume>(data_arr[7]) * volMultiplier;
 			if (innerVolume > 0 || outerVolume > 0)
 			{
 				stockData->info.innerVolume = innerVolume;
@@ -340,17 +341,23 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 				stockData->info.circulatingAShares = stockData->info.circulatingShares;
 		}
 
-		// ETF基金：腾讯直接返回IOPV(索引79)与折溢价率%(索引81)
-		if (data_arr.size() > 81 && !data_arr[79].empty())
+		// ETF基金：腾讯返回实时IOPV(索引78)，昨单位净值(索引81)
+		if (data_arr.size() > 81 && !data_arr[78].empty())
 		{
-			Price iopvVal = convert<Price>(data_arr[79]);
-			if (iopvVal > 0)
+			Price iopvVal = convert<Price>(data_arr[78]);
+			Price refPrice = stockData->info.currentPrice > 0 ? stockData->info.currentPrice : stockData->info.prevClosePrice;
+			// 合理性准入校验：IOPV与现价偏离不得超过30%
+			if (iopvVal > 0 && (refPrice <= 0 || (iopvVal >= refPrice * 0.7 && iopvVal <= refPrice * 1.3)))
 			{
 				stockData->info.iopv = iopvVal;
-				if (!data_arr[81].empty())
-					stockData->info.iopvPremiumRate = atof(data_arr[81].c_str());
-				else if (stockData->info.currentPrice > 0)
+				if (stockData->info.currentPrice > 0)
 					stockData->info.iopvPremiumRate = (stockData->info.currentPrice - iopvVal) / iopvVal * 100.0;
+				if (!data_arr[81].empty())
+				{
+					Price prevNav = convert<Price>(data_arr[81]);
+					if (prevNav > 0 && (refPrice <= 0 || (prevNav >= refPrice * 0.7 && prevNav <= refPrice * 1.3)))
+						stockData->info.iopvPrevClose = prevNav;
+				}
 			}
 		}
 
@@ -770,11 +777,13 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	currentPrice = { convert<Price>(data[3]) };
 	prevClosePrice = { convert<Price>(data[4]) };
 	openPrice = { convert<Price>(data[5]) };
-	volume = { convert<Volume>(data[6]) * 100 };
+	bool isStar = CCommon::IsStarMarketStock(key);
+	Volume volMultiplier = isStar ? 1 : 100;
+	volume = { convert<Volume>(data[6]) * volMultiplier };
 	if (data.size() > 7 && !data[7].empty())
-		outerVolume = { convert<Volume>(data[7]) * 100 };
+		outerVolume = { convert<Volume>(data[7]) * volMultiplier };
 	if (data.size() > 8 && !data[8].empty())
-		innerVolume = { convert<Volume>(data[8]) * 100 };
+		innerVolume = { convert<Volume>(data[8]) * volMultiplier };
 
 	// 买五档
 	for (int i = 0; i < 5; i++)
@@ -869,17 +878,23 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 			circulatingAShares = circulatingShares;
 	}
 
-	// ETF基金：腾讯直接返回IOPV(索引79)与折溢价率%(索引81)
-	if (data.size() > 81 && !data[79].empty())
+	// ETF基金：腾讯返回实时IOPV(索引78)，昨单位净值(索引81)
+	if (data.size() > 81 && !data[78].empty())
 	{
-		Price iopvVal = convert<Price>(data[79]);
-		if (iopvVal > 0)
+		Price iopvVal = convert<Price>(data[78]);
+		Price refPrice = currentPrice > 0 ? currentPrice : prevClosePrice;
+		// 合理性准入校验：IOPV与现价偏离不得超过30%
+		if (iopvVal > 0 && (refPrice <= 0 || (iopvVal >= refPrice * 0.7 && iopvVal <= refPrice * 1.3)))
 		{
 			iopv = iopvVal;
-			if (!data[81].empty())
-				iopvPremiumRate = atof(data[81].c_str());
-			else if (currentPrice > 0)
+			if (currentPrice > 0)
 				iopvPremiumRate = (currentPrice - iopvVal) / iopvVal * 100.0;
+			if (!data[81].empty())
+			{
+				Price prevNav = convert<Price>(data[81]);
+				if (prevNav > 0 && (refPrice <= 0 || (prevNav >= refPrice * 0.7 && prevNav <= refPrice * 1.3)))
+					iopvPrevClose = prevNav;
+			}
 		}
 	}
 
@@ -1385,9 +1400,21 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										pt.price = static_cast<Price>(atof(parts[1].c_str()));
 										if (parts.size() >= 4)
 										{
-											double cumVolLots = atof(parts[2].c_str());
-											double cumVolShares = cumVolLots * 100.0;
+											double rawCumVol = atof(parts[2].c_str());
 											double cumAmt = atof(parts[3].c_str());
+
+											bool isVolInShares = CCommon::IsStarMarketStock(info.code);
+											if (rawCumVol > 0.0 && cumAmt > 0.0 && pt.price > 0.0)
+											{
+												double avgIfShares = cumAmt / rawCumVol;
+												double avgIfLots = cumAmt / (rawCumVol * 100.0);
+												if (std::abs(avgIfShares - pt.price) < std::abs(avgIfLots - pt.price))
+													isVolInShares = true;
+												else
+													isVolInShares = false;
+											}
+
+											double cumVolShares = isVolInShares ? rawCumVol : (rawCumVol * 100.0);
 											pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
 											pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
 											prevCumVolume = cumVolShares;
@@ -1399,8 +1426,9 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										}
 										else if (parts.size() >= 3)
 										{
+											bool isVolInShares = CCommon::IsStarMarketStock(info.code);
 											double volVal = atof(parts[2].c_str());
-											pt.volume = static_cast<Volume>(volVal * 100.0);
+											pt.volume = static_cast<Volume>(volVal * (isVolInShares ? 1.0 : 100.0));
 											pt.amount = pt.price * pt.volume;
 											pt.averagePrice = pt.price;
 										}
@@ -1451,10 +1479,13 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 									pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
 									prevCumVolume = cumVolShares;
 									prevCumAmount = cumAmt;
-									if (cumVolShares > 0.0)
+									double emAvg = (parts.size() >= 8 ? atof(parts[7].c_str()) : 0.0);
+									if (emAvg > 0.0)
+										pt.averagePrice = static_cast<Price>(emAvg);
+									else if (cumVolShares > 0.0)
 										pt.averagePrice = static_cast<Price>(cumAmt / cumVolShares);
 									else
-										pt.averagePrice = static_cast<Price>(atof(parts[7].c_str()));
+										pt.averagePrice = pt.price;
 									outPoints.push_back(pt);
 								}
 							}
@@ -1611,7 +1642,8 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 								point.close = GetValPrice(v2);
 								point.high = GetValPrice(v3);
 								point.low = GetValPrice(v4);
-								point.volume = GetValVolume(v5) * 100;
+								Volume volMultiplier = CCommon::IsStarMarketStock(stock_id) ? 1 : 100;
+								point.volume = GetValVolume(v5) * volMultiplier;
 
 								points.push_back(point);
 							}

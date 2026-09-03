@@ -9,6 +9,7 @@
 #include "StockFetchThread.h"
 #include "OptionsDlg.h"
 #include "WebDavSync.h"
+#include "ApiHealthManager.h"
 #include "ChartColors.h"
 #include <Windows.h>
 #include <gdiplus.h>
@@ -62,6 +63,8 @@ namespace
 		WEBDAV_OP_RESTORE = 4  // 下载用户选中的某一份历史备份
 	};
 	const UINT WM_APP_WEBDAV_RESULT = WM_APP + 130;
+	const UINT WM_APP_API_PROBE_FINISHED = WM_APP + 131;
+	const UINT IDC_API_TEST_BTN = 1197;
 
 	struct WebDavAsyncResult
 	{
@@ -1522,7 +1525,7 @@ IMPLEMENT_DYNAMIC(CManagerDialog, CDialog)
 CManagerDialog::CManagerDialog(CWnd* pParent /*=nullptr*/)
 	: CDialog(IDD_MANAGER_DIALOG, pParent)
 {
-	m_menu_rects.resize(7);
+	m_menu_rects.resize(8);
 	m_dark_brush.CreateSolidBrush(COLOR_BG_DARK);     // #12141A
 	m_card_brush.CreateSolidBrush(COLOR_BG_CARD);     // #181B22
 	m_edit_brush.CreateSolidBrush(RGB(13, 15, 21));   // 输入框内嵌底色（略深于卡片，形成下沉观感）
@@ -1592,6 +1595,8 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_WEBDAV_AUTO_SYNC_CHECK, &CManagerDialog::OnBnClickedWebDavAutoSyncCheck)
 	ON_BN_CLICKED(IDC_WEBDAV_AUTO_BACKUP_CHECK, &CManagerDialog::OnBnClickedWebDavAutoBackupCheck)
 	ON_MESSAGE(WM_APP_WEBDAV_RESULT, &CManagerDialog::OnWebDavResult)
+	ON_BN_CLICKED(IDC_API_TEST_BTN, &CManagerDialog::OnBnClickedApiTestBtn)
+	ON_MESSAGE(WM_APP_API_PROBE_FINISHED, &CManagerDialog::OnApiProbeFinished)
 
 	// 列表行自绘（交替行底色/选中高亮）
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_MGR_LIST, &CManagerDialog::OnListCustomDraw)
@@ -1638,6 +1643,9 @@ BOOL CManagerDialog::OnInitDialog()
 	{
 		DwmSetWindowAttribute(GetSafeHwnd(), 19, &darkCaption, sizeof(darkCaption));
 	}
+
+	// 开启 WS_CLIPCHILDREN，确保父窗口双缓冲 BitBlt 绝对不冲刷/覆盖任何子控件（如确定/取消按钮），从底层消除控件白光闪烁
+	ModifyStyle(0, WS_CLIPCHILDREN);
 
 	// 设置窗口默认大小和最小尺寸
 	// 高度需容纳均线日配置页 4 张卡片（116+118+104+132 + 3*14 = 512 DPI + 头部/按钮区）
@@ -1715,13 +1723,16 @@ BOOL CManagerDialog::OnInitDialog()
 		IDC_MGR_ADD_BTN, IDC_MGR_EDIT_BTN, IDC_MGR_DEL_BTN, IDC_MGR_MOVE_UP_BTN, IDC_MGR_MOVE_DOWN_BTN,
 		IDC_MA_ADD_BTN,
 		IDC_WEBDAV_TEST_BTN, IDC_WEBDAV_UPLOAD_BTN, IDC_WEBDAV_DOWNLOAD_BTN,
-		1198, 1199
+		1197, 1198, 1199
 	};
 	for (int id : ownerDrawBtnIds)
 	{
 		CWnd* pBtn = GetDlgItem(id);
 		if (pBtn && pBtn->GetSafeHwnd())
-			pBtn->ModifyStyle(0, BS_OWNERDRAW);
+		{
+			pBtn->ModifyStyle(BS_TYPEMASK, BS_OWNERDRAW);
+			SetWindowTheme(pBtn->GetSafeHwnd(), L"", L"");
+		}
 	}
 
 	// 初始化搜索输入框与下拉结果弹窗
@@ -1737,6 +1748,10 @@ BOOL CManagerDialog::OnInitDialog()
 	// 分组管理页右上角「分组排序」入口（自选股/持仓顺序固定，仅自定义分组可调）
 	m_group_sort_btn.Create(_T("分组排序"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1198);
 	m_group_sort_btn.SetFont(&m_font);
+
+	// 接口检测页右上角「立即重新检测」入口
+	m_api_test_btn.Create(_T("立即重新检测"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1197);
+	m_api_test_btn.SetFont(&m_font);
 
 	m_search_dropdown.CreatePopup(this);
 
@@ -2499,6 +2514,15 @@ void CManagerDialog::UpdateControlsLayout()
 		if (pDownBtn && pDownBtn->GetSafeHwnd()) pDownBtn->MoveWindow(rightLeft + g_data.DPI(18) + (wdBtnW + wdGap) * 2 + g_data.DPI(16), card2Top + g_data.DPI(100), wdBtnW + g_data.DPI(16), wdBtnH);
 	}
 
+	// 「立即重新检测」按钮：接口检测页头部右上角，其他页面隐藏
+	bool isApiHealth = (m_current_page == PAGE_API_HEALTH);
+	if (m_api_test_btn.GetSafeHwnd())
+	{
+		int testW = g_data.DPI(108);
+		m_api_test_btn.MoveWindow(rightLeft + rightWidth - testW, g_data.DPI(14), testW, g_data.DPI(28));
+		m_api_test_btn.ShowWindow(isApiHealth ? SW_SHOW : SW_HIDE);
+	}
+
 	// 底部确定与取消按钮
 	CWnd* pOkBtn = GetDlgItem(IDOK);
 	CWnd* pCancelBtn = GetDlgItem(IDCANCEL);
@@ -2565,6 +2589,9 @@ void CManagerDialog::OnPaint()
 	case PAGE_WEBDAV:
 		DrawWebDavPage(g, contentRect);
 		break;
+	case PAGE_API_HEALTH:
+		DrawApiHealthPage(g, contentRect);
+		break;
 	case PAGE_ABOUT:
 		DrawAboutPage(g, contentRect);
 		break;
@@ -2607,8 +2634,8 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
 	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(13))), &titleBrush);
 
-	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"关于插件" };
-	int menuCount = 7;
+	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"接口检测", L"关于插件" };
+	int menuCount = 8;
 	int itemH = g_data.DPI(40);
 	int itemTop = g_data.DPI(54);
 	int itemPadX = g_data.DPI(8);
@@ -2667,7 +2694,7 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 	int rightLeft = m_menu_width + g_data.DPI(18);
 	int headerTop = g_data.DPI(14);
 
-	const wchar_t* titles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"关于插件" };
+	const wchar_t* titles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"接口检测", L"关于插件" };
 	const wchar_t* subs[] = {
 		L"配置全天更新、代理网络及走势图尺寸参数",
 		L"点击卡片选择展示的指数，前 5 个展示在首页顶部",
@@ -2675,6 +2702,7 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 		L"自定义均线周期（最多 5 条；点标签右上角 × 删除；在下方输入添加）",
 		L"自定义股票图表顶部指标栏显示内容（最多允许显示 4 项）",
 		L"基于 WebDAV 协议在多台电脑间安全备份与同步配置",
+		L"实时监测各行情源与数据接口连通状态、延迟及历史心跳",
 		L"TrafficMonitor 专业级股票行情监控插件"
 	};
 
@@ -3635,6 +3663,235 @@ void CManagerDialog::DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRe
 	}
 }
 
+void CManagerDialog::DrawApiHealthPage(Gdiplus::Graphics& g, const CRect& contentRect)
+{
+	auto sources = CApiHealthManager::Instance().GetSnapshot();
+	if (sources.empty())
+		return;
+
+	int srcCount = static_cast<int>(sources.size());
+	int gap = g_data.DPI(10);
+	int totalH = contentRect.Height();
+	int cardH = (totalH - (srcCount - 1) * gap) / srcCount;
+	int cardW = contentRect.Width();
+
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font roleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font statFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::Font tagFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font logFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+
+	Gdiplus::SolidBrush cardBg(Gdiplus::Color(255, 24, 27, 34));       // #181B22
+	Gdiplus::Pen cardPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);        // #262A36
+	Gdiplus::SolidBrush textWhite(Gdiplus::Color(255, 241, 245, 249));
+	Gdiplus::SolidBrush textMuted(Gdiplus::Color(255, 156, 172, 192));
+	Gdiplus::SolidBrush textSub(Gdiplus::Color(255, 100, 116, 139));
+
+	// 心跳条颜色
+	Gdiplus::SolidBrush brOk(Gdiplus::Color(255, 16, 185, 129));        // 翠绿 #10B981
+	Gdiplus::SolidBrush brWarn(Gdiplus::Color(255, 245, 158, 11));      // 暖黄 #F59E0B
+	Gdiplus::SolidBrush brFail(Gdiplus::Color(255, 239, 68, 68));       // 赤红 #EF4444
+	Gdiplus::SolidBrush brEmpty(Gdiplus::Color(255, 37, 41, 54));       // 空槽 #252936
+
+	Gdiplus::StringFormat sfNear;
+	sfNear.SetAlignment(Gdiplus::StringAlignmentNear);
+	sfNear.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+	Gdiplus::StringFormat sfFar;
+	sfFar.SetAlignment(Gdiplus::StringAlignmentFar);
+	sfFar.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+	Gdiplus::StringFormat sfCenter;
+	sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
+	sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+	Gdiplus::StringFormat sfLog;
+	sfLog.SetAlignment(Gdiplus::StringAlignmentNear);
+	sfLog.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfLog.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+	sfLog.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+
+	int curY = contentRect.top;
+
+	for (int sIdx = 0; sIdx < srcCount; ++sIdx)
+	{
+		const auto& src = sources[sIdx];
+		CRect cardRect(contentRect.left, curY, contentRect.left + cardW, curY + cardH);
+		Gdiplus::RectF cardRf(static_cast<Gdiplus::REAL>(cardRect.left), static_cast<Gdiplus::REAL>(cardRect.top),
+			static_cast<Gdiplus::REAL>(cardRect.Width()), static_cast<Gdiplus::REAL>(cardRect.Height()));
+
+		// 1. 卡片背景与边框
+		g.FillRectangle(&cardBg, cardRf);
+		g.DrawRectangle(&cardPen, cardRf);
+
+		// 左侧重点色边条（正常显示翠绿，异常显示红色，警告显示黄色）
+		Gdiplus::Color accentColor(255, 16, 185, 129);
+		if (src.history.empty() || src.history.back().level == LEVEL_FAIL)
+			accentColor = Gdiplus::Color(255, 239, 68, 68);
+		else if (src.history.back().level == LEVEL_WARN)
+			accentColor = Gdiplus::Color(255, 245, 158, 11);
+		else
+			accentColor = Gdiplus::Color(255, 16, 185, 129);
+
+		Gdiplus::SolidBrush accentBrush(accentColor);
+		g.FillRectangle(&accentBrush, static_cast<Gdiplus::REAL>(cardRect.left), static_cast<Gdiplus::REAL>(cardRect.top),
+			static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(cardRect.Height()));
+
+		// 卡片内部元素垂直绝对居中排版（均分上下留白与行间距）
+		int padX = g_data.DPI(16);
+		int row1H = g_data.DPI(22); // 第一行：标题 + 统计 + 状态胶囊
+		int barH  = g_data.DPI(18); // 第二行：心跳条
+		int row3H = g_data.DPI(20); // 第三行：职责说明 + 最近采样日志
+		int contentTotalH = row1H + barH + row3H;
+		int gapY = max(g_data.DPI(6), (cardH - contentTotalH) / 4);
+
+		int row1Y = cardRect.top + gapY;
+		int barY  = row1Y + row1H + gapY;
+		int row3Y = barY + barH + gapY;
+
+		// 2. 第一行：接口名 + 右侧统计数据 + 状态胶囊
+		int textX = cardRect.left + padX;
+		int rightBlockX = cardRect.right - padX;
+
+		// 状态胶囊标签
+		int tagW = g_data.DPI(68);
+		int tagH = g_data.DPI(20);
+		int tagX = rightBlockX - tagW;
+		int tagY = row1Y + (row1H - tagH) / 2;
+
+		Gdiplus::RectF tagRf(static_cast<Gdiplus::REAL>(tagX), static_cast<Gdiplus::REAL>(tagY),
+			static_cast<Gdiplus::REAL>(tagW), static_cast<Gdiplus::REAL>(tagH));
+
+		Gdiplus::Color tagBgCol, tagTxtCol;
+		std::wstring tagText;
+		HeartbeatLevel curLvl = src.history.empty() ? LEVEL_OK : src.history.back().level;
+		if (curLvl == LEVEL_OK)
+		{
+			tagBgCol = Gdiplus::Color(45, 16, 185, 129); // 绿底微透
+			tagTxtCol = Gdiplus::Color(255, 52, 211, 153);
+			tagText = L"● 运行正常";
+		}
+		else if (curLvl == LEVEL_WARN)
+		{
+			tagBgCol = Gdiplus::Color(55, 245, 158, 11);
+			tagTxtCol = Gdiplus::Color(255, 251, 191, 36);
+			tagText = L"● 响应偏慢";
+		}
+		else
+		{
+			tagBgCol = Gdiplus::Color(55, 239, 68, 68);
+			tagTxtCol = Gdiplus::Color(255, 248, 113, 113);
+			tagText = L"● 受限/异常";
+		}
+
+		Gdiplus::SolidBrush tagBg(tagBgCol);
+		g.FillRectangle(&tagBg, tagRf);
+		Gdiplus::SolidBrush tagTxt(tagTxtCol);
+		g.DrawString(tagText.c_str(), -1, &tagFont, tagRf, &sfCenter, &tagTxt);
+
+		// 统计数据：成功率与平均延迟
+		double successRate = (src.totalRequests > 0) ? (double)src.successRequests * 100.0 / src.totalRequests : 100.0;
+		wchar_t statBuf[64];
+		swprintf_s(statBuf, L"可用率: %.1f%%   延迟: %dms", successRate, max(1, src.lastLatencyMs));
+		int statW = g_data.DPI(180);
+		int statX = tagX - statW - g_data.DPI(10);
+		Gdiplus::RectF statRf(static_cast<Gdiplus::REAL>(statX), static_cast<Gdiplus::REAL>(row1Y),
+			static_cast<Gdiplus::REAL>(statW), static_cast<Gdiplus::REAL>(row1H));
+		g.DrawString(statBuf, -1, &statFont, statRf, &sfFar, &textMuted);
+
+		// 标题（动态宽度，直达统计区域左侧，绝不重叠）
+		Gdiplus::RectF nameRf(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(row1Y),
+			static_cast<Gdiplus::REAL>(statX - textX - g_data.DPI(8)), static_cast<Gdiplus::REAL>(row1H));
+		g.DrawString(src.name.c_str(), -1, &nameFont, nameRf, &sfNear, &textWhite);
+
+		// 3. 第二行：心跳条 (Uptime Heartbeat Bar)
+		int barGap = g_data.DPI(3);
+		int totalSlots = CApiHealthManager::MAX_HISTORY_POINTS; // 38
+		int barAreaW = cardW - padX * 2;
+		int barW = max(g_data.DPI(6), (barAreaW - (totalSlots - 1) * barGap) / totalSlots);
+
+		int startX = cardRect.left + padX;
+		int histCount = static_cast<int>(src.history.size());
+		int emptySlots = max(0, totalSlots - histCount);
+
+		for (int slot = 0; slot < totalSlots; ++slot)
+		{
+			int bx = startX + slot * (barW + barGap);
+			CRect rBar(bx, barY, bx + barW, barY + barH);
+			Gdiplus::RectF rBarF(static_cast<Gdiplus::REAL>(bx), static_cast<Gdiplus::REAL>(barY),
+				static_cast<Gdiplus::REAL>(barW), static_cast<Gdiplus::REAL>(barH));
+
+			if (slot < emptySlots)
+			{
+				g.FillRectangle(&brEmpty, rBarF);
+			}
+			else
+			{
+				int hIdx = slot - emptySlots;
+				const auto& pt = src.history[hIdx];
+				if (pt.level == LEVEL_OK)
+					g.FillRectangle(&brOk, rBarF);
+				else if (pt.level == LEVEL_WARN)
+					g.FillRectangle(&brWarn, rBarF);
+				else
+					g.FillRectangle(&brFail, rBarF);
+			}
+		}
+
+		// 4. 第三行：职责说明与最近采样状态（字号提升至 11px，清晰易读）
+		std::wstring logText = L"【" + src.role + L"】 最近采样: ";
+		if (src.lastActiveTime > 0)
+		{
+			tm ltm;
+			localtime_s(&ltm, &src.lastActiveTime);
+			wchar_t timeBuf[32];
+			swprintf_s(timeBuf, L"%02d:%02d:%02d · ", ltm.tm_hour, ltm.tm_min, ltm.tm_sec);
+			logText += timeBuf;
+		}
+		logText += src.lastStatusMsg.empty() ? L"正常" : src.lastStatusMsg;
+
+		Gdiplus::SolidBrush logBrush(src.isWarning ? Gdiplus::Color(255, 248, 113, 113) : Gdiplus::Color(255, 203, 213, 225));
+		Gdiplus::RectF logRf(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(row3Y),
+			static_cast<Gdiplus::REAL>(cardW - padX * 2), static_cast<Gdiplus::REAL>(row3H));
+		g.DrawString(logText.c_str(), -1, &logFont, logRf, &sfLog, &logBrush);
+
+		curY += cardH + gap;
+	}
+}
+
+void CManagerDialog::OnBnClickedApiTestBtn()
+{
+	if (m_api_probing)
+		return;
+
+	m_api_probing = true;
+	if (m_api_test_btn.GetSafeHwnd())
+	{
+		m_api_test_btn.SetWindowText(L"检测中...");
+		m_api_test_btn.EnableWindow(FALSE);
+	}
+
+	HWND hWnd = m_hWnd;
+	CApiHealthManager::Instance().TriggerActiveProbeAsync([hWnd]() {
+		if (::IsWindow(hWnd))
+		{
+			::PostMessage(hWnd, WM_APP_API_PROBE_FINISHED, 0, 0);
+		}
+	});
+}
+
+LRESULT CManagerDialog::OnApiProbeFinished(WPARAM, LPARAM)
+{
+	m_api_probing = false;
+	if (m_api_test_btn.GetSafeHwnd())
+	{
+		m_api_test_btn.SetWindowText(L"立即重新检测");
+		m_api_test_btn.EnableWindow(TRUE);
+	}
+	Invalidate(FALSE);
+	return 0;
+}
+
 void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
 	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(contentRect.Height()));
@@ -3822,7 +4079,7 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 		oldHoverMetricPreset != m_hover_metric_preset ||
 		oldHoverTab != m_hover_group_tab || oldHoverMode != m_hover_index_mode)
 	{
-		Invalidate();
+		Invalidate(FALSE);
 	}
 
 	CDialog::OnMouseMove(nFlags, point);
@@ -3841,7 +4098,7 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_metric_preset = -1;
 	m_hover_group_tab = -1;
 	m_hover_index_mode = -1;
-	Invalidate();
+	Invalidate(FALSE);
 	CDialog::OnMouseLeave();
 }
 
@@ -6165,7 +6422,7 @@ bool CManagerDialog::IsCheckCtrl(UINT nID) const
 
 bool CManagerDialog::IsPrimaryBtn(UINT nID) const
 {
-	return nID == IDOK || nID == IDC_MA_ADD_BTN;
+	return nID == IDOK || nID == IDC_MA_ADD_BTN || nID == 1197;
 }
 
 bool CManagerDialog::IsDestructiveBtn(UINT nID) const

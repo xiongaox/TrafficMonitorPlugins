@@ -44,6 +44,8 @@ public:
 	bool FetchMin30KLine(const std::wstring& code, int datalen, std::string& outResp);
 	// ETF基金IOPV（多级保底：上交所/天天基金 -> 腾讯ETF）
 	bool FetchFundIOPV(const std::wstring& code, std::string& outResp);
+	// ETF持仓/成分股（东财ETF指数成分+实时行情，或天天基金持仓）
+	bool FetchEtfHoldings(const std::wstring& code, STOCK::EtfHoldingsData& outData);
 
 	// 流通股本（多级保底：东方财富 f85 -> 腾讯流通市值换算）
 	bool FetchStockBasicCirculating(const std::wstring& code, STOCK::Volume& outShares);

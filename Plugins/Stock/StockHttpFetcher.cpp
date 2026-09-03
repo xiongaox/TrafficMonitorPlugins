@@ -2,6 +2,7 @@
 #include "StockHttpFetcher.h"
 #include "Common.h"
 #include "Stock.h"
+#include "ApiHealthManager.h"
 #include <afxinet.h>
 #include "utilities/yyjson/yyjson.h"
 #include "utilities/JsonHelper.h"
@@ -105,7 +106,19 @@ bool CStockHttpFetcher::FetchRealtimeHtml(const std::vector<std::wstring>& allCo
 		std::wstring url{ L"http://qt.gtimg.cn/q=" };
 		url += CCommon::vectorJoinString(txCodes, L",");
 		CString strHeaders = _T("Referer: https://finance.qq.com");
-		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("v_") != std::string::npos)
+		DWORD t0 = GetTickCount();
+		bool txOk = CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("v_") != std::string::npos;
+		DWORD latencyTx = GetTickCount() - t0;
+		static DWORD s_lastRecordTx = 0;
+		if (GetTickCount() - s_lastRecordTx > 10000)
+		{
+			s_lastRecordTx = GetTickCount();
+			if (txOk)
+				CApiHealthManager::Instance().RecordPoint(API_TENCENT, latencyTx, 200, latencyTx > 250 ? LEVEL_WARN : LEVEL_OK, L"实时行情 (腾讯) 获取正常");
+			else
+				CApiHealthManager::Instance().RecordPoint(API_TENCENT, latencyTx, 0, LEVEL_FAIL, L"实时行情 (腾讯) 响应异常");
+		}
+		if (txOk)
 		{
 			// 检查腾讯未能返回数据的代码（例如 r_hkHSHCI, r_hkHSHBI 等）
 			for (const auto& code : outCodes)
@@ -137,7 +150,19 @@ bool CStockHttpFetcher::FetchRealtimeHtml(const std::vector<std::wstring>& allCo
 
 		CString strHeaders = _T("Referer: https://finance.sina.com.cn");
 		std::string sinaResp;
-		if (CCommon::GetURL(url, sinaResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !sinaResp.empty() && sinaResp.find("hq_str_") != std::string::npos)
+		DWORD t0 = GetTickCount();
+		bool sinaOk = CCommon::GetURL(url, sinaResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !sinaResp.empty() && sinaResp.find("hq_str_") != std::string::npos;
+		DWORD latencySina = GetTickCount() - t0;
+		static DWORD s_lastRecordSina = 0;
+		if (GetTickCount() - s_lastRecordSina > 10000)
+		{
+			s_lastRecordSina = GetTickCount();
+			if (sinaOk)
+				CApiHealthManager::Instance().RecordPoint(API_SINA, latencySina, 200, LEVEL_OK, L"实时行情 (新浪兜底) 获取正常");
+			else
+				CApiHealthManager::Instance().RecordPoint(API_SINA, latencySina, 0, LEVEL_FAIL, L"实时行情 (新浪兜底) 响应异常");
+		}
+		if (sinaOk)
 		{
 			if (!outResp.empty())
 				outResp += "\n" + sinaResp;
@@ -506,16 +531,32 @@ bool CStockHttpFetcher::FetchFundIOPV(const std::wstring& stock_id, std::string&
 			+ L"?callback=jQuery&select=name,last,chg_rate,change,open,prev_close,high,low,volume,amount,iopv&_="
 			+ std::to_wstring(now);
 		strHeaders = _T("Referer: https://etf.sse.com.cn");
+		DWORD t0 = GetTickCount();
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
+			DWORD ms = GetTickCount() - t0;
+			static DWORD s_lastRecordIopv = 0;
+			if (GetTickCount() - s_lastRecordIopv > 10000)
+			{
+				s_lastRecordIopv = GetTickCount();
+				CApiHealthManager::Instance().RecordPoint(API_FUND_IOPV, ms, 200, LEVEL_OK, L"上交所 ETF IOPV 获取正常");
+			}
 			return true;
 		}
 
 		// 2. 一级保底：天天基金
 		url = L"http://fundgz.1234567.com.cn/js/" + pureCode + L".js?_=" + std::to_wstring(now);
 		strHeaders = _T("Referer: http://fund.eastmoney.com");
+		t0 = GetTickCount();
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
+			DWORD ms = GetTickCount() - t0;
+			static DWORD s_lastRecordIopv = 0;
+			if (GetTickCount() - s_lastRecordIopv > 10000)
+			{
+				s_lastRecordIopv = GetTickCount();
+				CApiHealthManager::Instance().RecordPoint(API_FUND_IOPV, ms, 200, LEVEL_OK, L"天天基金估值获取正常");
+			}
 			return true;
 		}
 
@@ -549,6 +590,269 @@ bool CStockHttpFetcher::FetchFundIOPV(const std::wstring& stock_id, std::string&
 	return false;
 }
 
+bool CStockHttpFetcher::FetchEtfHoldings(const std::wstring& stock_id, STOCK::EtfHoldingsData& outData)
+{
+	outData.Clear();
+	if (!CCommon::IsFundCode(stock_id))
+		return false;
+
+	std::wstring pureCode = CCommon::GetPureCode(stock_id);
+	if (pureCode.empty())
+		return false;
+
+	outData.etfCode = stock_id;
+
+	CString strHeaders = _T("Referer: https://quote.eastmoney.com/");
+	std::string response;
+
+	// 1. 获取 ETF 跟踪的指数代码及指数名称
+	std::wstring selectorUrl = L"https://datacenter.eastmoney.com/stock/etfselector/api/data/get?type=RPTA_APP_ETFSELECT&sty=DERIVE_INDEX_CODE,INDEXNAME,SECURITY_CODE&source=SECURITIES&client=APP&filter=(SECURITY_CODE%3D%22" + pureCode + L"%22)&p=1&ps=1";
+
+	std::wstring deriveIndexCode;
+	std::wstring indexName;
+	std::vector<std::wstring> componentCodes;
+	std::map<std::wstring, double> directRatios;
+	std::map<std::wstring, std::wstring> directNames;
+
+	if (CCommon::GetURL(selectorUrl, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
+	{
+		yyjson_doc* doc = yyjson_read(response.c_str(), response.size(), 0);
+		if (doc)
+		{
+			yyjson_val* root = yyjson_doc_get_root(doc);
+			yyjson_val* res = yyjson_obj_get(root, "result");
+			yyjson_val* data = yyjson_obj_get(res, "data");
+			if (yyjson_is_arr(data) && yyjson_arr_size(data) > 0)
+			{
+				yyjson_val* item = yyjson_arr_get(data, 0);
+				const char* idxCodeStr = yyjson_get_str(yyjson_obj_get(item, "DERIVE_INDEX_CODE"));
+				const char* idxNameStr = yyjson_get_str(yyjson_obj_get(item, "INDEXNAME"));
+				if (idxCodeStr)
+				{
+					std::string s = idxCodeStr;
+					size_t dotPos = s.find('.');
+					if (dotPos != std::string::npos) s = s.substr(0, dotPos);
+					deriveIndexCode = CCommon::StrToUnicode(s.c_str(), true);
+				}
+				if (idxNameStr)
+				{
+					indexName = CCommon::StrToUnicode(idxNameStr, true);
+				}
+			}
+			yyjson_doc_free(doc);
+		}
+	}
+
+	outData.indexCode = deriveIndexCode;
+	outData.indexName = indexName;
+
+	// 2. 若获取到跟踪指数，查询成分股列表
+	if (!deriveIndexCode.empty())
+	{
+		std::wstring compUrl = L"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_INDEX_COMPONENT&columns=ALL&filter=(INDEX_CODE%3D%22" + deriveIndexCode + L"%22)&pageNumber=1&pageSize=100&source=WEB&client=WEB";
+		if (CCommon::GetURL(compUrl, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
+		{
+			yyjson_doc* doc = yyjson_read(response.c_str(), response.size(), 0);
+			if (doc)
+			{
+				yyjson_val* root = yyjson_doc_get_root(doc);
+				yyjson_val* res = yyjson_obj_get(root, "result");
+				yyjson_val* data = yyjson_obj_get(res, "data");
+				if (yyjson_is_arr(data))
+				{
+					size_t count = yyjson_arr_size(data);
+					for (size_t i = 0; i < count; ++i)
+					{
+						yyjson_val* item = yyjson_arr_get(data, i);
+						const char* secCode = yyjson_get_str(yyjson_obj_get(item, "SECURITY_CODE"));
+						const char* secName = yyjson_get_str(yyjson_obj_get(item, "SECURITY_NAME_ABBR"));
+						if (secCode && strlen(secCode) > 0)
+						{
+							std::wstring wCode = CCommon::StrToUnicode(secCode, true);
+							componentCodes.push_back(wCode);
+							if (secName) directNames[wCode] = CCommon::StrToUnicode(secName, true);
+						}
+					}
+				}
+				yyjson_doc_free(doc);
+			}
+		}
+	}
+
+	// 3. 回退保底：若成分股为空（如国证/深交所指数399365等），从天天基金季度公开持仓获取
+	if (componentCodes.empty())
+	{
+		std::wstring f10Url = L"https://fundmobapi.eastmoney.com/FundMNewApi/FundMNInverstPosition?FCODE=" + pureCode + L"&deviceid=1&plat=Iphone&appType=ttjj&product=EFund&Version=1";
+		if (CCommon::GetURL(f10Url, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
+		{
+			yyjson_doc* doc = yyjson_read(response.c_str(), response.size(), 0);
+			if (doc)
+			{
+				yyjson_val* root = yyjson_doc_get_root(doc);
+				yyjson_val* datas = yyjson_obj_get(root, "Datas");
+				yyjson_val* fundStocks = yyjson_obj_get(datas, "fundStocks");
+				if (yyjson_is_arr(fundStocks))
+				{
+					size_t count = yyjson_arr_size(fundStocks);
+					for (size_t i = 0; i < count; ++i)
+					{
+						yyjson_val* item = yyjson_arr_get(fundStocks, i);
+						const char* gpdm = yyjson_get_str(yyjson_obj_get(item, "GPDM"));
+						const char* gpjc = yyjson_get_str(yyjson_obj_get(item, "GPJC"));
+						const char* jzblStr = yyjson_get_str(yyjson_obj_get(item, "JZBL"));
+						if (gpdm && strlen(gpdm) > 0)
+						{
+							std::wstring wCode = CCommon::StrToUnicode(gpdm, true);
+							componentCodes.push_back(wCode);
+							if (gpjc) directNames[wCode] = CCommon::StrToUnicode(gpjc, true);
+							if (jzblStr) directRatios[wCode] = atof(jzblStr);
+						}
+					}
+				}
+				yyjson_doc_free(doc);
+			}
+		}
+	}
+
+	if (componentCodes.empty())
+		return false;
+
+	// 4. 批量获取成分股实时行情（优先腾讯 qt.gtimg.cn 毫秒级接口，永不断连）
+	std::vector<std::wstring> secids;
+	for (const auto& code : componentCodes)
+	{
+		if (code.empty()) continue;
+		if (code[0] == L'6' || code[0] == L'5' || code[0] == L'9')
+			secids.push_back(L"sh" + code);
+		else
+			secids.push_back(L"sz" + code);
+	}
+
+	std::wstring txUrl = L"http://qt.gtimg.cn/q=" + CCommon::vectorJoinString(secids, L",");
+	std::vector<STOCK::EtfHoldingItem> items;
+	double totalMarketCapSum = 0.0;
+
+	if (CCommon::GetURL(txUrl, response, false) && !response.empty() && response.find("v_") != std::string::npos)
+	{
+		std::vector<std::string> lines = CCommon::split(response, ';');
+		for (const auto& line : lines)
+		{
+			std::vector<std::string> parts = CCommon::split(line, '~');
+			if (parts.size() > 45)
+			{
+				STOCK::EtfHoldingItem holding;
+				holding.code = CCommon::StrToUnicode(parts[2].c_str(), false);
+				holding.name = CCommon::StrToUnicode(parts[1].c_str(), false);
+				holding.price = atof(parts[3].c_str());
+				holding.changePercent = atof(parts[32].c_str());
+				holding.volume = atof(parts[37].c_str()) * 10000.0;       // 成交额(元)
+				holding.totalMarketCap = atof(parts[45].c_str()) * 1e8;   // 总市值(元)
+
+				if (!holding.code.empty())
+				{
+					if (holding.code[0] == L'6' || holding.code[0] == L'5' || holding.code[0] == L'9')
+						holding.fullCode = L"sh" + holding.code;
+					else
+						holding.fullCode = L"sz" + holding.code;
+				}
+
+				if (directRatios.find(holding.code) != directRatios.end())
+				{
+					holding.ratio = directRatios[holding.code];
+				}
+
+				totalMarketCapSum += holding.totalMarketCap;
+				items.push_back(holding);
+			}
+		}
+	}
+
+	// 若腾讯接口未返回数据，回退到东方财富 push2delay 接口
+	if (items.empty())
+	{
+		std::vector<std::wstring> emSecids;
+		for (const auto& code : componentCodes)
+		{
+			if (code.empty()) continue;
+			if (code[0] == L'6' || code[0] == L'5' || code[0] == L'9')
+				emSecids.push_back(L"1." + code);
+			else
+				emSecids.push_back(L"0." + code);
+		}
+		std::wstring quoteUrl = L"https://push2delay.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f12,f13,f14,f2,f3,f6,f20,f25&secids=" + CCommon::vectorJoinString(emSecids, L",");
+		if (CCommon::GetURL(quoteUrl, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
+		{
+			yyjson_doc* doc = yyjson_read(response.c_str(), response.size(), 0);
+			if (doc)
+			{
+				yyjson_val* root = yyjson_doc_get_root(doc);
+				yyjson_val* dataVal = yyjson_obj_get(root, "data");
+				yyjson_val* diffVal = yyjson_obj_get(dataVal, "diff");
+				if (yyjson_is_arr(diffVal))
+				{
+					size_t diffCount = yyjson_arr_size(diffVal);
+					for (size_t i = 0; i < diffCount; ++i)
+					{
+						yyjson_val* item = yyjson_arr_get(diffVal, i);
+						STOCK::EtfHoldingItem holding;
+						const char* codeStr = yyjson_get_str(yyjson_obj_get(item, "f12"));
+						if (codeStr) holding.code = CCommon::StrToUnicode(codeStr, true);
+						const char* nameStr = yyjson_get_str(yyjson_obj_get(item, "f14"));
+						if (nameStr) holding.name = CCommon::StrToUnicode(nameStr, true);
+						holding.price = GetJsonDoubleValue(yyjson_obj_get(item, "f2"));
+						holding.changePercent = GetJsonDoubleValue(yyjson_obj_get(item, "f3"));
+						holding.volume = GetJsonDoubleValue(yyjson_obj_get(item, "f6"));
+						holding.totalMarketCap = GetJsonDoubleValue(yyjson_obj_get(item, "f20"));
+						int f13 = (int)GetJsonDoubleValue(yyjson_obj_get(item, "f13"));
+						if (f13 == 1) holding.fullCode = L"sh" + holding.code;
+						else if (f13 == 0) holding.fullCode = L"sz" + holding.code;
+						else if (!holding.code.empty()) holding.fullCode = (holding.code[0] == L'6' ? L"sh" : L"sz") + holding.code;
+
+						if (directRatios.find(holding.code) != directRatios.end())
+							holding.ratio = directRatios[holding.code];
+
+						totalMarketCapSum += holding.totalMarketCap;
+						items.push_back(holding);
+					}
+				}
+				yyjson_doc_free(doc);
+			}
+		}
+	}
+
+	if (items.empty())
+		return false;
+
+	// 若未直接提供仓位比（如指数全量成分股），按总市值权重计算
+	bool hasDirectRatio = !directRatios.empty();
+	if (!hasDirectRatio && totalMarketCapSum > 0.0)
+	{
+		for (auto& item : items)
+		{
+			item.ratio = (item.totalMarketCap / totalMarketCapSum) * 100.0;
+		}
+	}
+
+	// 按仓位/市值降序排序
+	std::sort(items.begin(), items.end(), [](const STOCK::EtfHoldingItem& a, const STOCK::EtfHoldingItem& b) {
+		if (std::abs(a.ratio - b.ratio) > 0.001)
+			return a.ratio > b.ratio;
+		return a.totalMarketCap > b.totalMarketCap;
+	});
+
+	// 设置序号
+	for (size_t i = 0; i < items.size(); ++i)
+	{
+		items[i].rank = static_cast<int>(i + 1);
+	}
+
+	outData.items = std::move(items);
+	outData.lastUpdateTime = time(nullptr);
+	outData.isValid = true;
+	outData.fetchFailed = false;
+	return true;
+}
+
 bool CStockHttpFetcher::FetchStockBasicCirculating(const std::wstring& stock_id, STOCK::Volume& outShares)
 {
 	outShares = 0;
@@ -568,11 +872,14 @@ bool CStockHttpFetcher::FetchStockBasicCirculating(const std::wstring& stock_id,
 
 			CString strHeaders = _T("Referer: https://quote.eastmoney.com");
 			std::string response;
+			DWORD t0 = GetTickCount();
 			bool fetch_ok = CCommon::GetURL(url, response, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
+			DWORD latency = GetTickCount() - t0;
 			if (!fetch_ok)
 			{
 				// 东方财富请求失败：缓存失败状态 10 分钟，避免反复尝试
 				m_eastmoney_fail_until = time(nullptr) + 600;
+				CApiHealthManager::Instance().RecordPoint(API_EASTMONEY, latency, 403, LEVEL_FAIL, L"请求失败 / 疑似被 WAF 拦截 (休眠10分钟)");
 			}
 			else if (!response.empty())
 			{
@@ -590,6 +897,12 @@ bool CStockHttpFetcher::FetchStockBasicCirculating(const std::wstring& stock_id,
 
 					if (circulatingAShares > 0)
 					{
+						static DWORD s_lastRecordEm = 0;
+						if (GetTickCount() - s_lastRecordEm > 10000)
+						{
+							s_lastRecordEm = GetTickCount();
+							CApiHealthManager::Instance().RecordPoint(API_EASTMONEY, latency, 200, LEVEL_OK, L"流通股本 (f85) 获取成功");
+						}
 						outShares = circulatingAShares;
 						return true;
 					}

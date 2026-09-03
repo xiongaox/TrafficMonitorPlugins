@@ -118,6 +118,8 @@ public:
 	static bool IsAGStockCode(const std::wstring& code);
 	// 判断股票代码是否为基金/ETF类标的
 	static bool IsFundCode(const std::wstring& code);
+	// 判断股票代码是否为科创板（688/689）
+	static bool IsStarMarketStock(const std::wstring& code);
 
 	// 根据涨跌幅百分比获取颜色
 	// >= 5%: 紫色, 0%~5%: 红色, -5%~0%: 绿色, <= -5%: 墨绿色

@@ -333,8 +333,15 @@ void CDataManager::LoadTimelineCache()
 		{
 			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
 			stockData->clearTimelinePoint();
-			for (const auto& point : points)
+			for (auto point : points)
+			{
+				if (point.averagePrice > 0 && point.price > 0)
+				{
+					if (point.averagePrice < point.price * 0.4 && std::abs(point.averagePrice * 100.0 - point.price) < point.price * 0.3)
+						point.averagePrice *= 100.0;
+				}
 				stockData->addTimelinePoint(point);
+			}
 		}
 	}
 }
@@ -423,7 +430,9 @@ void CDataManager::LoadFundNavCache()
 			{
 				if (navIdx < navPoints.size() && tp.time.find(navPoints[navIdx].time) == 0)
 				{
-					tp.iopv = navPoints[navIdx].iopv;
+					double candIopv = navPoints[navIdx].iopv;
+					if (tp.price <= 0 || (candIopv >= tp.price * 0.7 && candIopv <= tp.price * 1.3))
+						tp.iopv = candIopv;
 					navIdx++;
 				}
 			}
@@ -862,7 +871,9 @@ void CDataManager::ApplyTimeline(const std::wstring& code, const std::string& re
 				{
 					if (navIdx < navPoints.size() && tp.time.find(navPoints[navIdx].time) == 0)
 					{
-						tp.iopv = navPoints[navIdx].iopv;
+						double candIopv = navPoints[navIdx].iopv;
+						if (tp.price <= 0 || (candIopv >= tp.price * 0.7 && candIopv <= tp.price * 1.3))
+							tp.iopv = candIopv;
 						navIdx++;
 					}
 				}
@@ -965,8 +976,16 @@ void CDataManager::ApplyFundIOPV(const std::wstring& code, const std::string& re
 
 	// 将当前IOPV值按分钟保存到数据库（仅交易时段写入，避免非交易时段写入无效时间戳）
 	auto stockData = GetStockData(code);
+	STOCK::Price refPrice = (stockData ? (stockData->info.currentPrice > 0 ? stockData->info.currentPrice : stockData->info.prevClosePrice) : 0);
 	if (stockData && stockData->info.iopv > 0 && CCommon::IsMarketSession())
 	{
+		// 准入校验：IOPV必须在基准价格合理范围内，防止异常脏数据污染缓存与分时
+		if (refPrice > 0 && (stockData->info.iopv < refPrice * 0.7 || stockData->info.iopv > refPrice * 1.3))
+		{
+			stockData->info.iopv = 0;
+			return;
+		}
+
 		// 获取当前时间的分钟字符串（HH:MM）
 		time_t now = time(nullptr);
 		tm localTm = {};
@@ -995,6 +1014,14 @@ void CDataManager::ApplyFundIOPV(const std::wstring& code, const std::string& re
 			}
 		}
 	}
+}
+
+void CDataManager::ApplyEtfHoldings(const std::wstring& code, const STOCK::EtfHoldingsData& holdingsData)
+{
+	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+	auto stockData = GetStockData(code);
+	if (!stockData) return;
+	stockData->etfHoldings = holdingsData;
 }
 
 void CDataManager::ApplyStockBasic(const std::wstring& code, STOCK::Volume circulatingAShares, bool ok)

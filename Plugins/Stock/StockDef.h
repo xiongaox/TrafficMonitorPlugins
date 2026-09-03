@@ -654,6 +654,45 @@ namespace STOCK
 		}
 	};
 
+	// ETF 持仓单项
+	struct EtfHoldingItem
+	{
+		int rank{ 0 };               // 序号: 1, 2, ...
+		std::wstring code;          // 股票代码: "002371"
+		std::wstring name;          // 股票名称: "北方华创"
+		double price{ 0.0 };         // 现价
+		double changePercent{ 0.0 }; // 今涨跌幅 (%)
+		double volume{ 0.0 };        // 成交额/成交量 (元)
+		double totalMarketCap{ 0.0 };// 总市值 (元)
+		double ratio{ 0.0 };         // 仓位比例 (%)
+		std::wstring fullCode;       // 带市场前缀代码: "sz002371"
+	};
+
+	// ETF 持仓整体数据
+	struct EtfHoldingsData
+	{
+		bool isValid{ false };
+		bool fetchFailed{ false };
+		time_t lastUpdateTime{ 0 };
+		std::wstring etfCode;
+		std::wstring indexCode;
+		std::wstring indexName;
+		std::wstring tradeDate;
+		std::vector<EtfHoldingItem> items;
+
+		void Clear()
+		{
+			isValid = false;
+			fetchFailed = false;
+			lastUpdateTime = 0;
+			etfCode.clear();
+			indexCode.clear();
+			indexName.clear();
+			tradeDate.clear();
+			items.clear();
+		}
+	};
+
 	// 股票数据结构
 	class StockData
 	{
@@ -661,6 +700,7 @@ namespace STOCK
 		StockInfo info;
 		ChipDistribution chipDistribution;
 		CallAuctionData callAuctionData;  // 集合竞价数据
+		EtfHoldingsData etfHoldings;      // ETF 持仓数据
 
 		// 买一到买五、卖一到卖五按价格跟踪挂单瞬时变化量（股）
 		std::map<Price, OrderPriceAccum> orderPriceAccumMap;

@@ -289,7 +289,9 @@ void CKLineChart::DrawKLineBars(CDC& memDC, const KLineDrawData& drawData, const
 		int highY = drawData.y + static_cast<int>((drawData.maxPrice - item.high) * drawData.unitY);
 		int lowY = drawData.y + static_cast<int>((drawData.maxPrice - item.low) * drawData.unitY);
 
-		COLORREF color = (item.close >= item.open) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+		STOCK::Price prevClose = (i > 0) ? klineData[i - 1].close : item.open;
+		bool isUp = (item.close > item.open) || (item.close == item.open && item.close >= prevClose);
+		COLORREF color = isUp ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 
 		CPen linePen(PS_SOLID, 1, color);
 		memDC.SelectObject(&linePen);

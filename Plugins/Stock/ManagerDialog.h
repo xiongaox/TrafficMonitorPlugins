@@ -138,7 +138,8 @@ public:
 		PAGE_MA = 3,      // 均线日配置
 		PAGE_METRICS = 4, // 指标栏配置
 		PAGE_WEBDAV = 5,  // 云端备份 (WebDAV)
-		PAGE_ABOUT = 6    // 关于插件
+		PAGE_API_HEALTH = 6, // 接口检测 (心跳健康监控)
+		PAGE_ABOUT = 7    // 关于插件
 	};
 
 	enum GroupSubTab
@@ -173,6 +174,8 @@ private:
 	int m_hover_group_tab{ -1 };
 	int m_hover_index_mode{ -1 };
 	CRect m_index_mode_rects[3];
+	CRect m_display_area_rects[5];
+	int m_hover_display_area{ -1 };
 	int m_index_scroll_y{ 0 };
 	bool m_tracking_mouse{ false };
 
@@ -260,7 +263,12 @@ private:
 	void DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawWebDavPage(Gdiplus::Graphics& g, const CRect& contentRect);
+	void DrawApiHealthPage(Gdiplus::Graphics& g, const CRect& contentRect);
 	void DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRect);
+
+	// ===== 接口检测页控件 =====
+	CButton m_api_test_btn;       // 接口检测页右上角「立即重新检测」按钮
+	bool m_api_probing{ false };
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
@@ -313,6 +321,8 @@ public:
 	afx_msg void OnBnClickedWebDavAutoSyncCheck();
 	afx_msg void OnBnClickedWebDavAutoBackupCheck();
 	afx_msg LRESULT OnWebDavResult(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnBnClickedApiTestBtn();
+	afx_msg LRESULT OnApiProbeFinished(WPARAM wParam, LPARAM lParam);
 	bool m_webdav_busy{ false };  // 是否有 WebDAV 操作在后台执行（此时禁用操作按钮）
 	std::wstring m_webdav_restore_file; // 待恢复的云端备份文件名（在列表中选中后回填）
 	std::wstring m_webdav_restore_name; // 待恢复备份的展示名（用于确认与成功提示）

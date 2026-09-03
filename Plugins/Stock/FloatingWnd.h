@@ -11,6 +11,7 @@
 #include "StockListPanel.h"
 #include "CallAuctionChart.h"
 #include "ChipPeakPanel.h"
+#include "EtfHoldingsPanel.h"
 #include "OrderBookPanel.h"
 #include "OverviewPanel.h"
 #include "IndicatorChart.h"
@@ -73,12 +74,14 @@ protected:
 	afx_msg void OnBnClickedIndicatorRSIBtn();
 	afx_msg void OnBnClickedChipPeakBtn();
 	afx_msg void OnBnClickedOrderBookBtn();
+	afx_msg void OnBnClickedEtfHoldingsBtn();
 	afx_msg void OnBnClickedExpandBtn();
 	afx_msg void OnBnClickedToggleStockListBtn();
 	afx_msg void OnBnClickedCallAuctionBtn();
 
 private:
 	void EnsureChipPeakData();
+	void EnsureEtfHoldingsData();
 	void ResetHoverState();           // 重置所有悬停状态
 	void SetTimelineModeDefaults();   // 设置分时模式默认参数
 	void SetDayKLineModeDefaults();   // 设置日K模式默认参数
@@ -114,6 +117,7 @@ private:
 	CStockListPanel m_stockListPanel;
 	CCallAuctionChart m_callAuctionChart;
 	CChipPeakPanel m_chipPeakPanel;
+	CEtfHoldingsPanel m_etfHoldingsPanel;
 	COrderBookPanel m_orderBookPanel;
 	COverviewPanel m_overviewPanel;
 	CIndicatorChart m_indicatorChart;
@@ -137,6 +141,7 @@ private:
 	CButton m_btnIndicatorRSI;   // RSI指标按钮
 	CButton m_btnChipPeak;       // 筹码峰按钮
 	CButton m_btnOrderBook;      // 盘口按钮（与筹码峰按钮切换）
+	CButton m_btnEtfHoldings;    // ETF持仓按钮（CC）
 	CFont m_chipPeakFont;        // 筹码峰按钮小字体
 	std::wstring m_stock_id;
 	UIViewMode m_viewMode{ UI_VIEW_DAY_KLINE };  // 当前界面视图模式
@@ -200,7 +205,13 @@ private:
 	bool m_isHoveringKDJ{ false };
 	bool m_showTrendView{ false };
 	bool m_showChipPeak{ false };
-	bool m_showOrderBook{ true };  // 是否显示右侧买卖盘口面板（隐藏后宽度全部让给图表）
+	bool m_showOrderBook{ false };  // 是否显示右侧买卖盘口面板（默认不选中，给图表更多空间）
+	bool m_showEtfHoldings{ false }; // 是否显示右侧 ETF 持仓面板
+	int m_etfHoldingsScrollOffset{ 0 }; // ETF持仓列表垂直滚动偏移
+	bool m_isEtfHoldingsDragging{ false }; // ETF持仓列表是否正在拖动
+	bool m_isEtfHoldingsDragMoved{ false }; // ETF持仓列表拖动是否产生了位移
+	CPoint m_etfHoldingsDragStartPos;       // ETF持仓列表拖动起点
+	int m_etfHoldingsDragStartOffset{ 0 };  // ETF持仓列表拖动起始偏移
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
 	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组

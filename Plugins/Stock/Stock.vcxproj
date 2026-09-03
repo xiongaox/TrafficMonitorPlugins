@@ -272,6 +272,7 @@
     <ClInclude Include="ChartContext.h" />
     <ClInclude Include="CallAuctionChart.h" />
     <ClInclude Include="ChipPeakPanel.h" />
+    <ClInclude Include="EtfHoldingsPanel.h" />
     <ClInclude Include="IndicatorChart.h" />
     <ClInclude Include="OrderBookPanel.h" />
     <ClInclude Include="OverviewPanel.h" />
@@ -285,6 +286,7 @@
     <ClInclude Include="SmartSignalTestDlg.h" />
     <ClInclude Include="StockFetchThread.h" />
     <ClInclude Include="StockHttpFetcher.h" />
+    <ClInclude Include="ApiHealthManager.h" />
     <ClInclude Include="TdxTcpClient.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="LocalHttpProxy.h" />
@@ -308,6 +310,7 @@
     <ClCompile Include="Common.cpp" />
     <ClCompile Include="CallAuctionChart.cpp" />
     <ClCompile Include="ChipPeakPanel.cpp" />
+    <ClCompile Include="EtfHoldingsPanel.cpp" />
     <ClCompile Include="IndicatorChart.cpp" />
     <ClCompile Include="OrderBookPanel.cpp" />
     <ClCompile Include="OverviewPanel.cpp" />
@@ -322,6 +325,7 @@
     <ClCompile Include="SmartSignalTestDlg.cpp" />
     <ClCompile Include="StockFetchThread.cpp" />
     <ClCompile Include="StockHttpFetcher.cpp" />
+    <ClCompile Include="ApiHealthManager.cpp" />
     <ClCompile Include="TdxTcpClient.cpp" />
     <ClCompile Include="ManagerDialog.cpp" />
     <ClCompile Include="NetFetch.cpp" />
