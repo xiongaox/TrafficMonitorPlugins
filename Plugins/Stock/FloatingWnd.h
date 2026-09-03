@@ -214,6 +214,7 @@ private:
 	int m_etfHoldingsDragStartOffset{ 0 };  // ETF持仓列表拖动起始偏移
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
+	bool m_showPositionSummaryPercent{ false };  // 持仓汇总栏是否显示盈亏百分比
 	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
 	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
 	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）

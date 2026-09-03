@@ -557,8 +557,13 @@ void CFloatingWnd::OnPaint()
 			if (showPositionSummary)
 			{
 				double totalMarketValue = 0.0;
+				double totalCost = 0.0;
+				double totalPreviousCloseValue = 0.0;
 				double floatingProfitLoss = 0.0;
 				double todayProfitLoss = 0.0;
+				double currentStockProfitLoss = 0.0;
+				double currentStockProfitLossPercent = 0.0;
+				bool hasCurrentStockProfitLoss = false;
 				std::vector<std::wstring> positionCodes = CStockListPanel::GetStockListCodes(1);
 				{
 					std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
@@ -574,9 +579,21 @@ void CFloatingWnd::OnPaint()
 							continue;
 						totalMarketValue += currentPrice * holdingCount;
 						if (costPrice > 0)
+						{
+							totalCost += costPrice * holdingCount;
 							floatingProfitLoss += (currentPrice - costPrice) * holdingCount;
+						}
 						if (stockData->info.prevClosePrice > 0)
+						{
+							totalPreviousCloseValue += stockData->info.prevClosePrice * holdingCount;
 							todayProfitLoss += (currentPrice - stockData->info.prevClosePrice) * holdingCount;
+						}
+						if (code == m_stock_id && costPrice > 0)
+						{
+							currentStockProfitLoss = (currentPrice - costPrice) * holdingCount;
+							currentStockProfitLossPercent = (currentPrice - costPrice) / costPrice * 100.0;
+							hasCurrentStockProfitLoss = true;
+						}
 					}
 				}
 
@@ -590,20 +607,44 @@ void CFloatingWnd::OnPaint()
 				if (todayProfitLoss > 0.0001) todayText = _T("+") + todayText;
 				else if (todayProfitLoss < -0.0001) todayText = _T("-") + todayText;
 				else todayText = _T("0.00");
+				CString currentStockText = _T("--");
+				if (hasCurrentStockProfitLoss)
+				{
+					currentStockText = CCommon::FormatAmount(std::abs(currentStockProfitLoss));
+					if (currentStockProfitLoss > 0.0001) currentStockText = _T("+") + currentStockText;
+					else if (currentStockProfitLoss < -0.0001) currentStockText = _T("-") + currentStockText;
+					else currentStockText = _T("0.00");
+				}
+				double floatingProfitLossPercent = totalCost > 0 ? floatingProfitLoss / totalCost * 100.0 : 0.0;
+				double todayProfitLossPercent = totalPreviousCloseValue > 0 ? todayProfitLoss / totalPreviousCloseValue * 100.0 : 0.0;
+				auto formatPercent = [](double percent) {
+					CString result;
+					if (percent > 0.0001) result.Format(_T("+%.2f%%"), percent);
+					else if (percent < -0.0001) result.Format(_T("%.2f%%"), percent);
+					else result = _T("0.00%");
+					return result;
+				};
+				if (m_showPositionSummaryPercent)
+				{
+					floatingText = totalCost > 0 ? formatPercent(floatingProfitLossPercent) : _T("--");
+					todayText = totalPreviousCloseValue > 0 ? formatPercent(todayProfitLossPercent) : _T("--");
+					currentStockText = hasCurrentStockProfitLoss ? formatPercent(currentStockProfitLossPercent) : _T("--");
+				}
 
-				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: ") };
-				const CString values[] = { marketText, floatingText, todayText };
+				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: "), _T("当前盈亏: ") };
+				const CString values[] = { marketText, floatingText, todayText, currentStockText };
 				const COLORREF valueColors[] = {
 					COLOR_TEXT_PRIMARY,
 					floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
+					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
+					!hasCurrentStockProfitLoss ? COLOR_TEXT_MUTED : (currentStockProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN)
 				};
 
-				const int columnWidth = summaryContentW / 3;
-				for (int i = 0; i < 3; ++i)
+				const int columnWidth = summaryContentW / 4;
+				for (int i = 0; i < 4; ++i)
 				{
 					const int columnX = summaryX + i * columnWidth;
-					const int currentColumnWidth = (i == 2) ? (summaryContentW - i * columnWidth) : columnWidth;
+					const int currentColumnWidth = (i == 3) ? (summaryContentW - i * columnWidth) : columnWidth;
 					const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
 					int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
 
@@ -1584,6 +1625,26 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		(abs(dx) < 4) && (abs(dy) < 4);
 	m_lastClickTime = currentTime;
 	m_lastClickPos = point;
+
+	// 点击持仓汇总栏，在具体金额与百分比之间切换
+	if (m_viewMode != UI_VIEW_OVERVIEW && CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1)
+	{
+		CRect clientRect;
+		GetClientRect(&clientRect);
+		const bool isIndex = (GetStockPriority(m_stock_id) < 200);
+		const bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+		const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
+		const int chartWidth = clientRect.Width() - orderBookWidth;
+		const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;
+		const int summaryY = g_data.RDPI(26);
+		const int summaryH = g_data.RDPI(18);
+		if (point.x >= stockListWidth && point.x < chartWidth && point.y >= summaryY && point.y < summaryY + summaryH)
+		{
+			m_showPositionSummaryPercent = !m_showPositionSummaryPercent;
+			Invalidate();
+			return;
+		}
+	}
 
 	// 顶栏分组标签点击（切换分组 / 打开“更多分组”下拉）
 	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList && point.y < g_data.RDPI(26))
