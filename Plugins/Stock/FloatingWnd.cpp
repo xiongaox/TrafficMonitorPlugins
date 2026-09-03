@@ -631,13 +631,13 @@ void CFloatingWnd::OnPaint()
 					currentStockText = hasCurrentStockProfitLoss ? formatPercent(currentStockProfitLossPercent) : _T("--");
 				}
 
-				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: "), _T("当前盈亏: ") };
-				const CString values[] = { marketText, floatingText, todayText, currentStockText };
+				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当前盈亏: "), _T("当日盈亏: ") };
+				const CString values[] = { marketText, floatingText, currentStockText, todayText };
 				const COLORREF valueColors[] = {
 					COLOR_TEXT_PRIMARY,
 					floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-					!hasCurrentStockProfitLoss ? COLOR_TEXT_MUTED : (currentStockProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN)
+					!hasCurrentStockProfitLoss ? COLOR_TEXT_MUTED : (currentStockProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN),
+					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
 				};
 
 				const int columnWidth = summaryContentW / 4;
@@ -657,10 +657,10 @@ void CFloatingWnd::OnPaint()
 			}
 			else
 			{
-				// 非持仓分组：展示配置的指标（最多4项，默认：总市值、成交额、成交量、换手率）
+				// 非持仓分组：展示配置的指标（最多4项，默认：总市值、成交额、成交量、量比）
 				std::vector<std::wstring> headerMetrics = g_data.m_setting_data.m_header_metrics;
 				if (headerMetrics.empty())
-					headerMetrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+					headerMetrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 				int metricCount = min(4, static_cast<int>(headerMetrics.size()));
 				if (metricCount > 0 && summaryContentW > 0)
 				{

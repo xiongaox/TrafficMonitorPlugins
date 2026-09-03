@@ -142,11 +142,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 
 	// 顶部指标栏指标列表（最多4个）
 	ini.GetStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics, std::vector<std::wstring>{
-		L"总市值", L"成交额", L"成交量", L"换手率"
+		L"总市值", L"成交额", L"成交量", L"量比"
 	});
 	if (m_setting_data.m_header_metrics.empty())
 	{
-		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 	}
 	else if (m_setting_data.m_header_metrics.size() > 4)
 	{
