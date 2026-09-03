@@ -363,7 +363,7 @@ COLORREF CCommon::GetProfitLossColor(double percent)
 	else if (percent > 0)
 		return COLOR_LIGHT_RED;
 	else if (percent == 0)
-		return RGB(0, 0, 0);
+		return RGB(255, 166, 28);
 	else if (percent > -3.33)
 		return COLOR_LIGHT_GREEN;
 	else if (percent > -6.66)
