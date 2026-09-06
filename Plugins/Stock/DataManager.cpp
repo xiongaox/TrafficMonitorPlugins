@@ -26,6 +26,63 @@ static std::string GetTodayDateString()
 	return GetLocalDateString(time(nullptr));
 }
 
+// 将 "YYYY-MM-DD" 转为自 1970-01-01 起的天数（用于周K去重的周索引计算）
+static long KlineDateToDays(const std::string& d)
+{
+	if (d.length() < 10) return 0;
+	tm t = {};
+	t.tm_year = atoi(d.substr(0, 4).c_str()) - 1900;
+	t.tm_mon = atoi(d.substr(5, 2).c_str()) - 1;
+	t.tm_mday = atoi(d.substr(8, 2).c_str());
+	time_t tt = _mkgmtime(&t);
+	if (tt < 0) return 0;
+	return static_cast<long>(tt / 86400);
+}
+
+// 计算 K 线所属自然周索引（周一对齐）。1970-01-01 是周四，1970-01-05 是第一个周一。
+static long KlineWeekIndex(const std::string& d)
+{
+	return (KlineDateToDays(d) - 3) / 7;
+}
+
+// 清理 K 线缓存中的历史脏数据，返回过滤后的数据：
+// 1) 日K：丢弃 volume<=0 的行（历史异常接口写入的无量数据，会污染成交量图）；
+// 2) 周/月K：同一自然周/月可能出现多行（新老版本写入的 day 键不同），只保留 day 最大（最新）的一行。
+static std::vector<STOCK::KLinePoint> FilterKLineCachePoints(const std::vector<STOCK::KLinePoint>& points, STOCK::Period period)
+{
+	std::vector<STOCK::KLinePoint> filtered;
+	filtered.reserve(points.size());
+	for (const auto& pt : points)
+	{
+		if (period == STOCK::Period::DAY)
+		{
+			if (pt.volume <= 0)
+				continue;
+		}
+		else if (period == STOCK::Period::WEEK || period == STOCK::Period::MONTH)
+		{
+			if (!filtered.empty())
+			{
+				const auto& last = filtered.back();
+				bool samePeriod = false;
+				if (period == STOCK::Period::MONTH)
+					samePeriod = (pt.day.length() >= 7 && last.day.length() >= 7 && pt.day.substr(0, 7) == last.day.substr(0, 7));
+				else
+					samePeriod = (pt.day.length() >= 10 && last.day.length() >= 10 && KlineWeekIndex(pt.day) == KlineWeekIndex(last.day));
+				if (samePeriod)
+				{
+					// 同一周/月保留 day 最大（该周期最后交易日）的一行
+					if (pt.day > last.day)
+						filtered.back() = pt;
+					continue;
+				}
+			}
+		}
+		filtered.push_back(pt);
+	}
+	return filtered;
+}
+
 // 前置声明：筹码分布相关静态函数（定义在文件后方，供 Apply* 方法调用）
 static bool IsSameLocalDate(time_t lhs, time_t rhs);
 static bool CalculateEtfChipDistribution(const std::vector<STOCK::ChipKLinePoint>& klines, STOCK::Volume totalShares, STOCK::ChipDistribution& chipData);
@@ -353,7 +410,7 @@ void CDataManager::LoadKLineCache(STOCK::Period period)
 	{
 		auto stockData = GetStockData(code);
 		if (!stockData) continue;
-		auto points = m_db_mgr.LoadKLineCache(code, period);
+		auto points = FilterKLineCachePoints(m_db_mgr.LoadKLineCache(code, period), period);
 		if (points.empty()) continue;
 
 		// 5分钟/30分钟K线：如果缓存最新数据超过7天，跳过加载（等网络请求更新）
