@@ -148,24 +148,13 @@
   #mainflow-stats .stat.off .val,
   #mainflow-stats .stat.off .lbl { opacity: 0.38; }
   #mainflow-stats .stat.off .swatch { background: var(--text-dim) !important; }
-  /* ===== 涨跌趋势页：全宽统计卡（内部两段） + 全宽双图堆叠 ===== */
+  /* ===== 涨跌趋势页：全宽统计卡（9 格均分，无分组标题） + 全宽双图堆叠 ===== */
   .trend-block {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 10px 12px 12px;
+    padding: 9px 8px 11px;
     margin-bottom: 8px;
-  }
-  .trend-block-cols { display: flex; gap: 24px; }
-  .trend-col { flex: 1; min-width: 0; }
-  .trend-block .blk-title {
-    font-size: 12px; font-weight: bold; color: var(--text);
-    margin-bottom: 9px;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .trend-block .blk-title::before {
-    content: ""; width: 3px; height: 11px; border-radius: 2px;
-    background: var(--accent); flex-shrink: 0;
   }
   .trend-grid { display: grid; }
   .trend-grid .cell {
@@ -393,15 +382,9 @@
   <div class="page" id="page-trend">
     <div class="page-title">涨跌趋势 <span class="page-sub">全市场涨跌家数与沪深成交额（模拟数据）</span></div>
     <div class="trend-block">
-      <div class="trend-block-cols">
-        <div class="trend-col">
-          <div class="blk-title">涨跌趋势</div>
-          <div class="trend-grid" id="trend-stats" style="grid-template-columns:repeat(5,1fr)"></div>
-        </div>
-        <div class="trend-col">
-          <div class="blk-title">成交量</div>
-          <div class="trend-grid" id="volume-stats" style="grid-template-columns:repeat(4,1fr)"></div>
-        </div>
+      <div class="trend-grid" style="grid-template-columns:repeat(9,1fr)">
+        <div style="display:contents" id="trend-stats"></div>
+        <div style="display:contents" id="volume-stats"></div>
       </div>
     </div>
     <div style="display:flex; flex-direction:column; gap:8px; flex:1; min-height:0;">
