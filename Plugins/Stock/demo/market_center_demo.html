@@ -137,6 +137,17 @@
   .page { flex: 1; display: none; flex-direction: column; min-height: 0; padding: 0 16px 12px; }
   .page.active { display: flex; }
   .chart { flex: 1; min-height: 0; }
+  /* ===== 主力资金页：指标卡兼作图例（复用 .stat-row.grid4 上下结构） ===== */
+  #mainflow-stats .stat { cursor: pointer; transition: background 0.15s; }
+  #mainflow-stats .stat:hover { background: rgba(255,255,255,0.04); }
+  #mainflow-stats .stat .lbl { display: flex; align-items: center; gap: 5px; }
+  #mainflow-stats .stat .swatch {
+    display: inline-block; width: 14px; height: 4px; border-radius: 2px;
+    flex-shrink: 0;
+  }
+  #mainflow-stats .stat.off .val,
+  #mainflow-stats .stat.off .lbl { opacity: 0.38; }
+  #mainflow-stats .stat.off .swatch { background: var(--text-dim) !important; }
   .chart-heading { font-size: 12px; font-weight: bold; color: var(--text); padding: 2px 4px 6px 0; }
   /* ETF 主题列表浮层 */
   #etfinflow-body { flex: 1; display: flex; min-height: 0; position: relative; }
@@ -146,7 +157,7 @@
     padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
     box-shadow: 0 6px 24px rgba(0,0,0,0.45); z-index: 20;
   }
-  #etf-theme-panel.hidden { display: none; }
+  .hidden { display: none !important; } /* 工具类：需压过 #id 的 display:flex */
   #etf-theme-head { display: flex; justify-content: space-between; align-items: center; }
   #etf-theme-title { font-size: 12px; color: var(--text); font-weight: bold; }
   #etf-theme-close { cursor: pointer; color: var(--text-dim); font-size: 12px; padding: 0 4px; }
@@ -158,6 +169,11 @@
   }
   #etf-theme-scroll::-webkit-scrollbar { display: none; }  /* Chrome/Edge 隐藏滚动条 */
   #etf-theme-table th, #etf-theme-table td { padding: 4px 6px; font-size: 11px; }
+  /* 主题浮层小表：名称左对齐窄列，其余居中 */
+  #etf-theme-table th, #etf-theme-table td { text-align: center; }
+  #etf-theme-table th:first-child, #etf-theme-table td:first-child { text-align: left; width: 34%; }
+  #etf-theme-table th:nth-child(2), #etf-theme-table td:nth-child(2) { width: 24%; }
+  #etf-theme-table th:nth-child(3), #etf-theme-table td:nth-child(3) { width: 20%; }
   /* 顶部统计条 */
   .stat-row {
     display: flex;
@@ -196,8 +212,12 @@
   .stat-row.grid4 .stat .val { font-size: 15px; }
   .stat-row.grid4 .stat.clickable { cursor: pointer; transition: background 0.15s; }
   .stat-row.grid4 .stat.clickable:hover { background: rgba(255,255,255,0.04); }
-  .stat-row.grid4 .stat.active-up { background: rgba(246,70,93,0.10); box-shadow: inset 0 -2px 0 var(--up); }
-  .stat-row.grid4 .stat.active-down { background: rgba(14,203,129,0.10); box-shadow: inset 0 -2px 0 var(--down); }
+  .stat-row.grid4 .stat.active-up { background: rgba(246,70,93,0.10); box-shadow: inset 0 -2px 0 var(--up); margin: -1px 0; padding-top: 10px; padding-bottom: 10px; }
+  .stat-row.grid4 .stat.active-down { background: rgba(14,203,129,0.10); box-shadow: inset 0 -2px 0 var(--down); margin: -1px 0; padding-top: 10px; padding-bottom: 10px; }
+  .stat-row.grid4 .stat.active-up:first-child,
+  .stat-row.grid4 .stat.active-down:first-child { border-radius: 6px 0 0 6px; }
+  .stat-row.grid4 .stat.active-up:last-child,
+  .stat-row.grid4 .stat.active-down:last-child { border-radius: 0 6px 6px 0; }
   .up { color: var(--up); }
   .down { color: var(--down); }
   .flat { color: var(--text-sub); }
@@ -302,10 +322,10 @@
     </div>
   </div>
 
-  <!-- 3. 主力资金 -->
+  <!-- 3. 主力资金（参考同花顺实时主力资金页） -->
   <div class="page" id="page-mainflow">
     <div class="page-title">实时主力资金 <span class="page-sub">沪深两市大盘资金流（模拟数据）</span></div>
-    <div class="stat-row" id="mainflow-stats"></div>
+    <div class="stat-row grid4" id="mainflow-stats"></div>
     <div class="chart" id="chart-mainflow"></div>
   </div>
 
@@ -314,11 +334,11 @@
     <div class="page-title">涨跌趋势 <span class="page-sub">全市场涨跌家数（模拟数据）</span></div>
     <div class="stat-row" id="trend-stats"></div>
     <div style="display:flex; gap:8px; flex:1; min-height:0;">
-      <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+      <div style="flex:1.6; display:flex; flex-direction:column; min-width:0; gap:6px;">
         <div class="chart" id="chart-trend-dist" style="flex:1"></div>
         <div class="chart" id="chart-trend-count" style="flex:1"></div>
       </div>
-      <div class="chart" id="chart-trend-line" style="flex:1.2"></div>
+      <div class="chart" id="chart-trend-line" style="flex:1"></div>
     </div>
   </div>
 
@@ -387,7 +407,7 @@ const SECTORS = [
   ["锂矿", -7.2, -1.02], ["细化工", -8.2, -0.66], ["黄金", -3.2, -0.28]
 ].map(d => ({ name: d[0], flow: d[1], pct: d[2] }));
 
-// ---- 主力资金5线 ----
+// ---- 主力资金（参考同花顺实时主力资金页：上证/深证/ETF申购净流入 + 上证指数双轴） ----
 function genFlowSeries(base, volatility) {
   const arr = [];
   let v = 0;
@@ -398,12 +418,21 @@ function genFlowSeries(base, volatility) {
   }
   return arr;
 }
+function genIndexSeries(base) { // 指数分时：围绕基准小幅波动
+  const arr = [];
+  let v = base;
+  for (let i = 0; i < TIME_AXIS.length; i++) {
+    if (i > NOW_IDX) { arr.push(null); continue; }
+    v += rnd(-3.5, 3.8);
+    arr.push(+v.toFixed(2));
+  }
+  return arr;
+}
 const mainflow = {
-  main: genFlowSeries(0, 18),
-  xl: genFlowSeries(20, 12),
-  l: genFlowSeries(35, 15),
-  m: genFlowSeries(-15, 10),
-  s: genFlowSeries(-40, 12)
+  sh: genFlowSeries(0, 9),          // 上证主力净流入(亿)
+  sz: genFlowSeries(-30, 11),       // 深证主力净流入(亿)
+  etf: genFlowSeries(15, 4),        // ETF申购净流入(亿)，走势平稳
+  index: genIndexSeries(3980)       // 上证指数(点)
 };
 
 // ---- 涨跌趋势 ----
@@ -623,35 +652,59 @@ function selectSector(name) {
 }
 
 // ================= 3. 主力资金 =================
+const MF_SERIES = [
+  { key: "sh",    label: "主力净流入", color: "#4D8AF0", yAxis: 1, width: 1.8 },
+  { key: "sz",    label: "深证",       color: "#F5A623", yAxis: 1, width: 1.8 },
+  { key: "etf",   label: "ETF申购净流入", color: "#ED5BC4", yAxis: 1, width: 1.6 },
+  { key: "index", label: "上证指数",   color: "#9AA1B0", yAxis: 0, width: 1.2 }
+];
+const mfOff = new Set(); // 点击卡片段落隐藏/显示对应线
 function drawMainflow() {
-  document.getElementById("mainflow-stats").innerHTML = `
-    <div class="stat"><span class="lbl">主力净流入</span><span class="val down">${fmtYi(mainflow.main[NOW_IDX])}</span></div>
-    <div class="stat"><span class="lbl">超大单</span><span class="val up">${fmtYi(mainflow.xl[NOW_IDX])}</span></div>
-    <div class="stat"><span class="lbl">大单</span><span class="val up">${fmtYi(mainflow.l[NOW_IDX])}</span></div>
-    <div class="stat"><span class="lbl">中单</span><span class="val down">${fmtYi(mainflow.m[NOW_IDX])}</span></div>
-    <div class="stat"><span class="lbl">小单</span><span class="val down">${fmtYi(mainflow.s[NOW_IDX])}</span></div>`;
-  const line = (name, data, color) => ({
-    name, type: "line", data, showSymbol: false, smooth: false,
-    lineStyle: { width: 1.6, color }, itemStyle: { color },
-    emphasis: { focus: "series" }
+  const f = v => (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(2) + "亿";
+  const vals = { sh: mainflow.sh[NOW_IDX], sz: mainflow.sz[NOW_IDX], etf: mainflow.etf[NOW_IDX], index: mainflow.index[NOW_IDX] };
+  document.getElementById("mainflow-stats").innerHTML = MF_SERIES.map(s => {
+    const v = vals[s.key];
+    const cls = v >= 0 ? "up" : "down";
+    const num = s.key === "index" ? v.toFixed(2) : f(v);
+    return `<div class="stat clickable ${mfOff.has(s.key) ? "off" : ""}" data-key="${s.key}">
+      <span class="lbl"><i class="swatch" style="background:${s.color}"></i>${s.label}</span>
+      <span class="val ${s.key === "index" ? "" : cls}">${num}</span></div>`;
+  }).join("");
+  document.querySelectorAll("#mainflow-stats .stat").forEach(el => {
+    el.addEventListener("click", () => {
+      const k = el.dataset.key;
+      mfOff.has(k) ? mfOff.delete(k) : mfOff.add(k);
+      drawMainflow();
+    });
+  });
+  const line = (s, data) => ({
+    name: s.label, type: "line", data, yAxis: s.yAxis, showSymbol: false, smooth: false,
+    lineStyle: { width: s.width, color: s.color, opacity: mfOff.has(s.key) ? 0.08 : 1 },
+    itemStyle: { color: s.color }, emphasis: { focus: "series" }
   });
   mkChart("chart-mainflow").setOption({
     backgroundColor: "transparent",
-    legend: { top: 4, textStyle: { color: "#9AA1B0", fontSize: 11 },
-      data: ["主力净流入", "超大单净流入", "大单净流入", "中单净流入", "小单净流入"] },
-    grid: { left: 55, right: 20, top: 36, bottom: 28 },
-    tooltip: { trigger: "axis" },
+    legend: { show: false },
+    grid: { left: 2, right: 2, top: 20, bottom: 28 }, // 图区与指标卡两端对齐
+    tooltip: { trigger: "axis",
+      valueFormatter: v => v == null ? "--" : (+v).toFixed(2) },
     xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59 } },
-    yAxis: { type: "value", name: "单位: 亿元", nameTextStyle: { color: "#616878" }, ...AXIS_STYLE },
-    series: [
-      line("主力净流入", mainflow.main, "#3B82F6"),
-      line("超大单净流入", mainflow.xl, "#C0392B"),
-      line("大单净流入", mainflow.l, "#8E44AD"),
-      line("中单净流入", mainflow.m, "#E67E22"),
-      line("小单净流入", mainflow.s, "#16A085")
-    ]
-  });
+      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59,
+        alignMinLabel: "left", alignMaxLabel: "right" } },
+    yAxis: [
+      { type: "value", ...AXIS_STYLE, scale: true, // 左轴：指数点位（标签画在图内）
+        axisLine: { show: false },
+        axisLabel: { ...AXIS_STYLE.axisLabel, inside: true, margin: 8,
+          align: "left", formatter: v => v.toFixed(2),
+          textBorderColor: "rgba(13,15,20,0.8)", textBorderWidth: 2 } },
+      { type: "value", ...AXIS_STYLE, scale: true, // 右轴：净流入(亿)（标签画在图内）
+        axisLine: { show: false }, splitLine: { show: false },
+        axisLabel: { ...AXIS_STYLE.axisLabel, inside: true, margin: 8,
+          align: "right", formatter: v => v.toFixed(0) + "亿",
+          textBorderColor: "rgba(13,15,20,0.8)", textBorderWidth: 2 } }
+    ],
+    series: MF_SERIES.map(s => line(s, mainflow[s.key]))
+  }, { notMerge: true });
 }
 
 // ================= 4. 涨跌趋势 =================
@@ -666,12 +719,14 @@ function drawTrend() {
   // 分布柱状图
   mkChart("chart-trend-dist").setOption({
     backgroundColor: "transparent",
-    title: { text: "涨跌分布", left: 6, top: 4, textStyle: { color: "#E8EAF0", fontSize: 12 } },
-    grid: { left: 55, right: 15, top: 34, bottom: 22 },
+    title: { text: "涨跌分布", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
+    grid: { left: 40, right: 8, top: 30, bottom: 42 },
     tooltip: {},
     xAxis: { type: "category", data: trend.dist.map(d => d[0]), ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10, interval: 0, rotate: 30 } },
-    yAxis: { type: "value", ...AXIS_STYLE },
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 9, interval: 0,
+        hideOverlap: true, formatter: v => v.replace("%", "") } },
+    yAxis: { type: "value", ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
     series: [{ type: "bar", barWidth: "60%",
       data: trend.dist.map(d => ({ value: d[1],
         itemStyle: { color: d[2] === "up" ? "#F6465D" : d[2] === "down" ? "#0ECB81" : "#616878" } }))
@@ -684,22 +739,26 @@ function drawTrend() {
   });
   mkChart("chart-trend-line").setOption({
     backgroundColor: "transparent",
-    title: { text: "涨跌家数分时", left: 6, top: 4, textStyle: { color: "#E8EAF0", fontSize: 12 } },
-    legend: { right: 8, top: 6, textStyle: { color: "#9AA1B0", fontSize: 11 } },
-    grid: { left: 55, right: 20, top: 38, bottom: 28 },
+    title: { text: "涨跌家数分时", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
+    legend: { right: 8, top: 4, itemWidth: 14, itemHeight: 3,
+      textStyle: { color: "#9AA1B0", fontSize: 10 } },
+    grid: { left: 40, right: 12, top: 34, bottom: 26 },
     tooltip: { trigger: "axis" },
     xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59 } },
-    yAxis: { type: "value", ...AXIS_STYLE },
+      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59, fontSize: 10 } },
+    yAxis: { type: "value", ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
     series: [line("上涨家数", trend.up, "#F6465D"), line("下跌家数", trend.down, "#0ECB81")]
   });
   // 涨跌家数对比（当前快照柱状）
   mkChart("chart-trend-count").setOption({
     backgroundColor: "transparent",
-    title: { text: "当前涨跌家数", left: 6, top: 4, textStyle: { color: "#E8EAF0", fontSize: 12 } },
-    grid: { left: 55, right: 15, top: 34, bottom: 22 },
-    xAxis: { type: "category", data: ["上涨", "平盘", "下跌", "涨停", "跌停"], ...AXIS_STYLE },
-    yAxis: { type: "value", ...AXIS_STYLE },
+    title: { text: "当前涨跌家数", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
+    grid: { left: 40, right: 8, top: 30, bottom: 24 },
+    xAxis: { type: "category", data: ["上涨", "平盘", "下跌", "涨停", "跌停"], ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
+    yAxis: { type: "value", ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
     series: [{ type: "bar", barWidth: "45%",
       data: [
         { value: upNow, itemStyle: { color: "#F6465D" } },
