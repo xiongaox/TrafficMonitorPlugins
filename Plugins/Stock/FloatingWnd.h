@@ -218,6 +218,8 @@ private:
 	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
 	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
 	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）
+	int m_groupListSort{ 0 };      // 左侧列表排序：0=默认顺序, 1=涨跌幅降序(涨最多在上), 2=涨跌幅升序(跌最多在上)
+	int m_hoverSortArrow{ -1 };    // 悬停的分组标题排序箭头：0=▲, 1=▼, -1 无
 	bool m_trackingTabHover{ false };  // 是否已申请 WM_MOUSELEAVE 跟踪
 	int m_stockListScrollOffset{ 0 };  // 左侧股票列表垂直滚动偏移
 	bool m_isStockListDragging{ false };  // 左侧股票列表是否正在拖动

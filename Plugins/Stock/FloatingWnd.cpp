@@ -533,7 +533,7 @@ void CFloatingWnd::OnPaint()
 			const int activeGroupTab = CStockListPanel::ClampGroupTab(m_activeGroupTab);
 			m_groupTabs = CStockListPanel::LayoutGroupTabs(memDC, w, headerHeight, activeGroupTab);
 			CStockListPanel::DrawGroupTabs(memDC, m_groupTabs, m_hoverGroupTab);
-			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab);
+			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab, m_groupListSort, m_hoverSortArrow);
 		}
 
 		// 顶部汇总/指标信息行：位于主图标题栏上方，仅占图表区域，不覆盖左侧列表和右侧盘口。
@@ -1662,6 +1662,25 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
+	// 左侧列表面板分组标题右侧的实心排序箭头：▲涨最多在上，▼跌最多在上；再次点击恢复默认顺序
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
+	{
+		const CRect& upRect = CStockListPanel::m_titleSortUpRect;
+		const CRect& downRect = CStockListPanel::m_titleSortDownRect;
+		const bool hitUp = (!upRect.IsRectEmpty() && upRect.PtInRect(point));
+		const bool hitDown = (!downRect.IsRectEmpty() && downRect.PtInRect(point));
+		if (hitUp || hitDown)
+		{
+			if (hitUp)
+				m_groupListSort = (m_groupListSort == 1) ? 0 : 1;
+			else
+				m_groupListSort = (m_groupListSort == 2) ? 0 : 2;
+			m_stockListScrollOffset = 0;
+			Invalidate();
+			return;
+		}
+	}
+
 	// 单击：点击在按钮区域不处理（让按钮自己处理）
 	const int btnBarHeight = g_data.RDPI(2) + g_data.RDPI(22);  // 按钮y起始 + 按钮高度
 	if (point.y < btnBarHeight)
@@ -1957,7 +1976,7 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 			if (contentY >= 0)
 			{
 				int rowIndex = contentY / rowHeight;
-				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
+				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab), m_groupListSort);
 				if (rowIndex >= 0 && rowIndex < static_cast<int>(stockCodes.size()))
 				{
 					const std::wstring& clickedCode = stockCodes[rowIndex];
@@ -2068,6 +2087,23 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			m_trackingTabHover = true;
 	}
 	UpdateGroupTabHover(point);
+
+	// 分组标题排序箭头悬停高亮
+	{
+		int hoverArrow = -1;
+		if (m_showStockList && m_viewMode != UI_VIEW_OVERVIEW)
+		{
+			if (!CStockListPanel::m_titleSortUpRect.IsRectEmpty() && CStockListPanel::m_titleSortUpRect.PtInRect(point))
+				hoverArrow = 0;
+			else if (!CStockListPanel::m_titleSortDownRect.IsRectEmpty() && CStockListPanel::m_titleSortDownRect.PtInRect(point))
+				hoverArrow = 1;
+		}
+		if (hoverArrow != m_hoverSortArrow)
+		{
+			m_hoverSortArrow = hoverArrow;
+			Invalidate();
+		}
+	}
 
 	// 左侧股票列表拖动处理
 	if (m_isStockListDragging)
@@ -3750,7 +3786,7 @@ void CFloatingWnd::EnsureStockListVisible()
 	if (listAreaH <= 0)
 		return;
 
-	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
+	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab), m_groupListSort);
 	int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
 	int maxOffset = max(0, totalH - listAreaH);
 
@@ -3840,5 +3876,10 @@ void CFloatingWnd::OnMouseLeave()
 {
 	m_trackingTabHover = false;
 	UpdateGroupTabHover(CPoint(-1, -1));
+	if (m_hoverSortArrow != -1)
+	{
+		m_hoverSortArrow = -1;
+		Invalidate();
+	}
 	CWnd::OnMouseLeave();
 }

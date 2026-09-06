@@ -5,6 +5,7 @@
 #include "DataManager.h"
 #include "StockFont.h"
 #include <Stock.h>
+#include <algorithm>
 #include <mutex>
 #include <vector>
 
@@ -38,6 +39,11 @@ std::vector<std::wstring> CStockListPanel::GetStockListCodes()
 
 std::vector<std::wstring> CStockListPanel::GetStockListCodes(int groupTab)
 {
+	return GetStockListCodes(groupTab, 0);
+}
+
+std::vector<std::wstring> CStockListPanel::GetStockListCodes(int groupTab, int sortMode)
+{
 	groupTab = ClampGroupTab(groupTab);
 	std::vector<std::wstring> stockCodes;
 	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
@@ -52,6 +58,25 @@ std::vector<std::wstring> CStockListPanel::GetStockListCodes(int groupTab)
 	{
 		if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 只保留非指数、非港股股票
 			stockCodes.push_back(code);
+	}
+
+	// 按涨跌幅排序（仅调整显示顺序，不修改分组内保存的代码顺序）
+	// sortMode: 1=涨跌幅降序（涨最多的在上），2=涨跌幅升序（跌最多的在上）
+	if (sortMode == 1 || sortMode == 2)
+	{
+		auto percentOf = [](const std::wstring& code) -> double {
+			auto stockData = g_data.GetStockData(code);
+			if (stockData && stockData->info.is_ok)
+				return stockData->info.GetChangePercent();
+			return 0.0;  // 无实时行情的股票视为 0，排在已跌股票之前、已涨股票之后
+		};
+		std::stable_sort(stockCodes.begin(), stockCodes.end(),
+			[&percentOf, sortMode](const std::wstring& a, const std::wstring& b)
+			{
+				const double pa = percentOf(a);
+				const double pb = percentOf(b);
+				return sortMode == 1 ? (pa > pb) : (pa < pb);
+			});
 	}
 	return stockCodes;
 }
@@ -119,6 +144,37 @@ int CStockListPanel::GetPanelWidth()
 	return g_data.RDPI(114);
 }
 
+// 在按钮矩形内画一个实心三角箭头（up=true 画▲，否则画▼）
+static void DrawSolidArrow(CDC& memDC, const CRect& btnRect, bool up, COLORREF color)
+{
+	CBrush brush(color);
+	CPen pen(PS_SOLID, 1, color);
+	HGDIOBJ oldBrush = memDC.SelectObject(&brush);
+	HGDIOBJ oldPen = memDC.SelectObject(&pen);
+
+	const int halfW = g_data.RDPI(4);
+	const int halfH = g_data.RDPI(3);
+	const int cx = (btnRect.left + btnRect.right) / 2;
+	const int cy = (btnRect.top + btnRect.bottom) / 2;
+	POINT pts[3];
+	if (up)
+	{
+		pts[0] = { cx, cy - halfH };
+		pts[1] = { cx - halfW, cy + halfH };
+		pts[2] = { cx + halfW, cy + halfH };
+	}
+	else
+	{
+		pts[0] = { cx, cy + halfH };
+		pts[1] = { cx - halfW, cy - halfH };
+		pts[2] = { cx + halfW, cy - halfH };
+	}
+	memDC.Polygon(pts, 3);
+
+	memDC.SelectObject(oldPen);
+	memDC.SelectObject(oldBrush);
+}
+
 void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx)
 {
 	CFont font;
@@ -160,10 +216,15 @@ void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupT
 	font.DeleteObject();
 }
 
-void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset, int groupTab)
+CRect CStockListPanel::m_titleSortUpRect;
+CRect CStockListPanel::m_titleSortDownRect;
+
+void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset, int groupTab, int sortMode, int hoverSortArrow)
 {
 	// 绘制面板现代深色底 (#14161D)
 	memDC.FillSolidRect(x, y, w, h, COLOR_BG_PANEL);
+
+	std::vector<std::wstring> stockCodes = GetStockListCodes(groupTab, sortMode);
 
 	// 绘制标题栏（与走势图标题栏高度一致，#181B22）
 	const int titleH = g_data.RDPI(18);
@@ -177,6 +238,42 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	CreateStockFont(titleFont, memDC, g_data.RDPI(11), FW_SEMIBOLD);
 	CFont* pOldBaseFont = memDC.SelectObject(&titleFont);
 	memDC.TextOut(x + g_data.RDPI(6), y + g_data.RDPI(2), groupTitle.c_str());
+
+	// 分组标题栏右侧（靠面板右边缘对齐）的实心排序箭头：▲涨最多在上 / ▼跌最多在上（再次点击恢复默认顺序）
+	m_titleSortUpRect.SetRectEmpty();
+	m_titleSortDownRect.SetRectEmpty();
+	if (!stockCodes.empty())
+	{
+		const int arrowBtnW = g_data.RDPI(13);
+		const int arrowBtnH = g_data.RDPI(14);
+		const int arrowBtnGap = g_data.RDPI(1);
+		const int arrowRightPad = g_data.RDPI(2);
+		// 箭头整体右对齐到面板右边缘，面板太窄时才隐藏
+		if (arrowBtnW * 2 + arrowBtnGap + arrowRightPad * 2 <= w)
+		{
+			const int arrowTop = y + max(0, (titleH - arrowBtnH) / 2);
+			const int downRight = x + w - arrowRightPad;
+			CRect downRect(downRight - arrowBtnW, arrowTop, downRight, arrowTop + arrowBtnH);
+			CRect upRect(downRect.left - arrowBtnGap - arrowBtnW, arrowTop, downRect.left - arrowBtnGap, arrowTop + arrowBtnH);
+
+			m_titleSortUpRect = upRect;
+			m_titleSortDownRect = downRect;
+
+			const bool upHover = (hoverSortArrow == 0);
+			const bool downHover = (hoverSortArrow == 1);
+			if (upHover)
+				memDC.FillSolidRect(upRect, RGB(30, 41, 59));
+			if (downHover)
+				memDC.FillSolidRect(downRect, RGB(30, 41, 59));
+
+			// 当前排序方向亮色高亮：▲涨跌幅降序红色 / ▼升序绿色，其余默色
+			const COLORREF upColor = (sortMode == 1) ? COLOR_RED_UP : (upHover ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED);
+			const COLORREF downColor = (sortMode == 2) ? COLOR_GREEN_DOWN : (downHover ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED);
+			DrawSolidArrow(memDC, upRect, true, upColor);
+			DrawSolidArrow(memDC, downRect, false, downColor);
+		}
+	}
+
 	memDC.SelectObject(pOldBaseFont);
 	titleFont.DeleteObject();
 
@@ -185,8 +282,6 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	CPen* pOldPen = memDC.SelectObject(&linePen);
 	memDC.MoveTo(x, y + titleH);
 	memDC.LineTo(x + w, y + titleH);
-
-	std::vector<std::wstring> stockCodes = GetStockListCodes(groupTab);
 
 	if (stockCodes.empty())
 	{

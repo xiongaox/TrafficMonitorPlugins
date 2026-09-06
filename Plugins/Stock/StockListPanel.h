@@ -31,7 +31,9 @@ public:
 	// 获取用于自选列表显示的股票代码列表（过滤指数和港股）
 	static std::vector<std::wstring> GetStockListCodes();
 	// 获取指定分组的股票代码列表（同样的过滤规则）
+	// sortMode: 0=默认顺序, 1=涨跌幅降序(涨最多在上), 2=涨跌幅升序(跌最多在上)
 	static std::vector<std::wstring> GetStockListCodes(int groupTab);
+	static std::vector<std::wstring> GetStockListCodes(int groupTab, int sortMode);
 
 	// 布局顶部分组标签条：自选股/持仓/自定义分组，超出三个折叠进“更多分组”下拉
 	static std::vector<FloatingGroupTab> LayoutGroupTabs(CDC& memDC, int windowWidth, int headerHeight, int activeTab);
@@ -48,5 +50,11 @@ public:
 	// currentStockId: 当前选中的股票代码（用于高亮）
 	// scrollOffset: 列表垂直滚动像素偏移
 	// groupTab: 当前分组（决定列表数据与标题文字）
-	void Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset = 0, int groupTab = 0);
+	// sortMode: 列表排序方式（与 GetStockListCodes 的 sortMode 一致，保证绘制与点击命中映射相同）
+	// hoverSortArrow: 悬停的标题排序箭头：0=▲, 1=▼, -1 无
+	void Draw(CDC& memDC, int x, int y, int w, int h, const std::wstring& currentStockId, int scrollOffset = 0, int groupTab = 0, int sortMode = 0, int hoverSortArrow = -1);
+
+	// 分组标题栏右侧（靠面板右边缘对齐）排序箭头的命中矩形（Draw 时计算；空矩形表示未显示，供 FloatingWnd 点击/悬停命中）
+	static CRect m_titleSortUpRect;
+	static CRect m_titleSortDownRect;
 };
