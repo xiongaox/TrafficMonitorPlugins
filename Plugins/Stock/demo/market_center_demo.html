@@ -295,6 +295,8 @@
   /* ===== ETF涨跌榜：除名称列外全部居中 ===== */
   #etfrank-table th, #etfrank-table td { text-align: center; }
   #etfrank-table th:first-child, #etfrank-table td:first-child { text-align: left; }
+  #etfrank-table th.sortable { cursor: pointer; user-select: none; }
+  #etfrank-table th.sortable:hover { color: var(--text); }
   #etfrank-table .sort-arrow { margin-left: 4px; color: var(--accent); font-size: 10px; }
   #etfrank-table .theme-tag {
     display: inline-block; padding: 1px 8px; border-radius: 9px;
@@ -310,22 +312,8 @@
     padding: 6px 12px;
     margin-bottom: 8px;
   }
-  .rank-toolbar .tinfo { font-size: 11px; color: var(--text-sub); margin-left: auto; }
+  .rank-toolbar .tinfo { font-size: 11px; color: var(--text-dim); }
   .rank-toolbar .tinfo b { color: var(--text); font-size: 13px; margin-left: 4px; }
-  .seg-control {
-    display: flex; gap: 2px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px;
-  }
-  .seg-control .seg {
-    padding: 3px 14px; font-size: 11px; color: var(--text-sub);
-    border-radius: 4px; cursor: pointer; user-select: none;
-    transition: background 0.15s, color 0.15s;
-  }
-  .seg-control .seg:hover { color: var(--text); }
-  .seg-control .seg.active { background: var(--accent); color: #fff; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -833,19 +821,29 @@ function drawVolume() {
 }
 
 // ================= 6. ETF涨跌榜 =================
-let rankMode = "desc";
+// 排序状态：key 列索引（0=名称 1=行业 2=现价 3=涨跌幅 4=成交额 5=主力净流入），dir=1 升序 / -1 降序
+let rankSort = { key: 3, dir: -1 };
+const RANK_SORTERS = [
+  (a, b) => a.name.localeCompare(b.name, "zh"),
+  (a, b) => a.theme.localeCompare(b.theme, "zh") || b.pct - a.pct,  // 同行业内按涨跌幅降序
+  (a, b) => a.price - b.price,
+  (a, b) => a.pct - b.pct,
+  (a, b) => a.turnover - b.turnover,
+  (a, b) => a.inflow - b.inflow
+];
 function drawEtfRank() {
   document.getElementById("etfrank-tabs").innerHTML = `
-    <span class="lbl" style="font-size:11px;color:var(--text-sub)">排序</span>
-    <div class="seg-control">
-      <div class="seg ${rankMode === "desc" ? "active" : ""}" onclick="setRank('desc')">涨幅优先</div>
-      <div class="seg ${rankMode === "asc" ? "active" : ""}" onclick="setRank('asc')">跌幅优先</div>
-    </div>
-    <span class="tinfo">ETF总数<b>${etfs.length}</b></span>`;
-  const list = [...etfs].sort((a, b) => rankMode === "desc" ? b.pct - a.pct : a.pct - b.pct);
-  const arrow = rankMode === "desc" ? "▼" : "▲";
-  let html = `<thead><tr><th>名称 / 代码</th><th>行业</th><th>现价</th><th>涨跌幅<span class="sort-arrow">${arrow}</span></th><th>成交额(亿)</th><th>主力净流入(亿)</th></tr></thead><tbody>`;
-  list.forEach((e, i) => {
+    <span class="tinfo">点击表头按列排序 · ETF总数<b>${etfs.length}</b></span>`;
+  const cols = ["名称 / 代码", "行业", "现价", "涨跌幅", "成交额(亿)", "主力净流入(亿)"];
+  let html = `<thead><tr>`;
+  cols.forEach((c, i) => {
+    const active = rankSort.key === i;
+    const arrow = active ? `<span class="sort-arrow">${rankSort.dir === 1 ? "▲" : "▼"}</span>` : "";
+    html += `<th class="sortable${active ? " sorted" : ""}" onclick="setRankSort(${i})">${c}${arrow}</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+  const list = [...etfs].sort((a, b) => RANK_SORTERS[rankSort.key](a, b) * rankSort.dir);
+  list.forEach((e) => {
     const cls = e.pct >= 0 ? "up" : "down";
     html += `<tr>
       <td><b>${e.name}</b> <span style="color:var(--text-dim)">${e.code}</span></td>
@@ -859,7 +857,11 @@ function drawEtfRank() {
   html += "</tbody>";
   document.getElementById("etfrank-table").innerHTML = html;
 }
-function setRank(mode) { rankMode = mode; drawEtfRank(); }
+function setRankSort(key) {
+  if (rankSort.key === key) rankSort.dir = -rankSort.dir;  // 同列再点反转
+  else rankSort = { key, dir: key === 3 ? -1 : 1 };        // 新列：涨跌幅默认降序，其余升序
+  drawEtfRank();
+}
 
 // ================= 2. ETF申购净流入 =================
 let etfInflowMode = "in"; // in=净流入榜 / out=净流出榜
