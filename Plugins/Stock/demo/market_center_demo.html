@@ -312,8 +312,13 @@
     padding: 6px 12px;
     margin-bottom: 8px;
   }
-  .rank-toolbar .tinfo { font-size: 11px; color: var(--text-dim); }
-  .rank-toolbar .tinfo b { color: var(--text); font-size: 13px; margin-left: 4px; }
+  .rank-toolbar .tb-item { display: flex; align-items: baseline; gap: 6px; }
+  .rank-toolbar .tb-item .lbl { font-size: 11px; color: var(--text-sub); }
+  .rank-toolbar .tb-item b { font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .rank-toolbar .tinfo { margin-left: auto; display: flex; align-items: baseline; gap: 10px; }
+  .rank-toolbar .tinfo .hint { font-size: 10px; color: var(--text-dim); }
+  .rank-toolbar .tinfo .cnt { font-size: 11px; color: var(--text-dim); }
+  .rank-toolbar .tinfo .cnt b { color: var(--text); font-size: 13px; margin-left: 4px; }
 </style>
 </head>
 <body>
@@ -832,8 +837,25 @@ const RANK_SORTERS = [
   (a, b) => a.inflow - b.inflow
 ];
 function drawEtfRank() {
+  // 工具条：从当前数据汇总市场概览
+  const upN = etfs.filter(e => e.pct > 0).length;
+  const downN = etfs.filter(e => e.pct < 0).length;
+  const flatN = etfs.length - upN - downN;
+  const avgPct = etfs.reduce((a, e) => a + e.pct, 0) / etfs.length;
+  const totalTurnover = etfs.reduce((a, e) => a + e.turnover, 0);
+  const totalInflow = etfs.reduce((a, e) => a + e.inflow, 0);
+  const limitUpN = etfs.filter(e => e.pct >= 5).length;
+  const limitDownN = etfs.filter(e => e.pct <= -5).length;
   document.getElementById("etfrank-tabs").innerHTML = `
-    <span class="tinfo">点击表头按列排序 · ETF总数<b>${etfs.length}</b></span>`;
+    <div class="tb-item"><span class="lbl">上涨</span><b class="up">${upN}</b></div>
+    <div class="tb-item"><span class="lbl">平盘</span><b>${flatN}</b></div>
+    <div class="tb-item"><span class="lbl">下跌</span><b class="down">${downN}</b></div>
+    <div class="tb-item"><span class="lbl">涨停(≥5%)</span><b class="up">${limitUpN}</b></div>
+    <div class="tb-item"><span class="lbl">跌停(≤-5%)</span><b class="down">${limitDownN}</b></div>
+    <div class="tb-item"><span class="lbl">平均涨跌</span><b class="${avgPct >= 0 ? "up" : "down"}">${avgPct >= 0 ? "+" : ""}${avgPct.toFixed(2)}%</b></div>
+    <div class="tb-item"><span class="lbl">合计成交</span><b>${totalTurnover.toFixed(0)}亿</b></div>
+    <div class="tb-item"><span class="lbl">主力净流入</span><b class="${totalInflow >= 0 ? "up" : "down"}">${totalInflow >= 0 ? "+" : ""}${totalInflow.toFixed(1)}亿</b></div>
+    <div class="tinfo"><span class="hint">点击表头排序</span><span class="cnt">ETF总数<b>${etfs.length}</b></span></div>`;
   const cols = ["名称 / 代码", "行业", "现价", "涨跌幅", "成交额(亿)", "主力净流入(亿)"];
   let html = `<thead><tr>`;
   cols.forEach((c, i) => {
