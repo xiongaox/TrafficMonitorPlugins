@@ -285,7 +285,9 @@
   table.rank th { color: var(--text-dim); font-weight: normal; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
   table.rank td:first-child, table.rank th:first-child { text-align: left; }
   table.rank tr:hover td { background: rgba(255,255,255,0.04); cursor: default; }
-  .scroll-wrap { flex: 1; overflow-y: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .scroll-wrap { flex: 1; overflow-y: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+    scrollbar-width: none; }  /* Firefox 隐藏滚动条 */
+  .scroll-wrap::-webkit-scrollbar { display: none; }  /* Chrome/Edge 隐藏滚动条 */
   .num { font-variant-numeric: tabular-nums; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; }
   .pill.up { background: rgba(246,70,93,0.15); }
@@ -294,6 +296,11 @@
   #etfrank-table th, #etfrank-table td { text-align: center; }
   #etfrank-table th:first-child, #etfrank-table td:first-child { text-align: left; }
   #etfrank-table .sort-arrow { margin-left: 4px; color: var(--accent); font-size: 10px; }
+  #etfrank-table .theme-tag {
+    display: inline-block; padding: 1px 8px; border-radius: 9px;
+    font-size: 10px; color: var(--text-sub);
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  }
   /* ===== ETF涨跌榜：排序分段控件 ===== */
   .rank-toolbar {
     display: flex; align-items: center; gap: 14px;
@@ -530,7 +537,7 @@ const volume = { today: genVolumeSeries(17800, 1.3), yday: genVolumeSeries(18200
 // ---- ETF 榜单（主题 → 多只具体ETF）----
 const ETF_THEMES = ["科创50", "芯片", "证券", "半导体", "光伏", "医药", "军工",
   "黄金", "证券保险", "新能源车", "银行", "5G", "人工智能", "机器人",
-  "白酒", "稀土", "豆粕", "煤炭", "钢铁", "化工", "地产", "旅游"];
+  "白酒", "稀土", "豆粕", "煤炭", "钢铁", "化工", "地产", "旅游", "PCB", "CPO"];
 const ETF_SUFFIX = ["ETF", "ETF联接", "龙头ETF", "产业ETF"];
 const THEME_BIAS = Object.fromEntries(ETF_THEMES.map((t, i) => [t, i % 2 === 0 ? rnd(5, 30) : rnd(-30, -5)]));
 const etfs = ETF_THEMES.flatMap(theme => {
@@ -837,11 +844,12 @@ function drawEtfRank() {
     <span class="tinfo">ETF总数<b>${etfs.length}</b></span>`;
   const list = [...etfs].sort((a, b) => rankMode === "desc" ? b.pct - a.pct : a.pct - b.pct);
   const arrow = rankMode === "desc" ? "▼" : "▲";
-  let html = `<thead><tr><th>名称 / 代码</th><th>现价</th><th>涨跌幅<span class="sort-arrow">${arrow}</span></th><th>成交额(亿)</th><th>主力净流入(亿)</th></tr></thead><tbody>`;
+  let html = `<thead><tr><th>名称 / 代码</th><th>行业</th><th>现价</th><th>涨跌幅<span class="sort-arrow">${arrow}</span></th><th>成交额(亿)</th><th>主力净流入(亿)</th></tr></thead><tbody>`;
   list.forEach((e, i) => {
     const cls = e.pct >= 0 ? "up" : "down";
     html += `<tr>
       <td><b>${e.name}</b> <span style="color:var(--text-dim)">${e.code}</span></td>
+      <td><span class="theme-tag">${e.theme}</span></td>
       <td class="num">${e.price.toFixed(3)}</td>
       <td class="num"><span class="pill ${cls} ${cls}" style="font-weight:bold">${e.pct >= 0 ? "+" : ""}${e.pct.toFixed(2)}%</span></td>
       <td class="num">${e.turnover.toFixed(1)}</td>
