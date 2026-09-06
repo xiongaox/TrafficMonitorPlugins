@@ -148,6 +148,24 @@
   #mainflow-stats .stat.off .val,
   #mainflow-stats .stat.off .lbl { opacity: 0.38; }
   #mainflow-stats .stat.off .swatch { background: var(--text-dim) !important; }
+  /* ===== 涨跌趋势页：左栏文字统计块（涨跌趋势 + 成交量概览） ===== */
+  .trend-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px 12px;
+  }
+  .trend-block .blk-title { font-size: 12px; font-weight: bold; color: var(--text); margin-bottom: 9px; }
+  .trend-grid { display: grid; }
+  .trend-grid .cell {
+    text-align: center;
+    border-left: 1px solid var(--border);
+    padding: 1px 4px;
+    min-width: 0;
+  }
+  .trend-grid .cell:first-child { border-left: none; }
+  .trend-grid .lbl { display: block; font-size: 10px; color: var(--text-sub); margin-bottom: 4px; white-space: nowrap; }
+  .trend-grid .val { font-size: 14px; font-weight: bold; white-space: nowrap; }
   .chart-heading { font-size: 12px; font-weight: bold; color: var(--text); padding: 2px 4px 6px 0; }
   /* ETF 主题列表浮层 */
   #etfinflow-body { flex: 1; display: flex; min-height: 0; position: relative; }
@@ -271,7 +289,6 @@
   <div class="menu-item" data-page="etfinflow">ETF申购净流入</div>
   <div class="menu-item" data-page="mainflow">主力资金</div>
   <div class="menu-item" data-page="trend">涨跌趋势</div>
-  <div class="menu-item" data-page="volume">成交量</div>
   <div class="menu-item" data-page="etfrank">ETF涨跌榜</div>
   <div class="foot">演示原型 · 模拟数据</div>
 </div>
@@ -329,24 +346,25 @@
     <div class="chart" id="chart-mainflow"></div>
   </div>
 
-  <!-- 4. 涨跌趋势 -->
+  <!-- 4. 涨跌趋势（含成交量概览：左栏文字统计 + 右栏两图） -->
   <div class="page" id="page-trend">
-    <div class="page-title">涨跌趋势 <span class="page-sub">全市场涨跌家数（模拟数据）</span></div>
-    <div class="stat-row" id="trend-stats"></div>
-    <div style="display:flex; gap:8px; flex:1; min-height:0;">
-      <div style="flex:1.6; display:flex; flex-direction:column; min-width:0; gap:6px;">
-        <div class="chart" id="chart-trend-dist" style="flex:1"></div>
-        <div class="chart" id="chart-trend-count" style="flex:1"></div>
+    <div class="page-title">涨跌趋势 <span class="page-sub">全市场涨跌家数与沪深成交额（模拟数据）</span></div>
+    <div style="display:flex; gap:8px; flex:1; min-height:0; align-items:stretch;">
+      <div style="width:clamp(260px, 32%, 330px); flex-shrink:0; display:flex; flex-direction:column; gap:8px;">
+        <div class="trend-block">
+          <div class="blk-title">涨跌趋势</div>
+          <div class="trend-grid" id="trend-stats" style="grid-template-columns:repeat(5,1fr)"></div>
+        </div>
+        <div class="trend-block">
+          <div class="blk-title">成交量</div>
+          <div class="trend-grid" id="volume-stats" style="grid-template-columns:repeat(4,1fr)"></div>
+        </div>
       </div>
-      <div class="chart" id="chart-trend-line" style="flex:1"></div>
+      <div style="flex:1; display:flex; flex-direction:column; min-width:0; gap:6px;">
+        <div class="chart" id="chart-trend-dist" style="flex:1"></div>
+        <div class="chart" id="chart-trend-line" style="flex:1"></div>
+      </div>
     </div>
-  </div>
-
-  <!-- 5. 成交量 -->
-  <div class="page" id="page-volume">
-    <div class="page-title">成交量 <span class="page-sub">沪深两市合计成交额（模拟数据）</span></div>
-    <div class="stat-row" id="volume-stats"></div>
-    <div class="chart" id="chart-volume"></div>
   </div>
 
   <!-- 6. ETF涨跌榜 -->
@@ -711,11 +729,11 @@ function drawMainflow() {
 function drawTrend() {
   const upNow = trend.up[NOW_IDX], downNow = trend.down[NOW_IDX];
   document.getElementById("trend-stats").innerHTML = `
-    <div class="stat"><span class="lbl">上涨</span><span class="val up">${upNow}</span></div>
-    <div class="stat"><span class="lbl">平盘</span><span class="val flat">133</span></div>
-    <div class="stat"><span class="lbl">下跌</span><span class="val down">${downNow}</span></div>
-    <div class="stat"><span class="lbl">涨停</span><span class="val up">46</span></div>
-    <div class="stat"><span class="lbl">跌停</span><span class="val down">16</span></div>`;
+    <div class="cell"><span class="lbl">上涨</span><span class="val up">${upNow}</span></div>
+    <div class="cell"><span class="lbl">平盘</span><span class="val">133</span></div>
+    <div class="cell"><span class="lbl">下跌</span><span class="val down">${downNow}</span></div>
+    <div class="cell"><span class="lbl">涨停</span><span class="val up">46</span></div>
+    <div class="cell"><span class="lbl">跌停</span><span class="val down">16</span></div>`;
   // 分布柱状图
   mkChart("chart-trend-dist").setOption({
     backgroundColor: "transparent",
@@ -728,6 +746,7 @@ function drawTrend() {
     yAxis: { type: "value", ...AXIS_STYLE,
       axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
     series: [{ type: "bar", barWidth: "60%",
+      label: { show: true, position: "top", color: "#9AA1B0", fontSize: 9 },
       data: trend.dist.map(d => ({ value: d[1],
         itemStyle: { color: d[2] === "up" ? "#F6465D" : d[2] === "down" ? "#0ECB81" : "#616878" } }))
     }]
@@ -750,58 +769,20 @@ function drawTrend() {
       axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
     series: [line("上涨家数", trend.up, "#F6465D"), line("下跌家数", trend.down, "#0ECB81")]
   });
-  // 涨跌家数对比（当前快照柱状）
-  mkChart("chart-trend-count").setOption({
-    backgroundColor: "transparent",
-    title: { text: "当前涨跌家数", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
-    grid: { left: 40, right: 8, top: 30, bottom: 24 },
-    xAxis: { type: "category", data: ["上涨", "平盘", "下跌", "涨停", "跌停"], ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
-    yAxis: { type: "value", ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
-    series: [{ type: "bar", barWidth: "45%",
-      data: [
-        { value: upNow, itemStyle: { color: "#F6465D" } },
-        { value: 133, itemStyle: { color: "#616878" } },
-        { value: downNow, itemStyle: { color: "#0ECB81" } },
-        { value: 46, itemStyle: { color: "#F6465D" } },
-        { value: 16, itemStyle: { color: "#0ECB81" } }
-      ],
-      label: { show: true, position: "top", color: "#9AA1B0", fontSize: 10 }
-    }]
-  });
 }
 
-// ================= 5. 成交量 =================
+// ================= 5. 成交量（并入涨跌趋势页左栏统计） =================
 function drawVolume() {
   const now = volume.today[NOW_IDX];
   const yday = volume.yday[NOW_IDX]; // 同一时刻对比昨日同时点
-  const ydayTotal = volume.yday.filter(v => v !== null).pop();
   const delta = now - yday;
   const elapsed = (NOW_IDX + 1) / TIME_AXIS.length;
   const forecast = Math.round(now / elapsed);
   document.getElementById("volume-stats").innerHTML = `
-    <div class="stat"><span class="lbl">当日成交</span><span class="val">${now}亿</span></div>
-    <div class="stat"><span class="lbl">昨日同时点</span><span class="val">${yday}亿</span></div>
-    <div class="stat"><span class="lbl">较昨日同时点</span><span class="val ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta}亿</span></div>
-    <div class="stat"><span class="lbl">昨日全天</span><span class="val">${ydayTotal}亿</span></div>
-    <div class="stat"><span class="lbl">预测全天</span><span class="val">${forecast}亿</span></div>`;
-  mkChart("chart-volume").setOption({
-    backgroundColor: "transparent",
-    legend: { top: 4, textStyle: { color: "#9AA1B0", fontSize: 11 } },
-    grid: { left: 60, right: 20, top: 36, bottom: 28 },
-    tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
-      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59 } },
-    yAxis: { type: "value", name: "亿元", nameTextStyle: { color: "#616878" }, ...AXIS_STYLE },
-    series: [
-      { name: "今日累计成交", type: "line", data: volume.today, showSymbol: false,
-        lineStyle: { width: 2, color: "#3B82F6" }, itemStyle: { color: "#3B82F6" },
-        areaStyle: { color: "rgba(59,130,246,0.12)" } },
-      { name: "昨日累计成交", type: "line", data: volume.yday, showSymbol: false,
-        lineStyle: { width: 1.4, color: "#616878", type: "dashed" }, itemStyle: { color: "#616878" } }
-    ]
-  });
+    <div class="cell"><span class="lbl">当日成交额</span><span class="val">${now}亿</span></div>
+    <div class="cell"><span class="lbl">昨日成交</span><span class="val">${yday}亿</span></div>
+    <div class="cell"><span class="lbl">较昨日变动</span><span class="val ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta}亿</span></div>
+    <div class="cell"><span class="lbl">预测全天</span><span class="val">${forecast}亿</span></div>`;
 }
 
 // ================= 6. ETF涨跌榜 =================
@@ -910,8 +891,7 @@ const PAGE_DRAWERS = {
   bubble: () => { drawBubble(); selectSector("AI应用"); },
   etfinflow: drawEtfInflow,
   mainflow: drawMainflow,
-  trend: drawTrend,
-  volume: drawVolume,
+  trend: () => { drawTrend(); drawVolume(); },
   etfrank: drawEtfRank
 };
 document.querySelectorAll(".menu-item").forEach(item => {
