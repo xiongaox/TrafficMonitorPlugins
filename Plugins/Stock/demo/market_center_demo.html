@@ -312,7 +312,7 @@
     padding: 6px 12px;
     margin-bottom: 8px;
   }
-  .rank-toolbar .tb-item { display: flex; align-items: baseline; gap: 6px; }
+  .rank-toolbar .tb-item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
   .rank-toolbar .tb-item .lbl { font-size: 11px; color: var(--text-sub); }
   .rank-toolbar .tb-item b { font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; }
   .rank-toolbar .tinfo { margin-left: auto; display: flex; align-items: baseline; gap: 10px; }
@@ -837,21 +837,15 @@ const RANK_SORTERS = [
   (a, b) => a.inflow - b.inflow
 ];
 function drawEtfRank() {
-  // 工具条：从当前数据汇总市场概览
+  // 工具条：从当前数据汇总市场概览（5 项核心指标，防止窄面板挤压）
   const upN = etfs.filter(e => e.pct > 0).length;
   const downN = etfs.filter(e => e.pct < 0).length;
-  const flatN = etfs.length - upN - downN;
   const avgPct = etfs.reduce((a, e) => a + e.pct, 0) / etfs.length;
   const totalTurnover = etfs.reduce((a, e) => a + e.turnover, 0);
   const totalInflow = etfs.reduce((a, e) => a + e.inflow, 0);
-  const limitUpN = etfs.filter(e => e.pct >= 5).length;
-  const limitDownN = etfs.filter(e => e.pct <= -5).length;
   document.getElementById("etfrank-tabs").innerHTML = `
     <div class="tb-item"><span class="lbl">上涨</span><b class="up">${upN}</b></div>
-    <div class="tb-item"><span class="lbl">平盘</span><b>${flatN}</b></div>
     <div class="tb-item"><span class="lbl">下跌</span><b class="down">${downN}</b></div>
-    <div class="tb-item"><span class="lbl">涨停(≥5%)</span><b class="up">${limitUpN}</b></div>
-    <div class="tb-item"><span class="lbl">跌停(≤-5%)</span><b class="down">${limitDownN}</b></div>
     <div class="tb-item"><span class="lbl">平均涨跌</span><b class="${avgPct >= 0 ? "up" : "down"}">${avgPct >= 0 ? "+" : ""}${avgPct.toFixed(2)}%</b></div>
     <div class="tb-item"><span class="lbl">合计成交</span><b>${totalTurnover.toFixed(0)}亿</b></div>
     <div class="tb-item"><span class="lbl">主力净流入</span><b class="${totalInflow >= 0 ? "up" : "down"}">${totalInflow >= 0 ? "+" : ""}${totalInflow.toFixed(1)}亿</b></div>
