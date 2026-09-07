@@ -2109,23 +2109,10 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 
 void CFloatingWnd::OnRButtonDown(UINT nFlags, CPoint point)
 {
-	if (m_viewMode != UI_VIEW_OVERVIEW)
-	{
-		m_viewMode = UI_VIEW_OVERVIEW;
-		m_showChipPeak = false;
-		UpdateModeButtons();
-		UpdatePeriodComboVisibility();
-		Invalidate();
-	}
-	else
-	{
-		m_viewMode = UI_VIEW_TIMELINE;
-		m_showChipPeak = false;
-		m_showJZCurve = CCommon::IsFundCode(m_stock_id);  // 基金默认显示净值曲线
-		UpdateModeButtons();
-		UpdatePeriodComboVisibility();
-		Invalidate();
-	}
+	// 右键直接打开“行情中心”独立窗口（替代原总览↔分时切换；视图切换仍由顶栏模式按钮承担）
+	UNREFERENCED_PARAMETER(nFlags);
+	UNREFERENCED_PARAMETER(point);
+	Stock::Instance().ShowMarketCenterWnd(this);
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)

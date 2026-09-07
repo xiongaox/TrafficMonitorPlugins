@@ -8,6 +8,7 @@
 #include "ManagerDialog.h"
 #include "Common.h"
 #include "FloatingWnd.h"
+#include "MarketCenterWnd.h"
 #include "StockFetchThread.h"
 #include "SignalAnalyzer.h"
 #include "WebDavSync.h"
@@ -99,6 +100,13 @@ Stock::Stock() : m_pFloatingWnd(NULL)
 Stock::~Stock()
 {
 	DestroyFloatingWnd();
+	// 行情中心窗口：非模态自管生命周期，插件卸载时销毁
+	{
+		std::lock_guard<std::mutex> lock(m_wndMutex);
+		if (m_pMarketCenterWnd != nullptr && ::IsWindow(m_pMarketCenterWnd->GetSafeHwnd()))
+			m_pMarketCenterWnd->DestroyWindow();
+		m_pMarketCenterWnd = nullptr;
+	}
 	CStockFetchThread::Instance().Stop();
 }
 
@@ -238,7 +246,7 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 
 int Stock::GetCommandCount()
 {
-	return 1;
+	return 2;
 }
 
 const wchar_t* Stock::GetCommandName(int command_index)
@@ -247,6 +255,8 @@ const wchar_t* Stock::GetCommandName(int command_index)
 	{
 	case 0:
 		return g_data.StringRes(IDS_MENU_UPDATE_STOCK).GetString();
+	case 1:
+		return g_data.StringRes(IDS_MENU_MARKET_CENTER).GetString();
 	}
 	return nullptr;
 }
@@ -257,6 +267,9 @@ void Stock::OnPluginCommand(int command_index, void* hWnd, void* para)
 	{
 	case 0:
 		SendStockInfoRequest();
+		break;
+	case 1:
+		ShowMarketCenterWnd(CWnd::FromHandle((HWND)hWnd));
 		break;
 	}
 }
@@ -368,6 +381,38 @@ void Stock::DestroyFloatingWnd()
 		delete m_pFloatingWnd;
 		m_pFloatingWnd = NULL;
 	}
+}
+
+void Stock::ShowMarketCenterWnd(CWnd* pWnd)
+{
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	// 已打开则前置激活，否则创建
+	CMarketCenterWnd* existing = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(m_wndMutex);
+		if (m_pMarketCenterWnd != nullptr && ::IsWindow(m_pMarketCenterWnd->GetSafeHwnd()))
+			existing = m_pMarketCenterWnd;
+	}
+	if (existing != nullptr)
+	{
+		existing->ShowWindow(SW_RESTORE);
+		existing->SetForegroundWindow();
+		return;
+	}
+	CMarketCenterWnd* wnd = new CMarketCenterWnd();
+	if (!wnd->Create(pWnd))
+	{
+		wnd->PostNcDestroy();   // 自清理
+		return;
+	}
+	std::lock_guard<std::mutex> lock(m_wndMutex);
+	m_pMarketCenterWnd = wnd;
+}
+
+void Stock::OnMarketCenterWndClosed()
+{
+	std::lock_guard<std::mutex> lock(m_wndMutex);
+	m_pMarketCenterWnd = nullptr;
 }
 
 void Stock::PreloadAllKLineData()
