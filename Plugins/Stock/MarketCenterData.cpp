@@ -505,7 +505,7 @@ namespace
 	bool FetchIndexTurnover(const wchar_t* secid, double& todayTurnover, double& prevTurnover)
 	{
 		std::wstring url = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + std::wstring(secid)
-			+ L"&klt=101&fqt=1&lmt=2&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57";
+			+ L"&klt=101&fqt=1&end=20500101&lmt=2&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57";
 		std::string resp;
 		if (!HttpGet(url, resp)) return false;
 		yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);

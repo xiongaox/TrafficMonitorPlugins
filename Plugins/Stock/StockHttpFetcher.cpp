@@ -318,7 +318,7 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 		try
 		{
 			NotifyStatus(code, L"日K线", L"东方财富源", L"正在拉取数据…");
-			std::wstring url = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=101&fqt=1&lmt=" + std::to_wstring(days) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
+			std::wstring url = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=101&fqt=1&end=20500101&lmt=" + std::to_wstring(days) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString strHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
@@ -368,7 +368,7 @@ bool CStockHttpFetcher::FetchWeekKLine(const std::wstring& code, int weeks, std:
 		try
 		{
 			NotifyStatus(code, L"周K线", L"东方财富源", L"正在拉取数据…");
-			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=102&fqt=1&lmt=" + std::to_wstring(weeks) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
+			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=102&fqt=1&end=20500101&lmt=" + std::to_wstring(weeks) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
@@ -405,7 +405,7 @@ bool CStockHttpFetcher::FetchMonthKLine(const std::wstring& code, int months, st
 		try
 		{
 			NotifyStatus(code, L"月K线", L"东方财富源", L"正在拉取数据…");
-			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=103&fqt=1&lmt=" + std::to_wstring(months) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
+			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=103&fqt=1&end=20500101&lmt=" + std::to_wstring(months) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
@@ -464,7 +464,7 @@ bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, st
 		try
 		{
 			NotifyStatus(code, L"5分钟K线", L"东方财富源", L"正在拉取数据…");
-			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=5&fqt=1&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
+			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=5&fqt=1&end=20500101&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
@@ -523,7 +523,7 @@ bool CStockHttpFetcher::FetchMin30KLine(const std::wstring& code, int datalen, s
 		try
 		{
 			NotifyStatus(code, L"30分钟K线", L"东方财富源", L"正在拉取数据…");
-			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=30&fqt=1&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
+			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=30&fqt=1&end=20500101&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
