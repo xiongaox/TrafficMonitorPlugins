@@ -123,6 +123,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_CTLCOLOR()
 	ON_WM_DRAWITEM()
 	ON_MESSAGE((WM_USER + 100), OnUpdateStatus)
+	ON_MESSAGE((CMarketCenterWnd::WM_MC_EXIT_REQUEST), OnMarketCenterExitRequest)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
@@ -238,6 +239,14 @@ LRESULT CFloatingWnd::OnUpdateStatus(WPARAM wParam, LPARAM lParam)
 		m_orderBookDirty = true;
 	else
 		m_chartDirty = true;
+	return 0;
+}
+
+LRESULT CFloatingWnd::OnMarketCenterExitRequest(WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(wParam);
+	UNREFERENCED_PARAMETER(lParam);
+	ExitMarketCenter();
 	return 0;
 }
 
@@ -379,6 +388,29 @@ void CFloatingWnd::OnPaint()
 	CPaintDC dc(this);
 	CRect rect;
 	GetClientRect(&rect);
+
+	// 行情中心内嵌视图：内容区被子窗口覆盖，仅绘制顶部标题条（股票名），按钮为真实子控件仍可交互
+	if (m_pMarketCenterView != nullptr)
+	{
+		dc.FillSolidRect(rect, COLOR_BG_DARK);
+		const int headerHeight = g_data.RDPI(26);
+		dc.FillSolidRect(0, 0, rect.Width(), headerHeight, COLOR_BG_HEADER);
+		dc.FillSolidRect(0, headerHeight, rect.Width(), 1, COLOR_DARK_GRAY_BORDER);
+		CString name(m_stock_id.c_str());
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			auto stockData = g_data.GetStockData(m_stock_id);
+			if (stockData)
+				name = stockData->info.GetStockShortName();
+		}
+		dc.SetBkMode(TRANSPARENT);
+		dc.SetTextColor(COLOR_TEXT_PRIMARY);
+		CFont* oldFont = m_pfont ? dc.SelectObject(m_pfont) : nullptr;
+		dc.TextOut(g_data.RDPI(8), max(0, (headerHeight - dc.GetTextExtent(name).cy) / 2), name);
+		if (oldFont)
+			dc.SelectObject(oldFont);
+		return;
+	}
 
 	CDC memDC;
 	CBitmap memBitmap;
@@ -2109,10 +2141,82 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 
 void CFloatingWnd::OnRButtonDown(UINT nFlags, CPoint point)
 {
-	// 右键直接打开“行情中心”独立窗口（替代原总览↔分时切换；视图切换仍由顶栏模式按钮承担）
+	// 右键在悬浮窗内原地切换“行情中心”视图（替代原总览↔分时切换；视图切换仍由顶栏模式按钮承担）
 	UNREFERENCED_PARAMETER(nFlags);
 	UNREFERENCED_PARAMETER(point);
-	Stock::Instance().ShowMarketCenterWnd(this);
+	ToggleMarketCenter();
+}
+
+void CFloatingWnd::ToggleMarketCenter()
+{
+	if (m_pMarketCenterView != nullptr)
+	{
+		ExitMarketCenter();
+		return;
+	}
+
+	// 进入：记住当前窗口位置尺寸，临时放大以容纳行情中心
+	CRect wndRect;
+	GetWindowRect(&wndRect);
+	m_savedWndRect = wndRect;
+
+	HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
+	MONITORINFO mi = { sizeof(MONITORINFO) };
+	GetMonitorInfo(hMonitor, &mi);
+	CRect work = mi.rcWork;
+	// 目标尺寸：仅在当前窗口偏小时放大，已够大则保持（避免窗口跳动）
+	int targetW = min(g_data.DPI(1000), work.Width() - 24);
+	int targetH = min(g_data.DPI(680), work.Height() - 24);
+	int newW = max(wndRect.Width(), targetW);
+	int newH = max(wndRect.Height(), targetH);
+	// 保持原窗口中心点（clamp 到工作区内）
+	int cx = wndRect.left + wndRect.Width() / 2 - newW / 2;
+	int cy = wndRect.top + wndRect.Height() / 2 - newH / 2;
+	cx = max(work.left + 4, min(cx, work.right - newW - 4));
+	cy = max(work.top + 4, min(cy, work.bottom - newH - 4));
+	SetWindowPos(nullptr, cx, cy, newW, newH, SWP_NOZORDER | SWP_NOACTIVATE);
+	// OnPaint 布局分支在行情中心模式下被跳过，顶部按钮需手动贴新右上角
+	{
+		int closeBtnW = g_data.RDPI(20);
+		int closeBtnH = g_data.RDPI(18);
+		int headerBtnTop = g_data.RDPI(2);
+		SafeSetWindowPos(m_btnClose, newW - closeBtnW, headerBtnTop, closeBtnW, closeBtnH);
+		SafeSetWindowPos(m_btnExpand, newW - closeBtnW * 2, headerBtnTop, closeBtnW, closeBtnH);
+		SafeSetWindowPos(m_btnToggleStockList, newW - closeBtnW * 3, headerBtnTop, closeBtnW, closeBtnH);
+	}
+
+	CRect client;
+	GetClientRect(&client);
+	// 顶部标题条（股票名/模式按钮/关闭）保留，行情中心占据其下方
+	int headerH = g_data.RDPI(26);
+	CRect mcRect(0, headerH, client.Width(), client.Height());
+	m_pMarketCenterView = new CMarketCenterWnd();
+	if (!m_pMarketCenterView->CreateChild(this, mcRect))
+	{
+		m_pMarketCenterView->PostNcDestroy();
+		m_pMarketCenterView = nullptr;
+		// 放大失败回滚
+		SetWindowPos(nullptr, m_savedWndRect.left, m_savedWndRect.top, m_savedWndRect.Width(), m_savedWndRect.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
+		return;
+	}
+	UpdateModeButtons();
+	UpdatePeriodComboVisibility();
+}
+
+void CFloatingWnd::ExitMarketCenter()
+{
+	if (m_pMarketCenterView == nullptr)
+		return;
+	CWnd* child = m_pMarketCenterView;
+	m_pMarketCenterView = nullptr;
+	if (::IsWindow(child->GetSafeHwnd()))
+		child->DestroyWindow();   // PostNcDestroy 自清理
+	// 还原进入前的窗口位置尺寸
+	if (!m_savedWndRect.IsRectEmpty())
+		SetWindowPos(nullptr, m_savedWndRect.left, m_savedWndRect.top, m_savedWndRect.Width(), m_savedWndRect.Height(), SWP_NOZORDER | SWP_NOACTIVATE);
+	UpdateModeButtons();
+	UpdatePeriodComboVisibility();
+	Invalidate();
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
@@ -3735,6 +3839,15 @@ LRESULT CFloatingWnd::OnShowTradeDialog(WPARAM wParam, LPARAM lParam)
 void CFloatingWnd::OnDestroy()
 {
 	KillTimer(IDC_REFRESH_TIMER);
+
+	// 行情中心内嵌视图随宿主销毁
+	if (m_pMarketCenterView != nullptr)
+	{
+		CWnd* child = m_pMarketCenterView;
+		m_pMarketCenterView = nullptr;
+		if (::IsWindow(child->GetSafeHwnd()))
+			child->DestroyWindow();
+	}
 
 	CWnd::OnDestroy();
 

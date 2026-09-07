@@ -18,6 +18,7 @@
 #include "StatusBarPanel.h"
 #include "KLineChart.h"
 #include "TimelineChart.h"
+#include "MarketCenterWnd.h"
 
 // 定义自定义消息
 #define FWND_MSG_UPDATE_STATUS (WM_USER + 100)
@@ -42,6 +43,9 @@ public:
 	const std::wstring& GetStockId() const { return m_stock_id; }
 	void SetStockId(const std::wstring& stockId);
 	void ToggleKLineMode(); // 切换分时/日K模式
+	// 行情中心内嵌视图：右键在悬浮窗内原地切换；进入时临时放大窗口，退出还原
+	void ToggleMarketCenter();
+	void ExitMarketCenter();
 	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
@@ -56,6 +60,7 @@ protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
+	LRESULT OnMarketCenterExitRequest(WPARAM wParam, LPARAM lParam);   // 行情中心子视图右键退出
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
@@ -114,6 +119,8 @@ private:
 	void UpdateGroupTabHover(const CPoint& point);
 
 	CTransparentWnd m_CTransparentWnd;
+	CMarketCenterWnd* m_pMarketCenterView{ nullptr };  // 行情中心内嵌子视图（非空=行情中心模式）
+	CRect m_savedWndRect;                              // 进入行情中心前的窗口位置尺寸（退出还原）
 	CStockListPanel m_stockListPanel;
 	CCallAuctionChart m_callAuctionChart;
 	CChipPeakPanel m_chipPeakPanel;

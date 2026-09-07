@@ -18,6 +18,13 @@ public:
 	virtual ~CMarketCenterWnd();
 
 	BOOL Create(CWnd* pParent);
+	// 以子窗口形态嵌入宿主（悬浮窗行情中心视图）：占据 rc，无标题栏、不注册到 Stock 单例
+	BOOL CreateChild(CWnd* pParent, const CRect& rc);
+	// 子窗口形态下右键请求宿主退出行情中心视图
+	bool IsChildMode() const { return m_childMode; }
+
+	// 子窗口右键 → 宿主退出行情中心（父窗口消息映射引用，需 public）
+	static const UINT WM_MC_EXIT_REQUEST = WM_APP + 141;
 
 	// 创建失败时由 Stock 调用以自清理（delete this）
 	virtual void PostNcDestroy() override;
@@ -85,6 +92,7 @@ private:
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnMouseLeave();
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnDestroy();
@@ -184,6 +192,7 @@ private:
 	// hover
 	CPoint m_mouse_pos;
 	bool m_tracking_mouse{ false };
+	bool m_childMode{ false };      // 子窗口形态（悬浮窗内嵌视图）
 
 	static const UINT WM_MC_DATA_UPDATED = WM_APP + 140;   // 数据到达（与 CMarketCenterData::RequestIfStale 一致）
 	static const int MC_REFRESH_TIMER = 3001;

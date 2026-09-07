@@ -51,7 +51,7 @@ public:
 	virtual void OnInitialize(ITrafficMonitor* pApp) override;
 
 	INT_PTR ShowStockManageDlg(CWnd* pWnd);
-	void ShowMarketCenterWnd(CWnd* pWnd);   // 打开/激活行情中心独立窗口（右键菜单入口）
+	void ShowMarketCenterWnd(CWnd* pWnd);   // 打开/激活行情中心独立窗口（插件菜单命令入口；悬浮窗右键走内嵌视图）
 	void OnMarketCenterWndClosed();          // 窗口自毁回调（PostNcDestroy 中调用，清指针）
 	void SendStockInfoRequest();
 	void ShowContextMenu(CWnd* pWnd);

@@ -163,7 +163,9 @@ CMarketCenterWnd::~CMarketCenterWnd()
 
 void CMarketCenterWnd::PostNcDestroy()
 {
-	Stock::Instance().OnMarketCenterWndClosed();
+	// 仅独立窗口形态登记到 Stock 单例；子窗口形态随宿主销毁，无需登记
+	if (!m_childMode)
+		Stock::Instance().OnMarketCenterWndClosed();
 	delete this;
 }
 
@@ -174,6 +176,7 @@ BEGIN_MESSAGE_MAP(CMarketCenterWnd, CWnd)
 	ON_WM_MOUSEMOVE()
 	ON_WM_MOUSELEAVE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_RBUTTONUP()
 	ON_WM_MOUSEWHEEL()
 	ON_WM_TIMER()
 	ON_WM_DESTROY()
@@ -182,22 +185,27 @@ BEGIN_MESSAGE_MAP(CMarketCenterWnd, CWnd)
 	ON_MESSAGE(WM_MC_DATA_UPDATED, &CMarketCenterWnd::OnDataUpdated)
 END_MESSAGE_MAP()
 
-BOOL CMarketCenterWnd::Create(CWnd* pParent)
+// 注册窗口类（独立窗口与内嵌子窗口共用，幂等）
+static bool RegisterMarketCenterClass()
 {
 	WNDCLASS wc{};
 	HINSTANCE hInst = AfxGetInstanceHandle();
-	if (!::GetClassInfo(hInst, L"CStockMarketCenterWnd", &wc))
-	{
-		wc.style = CS_HREDRAW | CS_VREDRAW;
-		wc.lpfnWndProc = ::DefWindowProc;
-		wc.hInstance = hInst;
-		wc.hIcon = NULL;
-		wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground = NULL;
-		wc.lpszClassName = L"CStockMarketCenterWnd";
-		if (!AfxRegisterClass(&wc))
-			return FALSE;
-	}
+	if (::GetClassInfo(hInst, L"CStockMarketCenterWnd", &wc))
+		return true;
+	wc.style = CS_HREDRAW | CS_VREDRAW;
+	wc.lpfnWndProc = ::DefWindowProc;
+	wc.hInstance = hInst;
+	wc.hIcon = NULL;
+	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground = NULL;
+	wc.lpszClassName = L"CStockMarketCenterWnd";
+	return AfxRegisterClass(&wc) != FALSE;
+}
+
+BOOL CMarketCenterWnd::Create(CWnd* pParent)
+{
+	if (!RegisterMarketCenterClass())
+		return FALSE;
 
 	// 初始尺寸 1180x740（96dpi 逻辑像素，随显示器 DPI 放大）
 	int w = g_data.DPI(1180), h = g_data.DPI(740);
@@ -205,8 +213,8 @@ BOOL CMarketCenterWnd::Create(CWnd* pParent)
 	int x = max(0, (work.Width() - w) / 2);
 	int y = max(0, (work.Height() - h) / 2);
 
-	if (!CreateEx(WS_EX_APPWINDOW, L"CStockMarketCenterWnd", L"行情中心",
-		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+	if (!CreateEx(WS_OVERLAPPEDWINDOW | WS_VISIBLE, L"CStockMarketCenterWnd", L"行情中心",
+		WS_EX_APPWINDOW,
 		x, y, w, h, pParent ? pParent->GetSafeHwnd() : NULL, 0))
 	{
 		return FALSE;
@@ -232,6 +240,26 @@ BOOL CMarketCenterWnd::Create(CWnd* pParent)
 	return TRUE;
 }
 
+BOOL CMarketCenterWnd::CreateChild(CWnd* pParent, const CRect& rc)
+{
+	if (pParent == nullptr || !::IsWindow(pParent->GetSafeHwnd()))
+		return FALSE;
+	if (!RegisterMarketCenterClass())
+		return FALSE;
+	m_childMode = true;
+	UpdateClock();
+	if (!CreateEx(WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, L"CStockMarketCenterWnd", L"",
+		0,
+		rc, pParent, 0))
+	{
+		m_childMode = false;
+		return FALSE;
+	}
+	SetTimer(MC_REFRESH_TIMER, 1000, NULL);
+	RequestData();
+	return TRUE;
+}
+
 BOOL CMarketCenterWnd::OnEraseBkgnd(CDC* pDC)
 {
 	return TRUE;
@@ -251,9 +279,24 @@ void CMarketCenterWnd::OnSize(UINT nType, int cx, int cy)
 
 void CMarketCenterWnd::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 {
+	if (m_childMode)
+		return;   // 子窗口尺寸由宿主管理
 	lpMMI->ptMinTrackSize.x = g_data.DPI(860);
 	lpMMI->ptMinTrackSize.y = g_data.DPI(540);
 	CWnd::OnGetMinMaxInfo(lpMMI);
+}
+
+void CMarketCenterWnd::OnRButtonUp(UINT nFlags, CPoint point)
+{
+	// 子窗口形态：右键请求宿主退出行情中心视图（回到原视图）
+	if (m_childMode)
+	{
+		CWnd* parent = GetParent();
+		if (parent)
+			parent->PostMessage(WM_MC_EXIT_REQUEST, 0, 0);
+		return;
+	}
+	CWnd::OnRButtonUp(nFlags, point);
 }
 
 void CMarketCenterWnd::OnTimer(UINT_PTR nIDEvent)
