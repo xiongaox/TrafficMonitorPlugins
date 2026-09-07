@@ -2166,14 +2166,36 @@ void CFloatingWnd::ToggleMarketCenter()
 	m_marketCenterMode = !m_marketCenterMode;
 	if (m_marketCenterMode)
 	{
-		// 首次进入：设置数据到达通知窗口并立即拉取一次
+		// 进入：隐藏所有图表视图按钮（模式标签/指标/盘口/筹码/ETF持仓/展开/列表开关），只留关闭
+		HideChartButtons(true);
+		// 设置数据到达通知窗口并立即拉取当前页数据
 		m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
 		m_marketCenterPanel.OnTimerTick();
 	}
-	// 退出时隐藏顶栏内容区的模式/指标按钮（它们属于图表视图），避免遮挡行情中心
-	UpdateModeButtons();
-	UpdatePeriodComboVisibility();
+	else
+	{
+		// 退出：恢复图表视图按钮
+		HideChartButtons(false);
+		UpdateModeButtons();
+		UpdatePeriodComboVisibility();
+		UpdateIndicatorButtons();
+	}
 	Invalidate();
+}
+
+void CFloatingWnd::HideChartButtons(bool hide)
+{
+	// 行情中心视图下隐藏图表视图专属按钮，避免串进行情中心界面
+	CButton* btns[] = {
+		&m_btnTimeLine, &m_btnKLine, &m_btnWeekKLine, &m_btnMonthKLine, &m_btnCallAuction,
+		&m_btnMA, &m_btnBoll, &m_btnIndicatorCJL, &m_btnIndicatorMACD,
+		&m_btnIndicatorKDJ, &m_btnIndicatorWR, &m_btnIndicatorRSI,
+		&m_btnChipPeak, &m_btnOrderBook, &m_btnEtfHoldings,
+		&m_btnExpand, &m_btnToggleStockList,
+	};
+	for (auto* b : btns)
+		if (b->GetSafeHwnd())
+			b->ShowWindow(hide ? SW_HIDE : SW_SHOW);
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)

@@ -45,6 +45,7 @@ public:
 	void ToggleKLineMode(); // 切换分时/日K模式
 	// 行情中心内嵌视图：右键在悬浮窗内原地切换；进入时临时放大窗口，退出还原
 	void ToggleMarketCenter();   // 右键切换行情中心视图模式（悬浮窗内原地切换，不建子窗口/不改尺寸）
+	void HideChartButtons(bool hide);   // 行情中心视图下隐藏/恢复图表视图专属按钮
 	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表

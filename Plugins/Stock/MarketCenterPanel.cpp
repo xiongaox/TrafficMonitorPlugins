@@ -214,11 +214,26 @@ void CMarketCenterPanel::RequestData()
 {
 	HWND hWnd = m_notify_wnd;
 	CMarketCenterData& mc = CMarketCenterData::Instance();
-	// 常规刷新：板块/趋势/主力 120s；ETF 全量 5min（低频避免东财 WAF 频控）
-	mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd);
-	mc.RequestIfStale(CMarketCenterData::DS_MAINFLOW, 120, hWnd);
-	mc.RequestIfStale(CMarketCenterData::DS_TREND, 120, hWnd);
-	mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd);
+	// 只拉当前页需要的数据（懒加载）：避免一进行情中心就把 ETF 全量 14 页等全部拉完，
+	// 拖慢首页（气泡图只需 2 个请求）。切页时 SwitchPage 会再触发对应数据集拉取。
+	switch (m_page)
+	{
+	case PAGE_BUBBLE:
+		mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd);
+		break;
+	case PAGE_ETF_INFLOW:
+	case PAGE_ETF_RANK:
+		mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd);
+		break;
+	case PAGE_MAINFLOW:
+		mc.RequestIfStale(CMarketCenterData::DS_MAINFLOW, 120, hWnd);
+		break;
+	case PAGE_TREND:
+		mc.RequestIfStale(CMarketCenterData::DS_TREND, 120, hWnd);
+		break;
+	default:
+		break;
+	}
 }
 
 void CMarketCenterPanel::SwitchPage(McPage page)
@@ -230,6 +245,8 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	m_rank_scroll = 0;
 	m_hover_bubble = -1;
 	m_hover_inflow_bar = -1;
+	// 切页后拉取该页数据（懒加载；数据到达由悬浮窗 WM_MC_DATA_UPDATED 触发重绘）
+	RequestData();
 	// 重绘由悬浮窗在 HandleLButtonDown 后 Invalidate 完成
 }
 

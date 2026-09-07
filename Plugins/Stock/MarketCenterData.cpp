@@ -313,7 +313,7 @@ bool CMarketCenterData::FetchEtfs()
 		yyjson_doc_free(doc);
 		if (got == 0) break;
 		if (total > 0 && static_cast<int>(all.size()) >= total) break;
-		Sleep(800); // 翻页间隔，避免触发服务端频控
+		Sleep(400); // 翻页间隔，避免触发服务端频控（14 页约 5.6s）
 	}
 
 	if (all.empty())
