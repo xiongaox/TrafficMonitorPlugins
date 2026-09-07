@@ -331,23 +331,9 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 		}
 	}
 
-	// 3. 二级保底：新浪日K接口
-	{
-		std::wstring sinaUrl{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
-		std::vector<std::wstring> params;
-		params.push_back(L"symbol=" + code);
-		params.push_back(L"scale=240");
-		params.push_back(L"ma=no");
-		params.push_back(L"datalen=" + std::to_wstring(days));
-		sinaUrl += CCommon::vectorJoinString(params, L"&");
-
-		CString sinaHeaders = _T("Referer: http://finance.sina.com.cn");
-		if (CCommon::GetURL(sinaUrl, outResp, false, WEB_USERAGENT, sinaHeaders, sinaHeaders.GetLength()) && !outResp.empty())
-		{
-			return true;
-		}
-	}
-
+	// 注：不使用新浪日K接口作回退——其数据为不复权口径，在基金份额折算/除权日会形成
+	// 巨幅断崖，与前复权主源混用会导致K线出现虚假暴跌（ApplyDayKLine 另有口径校验兜底）。
+	// 主源与保底均失败时返回 false，由调用方保持内存现有数据不变。
 	return false;
 }
 

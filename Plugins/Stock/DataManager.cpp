@@ -265,6 +265,14 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 
 	m_db_mgr.Init(m_config_path);
 	m_db_mgr.CleanExpiredData();
+	// 历史版本曾把新浪不复权日K写入缓存（如基金份额折算形成的-65%断崖），启动时清理，
+	// 被清理的股票由随后的网络获取重建为前复权数据
+	int healedCodes = m_db_mgr.HealAbnormalDayKLineCache();
+	if (healedCodes > 0)
+	{
+		std::string log = "[KLine] healed " + std::to_string(healedCodes) + " poisoned day kline cache codes";
+		CCommon::WriteLog(log.c_str(), m_log_path.c_str());
+	}
 	LoadTodayInnerOuterSnapshots();
 	LoadChipDistributions();
 	LoadStockBasicData();
@@ -349,7 +357,18 @@ void CDataManager::LoadTimelineCache()
 void CDataManager::LoadKLineCache(STOCK::Period period)
 {
 	if (!m_db_mgr.IsOpen()) return;
-	for (const auto& code : m_setting_data.m_stock_codes)
+	// 预加载必须覆盖全部数据代码（自选+持仓+关联股票）：持仓股往往不在自选股列表，
+	// 若只加载自选股，点开持仓股悬浮窗时内存无日K，网络拉取偶发失败/变慢时图表持续空白
+	std::vector<std::wstring> allCodes = m_setting_data.m_stock_codes;
+	auto addUnique = [&allCodes](const std::wstring& code) {
+		if (!code.empty() && std::find(allCodes.begin(), allCodes.end(), code) == allCodes.end())
+			allCodes.push_back(code);
+	};
+	for (const auto& code : m_setting_data.m_position_codes)
+		addUnique(code);
+	for (const auto& item : m_stock_related)
+		addUnique(item.first);
+	for (const auto& code : allCodes)
 	{
 		auto stockData = GetStockData(code);
 		if (!stockData) continue;
@@ -887,6 +906,18 @@ void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& re
 	if (!ok)
 	{
 		stockMarket.LoadKLineDataByJson(code, NULL);
+		return;
+	}
+
+	// 口径防护：不复权数据在基金份额折算/除权日会形成巨幅断崖（正常行情单日不可能超过
+	// 涨跌停限制），检测到异常跳变时整批拒绝，保持内存现有（前复权）数据不变，也不写缓存
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "day");
+	std::string abnormalDetail;
+	if (!newPoints.empty() && STOCK::HasAbnormalKLineMove(newPoints, &abnormalDetail))
+	{
+		std::string log = "[KLine] reject abnormal day kline of " + CCommon::UnicodeToStr(code.c_str())
+			+ ": " + abnormalDetail;
+		CCommon::WriteLog(log.c_str(), m_log_path.c_str());
 		return;
 	}
 

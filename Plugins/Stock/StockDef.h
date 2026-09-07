@@ -211,6 +211,14 @@ namespace STOCK
 	// 解析各类格式（腾讯QFQ/分钟K、东方财富klines、新浪JSON）为标准KLinePoint列表
 	std::vector<KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey);
 
+	// K线单日异常跳变判定阈值：A股单日涨跌停最大±30%（北交所），基金份额折算/除权在
+	// 不复权数据上形成的断崖（实测 -52%~-66%）远超该值；前复权序列不会出现此类跳变
+	const double KLINE_ABNORMAL_MOVE_RATIO = 0.35;
+
+	// 检测K线序列中是否存在相邻两日收盘价涨跌幅超过阈值的异常跳变
+	// 用于拦截混入的不复权数据（份额折算/除权断崖）。检测到返回true，detail非空时输出首个异常点描述
+	bool HasAbnormalKLineMove(const std::vector<KLinePoint>& points, std::string* detail = nullptr);
+
 	// ========== 智能分析模块：统一K线基础结构体 ==========
 	// 每一根K线统一存储，用于30min/5min周期指标计算
 	struct Bar
