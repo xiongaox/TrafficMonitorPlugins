@@ -18,7 +18,7 @@
 #include "StatusBarPanel.h"
 #include "KLineChart.h"
 #include "TimelineChart.h"
-#include "MarketCenterWnd.h"
+#include "MarketCenterPanel.h"
 
 // 定义自定义消息
 #define FWND_MSG_UPDATE_STATUS (WM_USER + 100)
@@ -44,8 +44,7 @@ public:
 	void SetStockId(const std::wstring& stockId);
 	void ToggleKLineMode(); // 切换分时/日K模式
 	// 行情中心内嵌视图：右键在悬浮窗内原地切换；进入时临时放大窗口，退出还原
-	void ToggleMarketCenter();
-	void ExitMarketCenter();
+	void ToggleMarketCenter();   // 右键切换行情中心视图模式（悬浮窗内原地切换，不建子窗口/不改尺寸）
 	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
@@ -60,7 +59,7 @@ protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
-	LRESULT OnMarketCenterExitRequest(WPARAM wParam, LPARAM lParam);   // 行情中心子视图右键退出
+	LRESULT OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam);   // 行情中心数据到达，重绘
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
@@ -104,6 +103,7 @@ private:
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseLeave();
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
@@ -119,8 +119,8 @@ private:
 	void UpdateGroupTabHover(const CPoint& point);
 
 	CTransparentWnd m_CTransparentWnd;
-	CMarketCenterWnd* m_pMarketCenterView{ nullptr };  // 行情中心内嵌子视图（非空=行情中心模式）
-	CRect m_savedWndRect;                              // 进入行情中心前的窗口位置尺寸（退出还原）
+	CMarketCenterPanel m_marketCenterPanel;            // 行情中心面板（视图模式，悬浮窗 OnPaint 里绘制）
+	bool m_marketCenterMode{ false };                  // 是否处于行情中心视图
 	CStockListPanel m_stockListPanel;
 	CCallAuctionChart m_callAuctionChart;
 	CChipPeakPanel m_chipPeakPanel;

@@ -51,7 +51,7 @@
     <ClInclude Include="MarketCenterData.h">
       <Filter>DataManager</Filter>
     </ClInclude>
-    <ClInclude Include="MarketCenterWnd.h">
+    <ClInclude Include="MarketCenterPanel.h">
       <Filter>DataManager</Filter>
     </ClInclude>
     <ClInclude Include="Common.h">
@@ -170,7 +170,7 @@
     <ClCompile Include="MarketCenterData.cpp">
       <Filter>DataManager</Filter>
     </ClCompile>
-    <ClCompile Include="MarketCenterWnd.cpp">
+    <ClCompile Include="MarketCenterPanel.cpp">
       <Filter>DataManager</Filter>
     </ClCompile>
     <ClCompile Include="Common.cpp">

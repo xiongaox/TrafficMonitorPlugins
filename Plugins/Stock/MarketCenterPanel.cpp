@@ -1,8 +1,8 @@
 #include "pch.h"
-#include "MarketCenterWnd.h"
+#include "MarketCenterPanel.h"
+#include "DataManager.h"
 #include "ChartColors.h"
 #include "Common.h"
-#include "Stock.h"
 #include <algorithm>
 #include <cmath>
 
@@ -153,164 +153,49 @@ namespace
 	}
 }
 
-CMarketCenterWnd::CMarketCenterWnd()
+CMarketCenterPanel::CMarketCenterPanel()
 {
 }
 
-CMarketCenterWnd::~CMarketCenterWnd()
+CMarketCenterPanel::~CMarketCenterPanel()
 {
 }
 
-void CMarketCenterWnd::PostNcDestroy()
+void CMarketCenterPanel::SetNotifyWnd(HWND h)
 {
-	// 仅独立窗口形态登记到 Stock 单例；子窗口形态随宿主销毁，无需登记
-	if (!m_childMode)
-		Stock::Instance().OnMarketCenterWndClosed();
-	delete this;
+	m_notify_wnd = h;
 }
 
-BEGIN_MESSAGE_MAP(CMarketCenterWnd, CWnd)
-	ON_WM_PAINT()
-	ON_WM_ERASEBKGND()
-	ON_WM_SIZE()
-	ON_WM_MOUSEMOVE()
-	ON_WM_MOUSELEAVE()
-	ON_WM_LBUTTONDOWN()
-	ON_WM_RBUTTONUP()
-	ON_WM_MOUSEWHEEL()
-	ON_WM_TIMER()
-	ON_WM_DESTROY()
-	ON_WM_SETCURSOR()
-	ON_WM_GETMINMAXINFO()
-	ON_MESSAGE(WM_MC_DATA_UPDATED, &CMarketCenterWnd::OnDataUpdated)
-END_MESSAGE_MAP()
-
-// 注册窗口类（独立窗口与内嵌子窗口共用，幂等）
-static bool RegisterMarketCenterClass()
+void CMarketCenterPanel::Draw(CDC& memDC, int x, int y, int w, int h)
 {
-	WNDCLASS wc{};
-	HINSTANCE hInst = AfxGetInstanceHandle();
-	if (::GetClassInfo(hInst, L"CStockMarketCenterWnd", &wc))
-		return true;
-	wc.style = CS_HREDRAW | CS_VREDRAW;
-	wc.lpfnWndProc = ::DefWindowProc;
-	wc.hInstance = hInst;
-	wc.hIcon = NULL;
-	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = NULL;
-	wc.lpszClassName = L"CStockMarketCenterWnd";
-	return AfxRegisterClass(&wc) != FALSE;
-}
-
-BOOL CMarketCenterWnd::Create(CWnd* pParent)
-{
-	if (!RegisterMarketCenterClass())
-		return FALSE;
-
-	// 初始尺寸 1180x740（96dpi 逻辑像素，随显示器 DPI 放大）
-	int w = g_data.DPI(1180), h = g_data.DPI(740);
-	CRect work(0, 0, GetSystemMetrics(SM_CXFULLSCREEN), GetSystemMetrics(SM_CYFULLSCREEN));
-	int x = max(0, (work.Width() - w) / 2);
-	int y = max(0, (work.Height() - h) / 2);
-
-	if (!CreateEx(WS_OVERLAPPEDWINDOW | WS_VISIBLE, L"CStockMarketCenterWnd", L"行情中心",
-		WS_EX_APPWINDOW,
-		x, y, w, h, pParent ? pParent->GetSafeHwnd() : NULL, 0))
-	{
-		return FALSE;
-	}
-
-	// 深色标题栏（dwmapi 动态加载，失败无害）
-	HMODULE dwm = ::GetModuleHandleW(L"dwmapi.dll");
-	if (dwm)
-	{
-		using DwmSetAttrFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
-		auto fn = reinterpret_cast<DwmSetAttrFn>(::GetProcAddress(dwm, "DwmSetWindowAttribute"));
-		if (fn)
-		{
-			BOOL val = TRUE;
-			fn(m_hWnd, 20, &val, sizeof(val));  // DWMWA_USE_IMMERSIVE_DARK_MODE (20)
-			fn(m_hWnd, 19, &val, sizeof(val));  // 旧版本属性值 19
-		}
-	}
-
-	UpdateClock();
-	SetTimer(MC_REFRESH_TIMER, 1000, NULL);
-	RequestData();
-	return TRUE;
-}
-
-BOOL CMarketCenterWnd::CreateChild(CWnd* pParent, const CRect& rc)
-{
-	if (pParent == nullptr || !::IsWindow(pParent->GetSafeHwnd()))
-		return FALSE;
-	if (!RegisterMarketCenterClass())
-		return FALSE;
-	m_childMode = true;
-	UpdateClock();
-	if (!CreateEx(WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN, L"CStockMarketCenterWnd", L"",
-		0,
-		rc, pParent, 0))
-	{
-		m_childMode = false;
-		return FALSE;
-	}
-	SetTimer(MC_REFRESH_TIMER, 1000, NULL);
-	RequestData();
-	return TRUE;
-}
-
-BOOL CMarketCenterWnd::OnEraseBkgnd(CDC* pDC)
-{
-	return TRUE;
-}
-
-void CMarketCenterWnd::OnDestroy()
-{
-	KillTimer(MC_REFRESH_TIMER);
-	CWnd::OnDestroy();
-}
-
-void CMarketCenterWnd::OnSize(UINT nType, int cx, int cy)
-{
-	m_bubble_layout_dirty = true;   // 气泡布局随窗口尺寸重排
-	CWnd::OnSize(nType, cx, cy);
-}
-
-void CMarketCenterWnd::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
-{
-	if (m_childMode)
-		return;   // 子窗口尺寸由宿主管理
-	lpMMI->ptMinTrackSize.x = g_data.DPI(860);
-	lpMMI->ptMinTrackSize.y = g_data.DPI(540);
-	CWnd::OnGetMinMaxInfo(lpMMI);
-}
-
-void CMarketCenterWnd::OnRButtonUp(UINT nFlags, CPoint point)
-{
-	// 子窗口形态：右键请求宿主退出行情中心视图（回到原视图）
-	if (m_childMode)
-	{
-		CWnd* parent = GetParent();
-		if (parent)
-			parent->PostMessage(WM_MC_EXIT_REQUEST, 0, 0);
+	if (w <= 0 || h <= 0)
 		return;
-	}
-	CWnd::OnRButtonUp(nFlags, point);
-}
-
-void CMarketCenterWnd::OnTimer(UINT_PTR nIDEvent)
-{
-	if (nIDEvent == MC_REFRESH_TIMER)
+	m_content_rect = CRect(x, y, x + w, y + h);
+	// 尺寸变化时重排气泡布局
+	if (m_draw_size != CSize(w, h))
 	{
-		UpdateClock();
-		RequestData();
-		Invalidate(FALSE);
+		m_draw_size = CSize(w, h);
+		m_bubble_layout_dirty = true;
 	}
-	CWnd::OnTimer(nIDEvent);
+	Gdiplus::Graphics g(memDC.GetSafeHdc());
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+	g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+	DrawAll(g, m_content_rect);
 }
 
-void CMarketCenterWnd::UpdateClock()
+void CMarketCenterPanel::OnTimerTick()
+{
+	UpdateClock();
+	RequestData();
+}
+
+void CMarketCenterPanel::OnDataUpdated()
+{
+	// 数据到达：悬浮窗收到 WM_MC_DATA_UPDATED 后 Invalidate 重绘
+}
+
+void CMarketCenterPanel::UpdateClock()
 {
 	time_t now = time(nullptr);
 	struct tm localTm{};
@@ -325,9 +210,9 @@ void CMarketCenterWnd::UpdateClock()
 	m_clock_status = inSession ? 0 : 1;
 }
 
-void CMarketCenterWnd::RequestData()
+void CMarketCenterPanel::RequestData()
 {
-	HWND hWnd = GetSafeHwnd();
+	HWND hWnd = m_notify_wnd;
 	CMarketCenterData& mc = CMarketCenterData::Instance();
 	// 常规刷新：板块/趋势/主力 120s；ETF 全量 5min（低频避免东财 WAF 频控）
 	mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd);
@@ -336,13 +221,7 @@ void CMarketCenterWnd::RequestData()
 	mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd);
 }
 
-LRESULT CMarketCenterWnd::OnDataUpdated(WPARAM wParam, LPARAM lParam)
-{
-	Invalidate(FALSE);
-	return 0;
-}
-
-void CMarketCenterWnd::SwitchPage(McPage page)
+void CMarketCenterPanel::SwitchPage(McPage page)
 {
 	if (m_page == page)
 		return;
@@ -351,38 +230,10 @@ void CMarketCenterWnd::SwitchPage(McPage page)
 	m_rank_scroll = 0;
 	m_hover_bubble = -1;
 	m_hover_inflow_bar = -1;
-	Invalidate();
+	// 重绘由悬浮窗在 HandleLButtonDown 后 Invalidate 完成
 }
 
-void CMarketCenterWnd::OnPaint()
-{
-	CPaintDC dc(this);
-	CRect rect;
-	GetClientRect(&rect);
-	if (rect.IsRectEmpty())
-		return;
-
-	CDC memDC;
-	CBitmap memBitmap;
-	memDC.CreateCompatibleDC(&dc);
-	memBitmap.CreateCompatibleBitmap(&dc, rect.Width(), rect.Height());
-	CBitmap* pOldBitmap = memDC.SelectObject(&memBitmap);
-	memDC.FillSolidRect(rect, MC_BG);
-	memDC.SetBkMode(TRANSPARENT);
-
-	{
-		Gdiplus::Graphics graphics(memDC.GetSafeHdc());
-		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-		graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-		DrawAll(graphics, rect);
-	}
-
-	dc.BitBlt(0, 0, rect.Width(), rect.Height(), &memDC, 0, 0, SRCCOPY);
-	memDC.SelectObject(pOldBitmap);
-}
-
-void CMarketCenterWnd::RefreshSnapshots()
+void CMarketCenterPanel::RefreshSnapshots()
 {
 	CMarketCenterData& mc = CMarketCenterData::Instance();
 	std::lock_guard<std::mutex> lock(mc.m_mutex);
@@ -402,7 +253,7 @@ void CMarketCenterWnd::RefreshSnapshots()
 	}
 }
 
-void CMarketCenterWnd::BuildThemeInflow()
+void CMarketCenterPanel::BuildThemeInflow()
 {
 	// 主题聚合当日主力净流入（供 ETF申购净流入页 Top10）
 	std::map<std::wstring, double> byTheme;
@@ -415,7 +266,7 @@ void CMarketCenterWnd::BuildThemeInflow()
 		[](const ThemeInflow& a, const ThemeInflow& b) { return a.inflow > b.inflow; });
 }
 
-void CMarketCenterWnd::DrawAll(Gdiplus::Graphics& g, const CRect& client)
+void CMarketCenterPanel::DrawAll(Gdiplus::Graphics& g, const CRect& client)
 {
 	RefreshSnapshots();
 
@@ -452,7 +303,7 @@ void CMarketCenterWnd::DrawAll(Gdiplus::Graphics& g, const CRect& client)
 	}
 }
 
-void CMarketCenterWnd::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
 {
 	// 品牌行：圆点 + “行情中心”
 	Gdiplus::SolidBrush dotBrush(Gdi(MC_ACCENT));
@@ -495,7 +346,7 @@ void CMarketCenterWnd::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
 	g.DrawLine(&divPen, Gdiplus::REAL(rc.right), Gdiplus::REAL(rc.top), Gdiplus::REAL(rc.right), Gdiplus::REAL(rc.bottom));
 }
 
-void CMarketCenterWnd::DrawPage(Gdiplus::Graphics& g, const CRect& content)
+void CMarketCenterPanel::DrawPage(Gdiplus::Graphics& g, const CRect& content)
 {
 	switch (m_page)
 	{
@@ -507,7 +358,7 @@ void CMarketCenterWnd::DrawPage(Gdiplus::Graphics& g, const CRect& content)
 	}
 }
 
-void CMarketCenterWnd::DrawPageTitle(Gdiplus::Graphics& g, const CRect& content, const std::wstring& title, const std::wstring& sub)
+void CMarketCenterPanel::DrawPageTitle(Gdiplus::Graphics& g, const CRect& content, const std::wstring& title, const std::wstring& sub)
 {
 	auto f13 = MkFont(13, true);
 	CRect titleRc(content.left + g_data.DPI(16), content.top + g_data.DPI(8), content.right - g_data.DPI(140), content.top + g_data.DPI(30));
@@ -524,7 +375,7 @@ void CMarketCenterWnd::DrawPageTitle(Gdiplus::Graphics& g, const CRect& content,
 
 // ============ 页面1：基金气泡图 ============
 
-void CMarketCenterWnd::RebuildBubbleLayout(const CRect& chartRc)
+void CMarketCenterPanel::RebuildBubbleLayout(const CRect& chartRc)
 {
 	m_bubble_nodes.clear();
 	if (m_sectors_snapshot.empty() || chartRc.Width() < g_data.DPI(100) || chartRc.Height() < g_data.DPI(80))
@@ -633,7 +484,7 @@ void CMarketCenterWnd::RebuildBubbleLayout(const CRect& chartRc)
 	m_bubble_layout_dirty = false;
 }
 
-void CMarketCenterWnd::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
 {
 	DrawPageTitle(g, rc, L"公开基金气泡图", L"圆大小 = 主力净流入 · 红 = 流入 · 绿 = 流出");
 
@@ -795,7 +646,7 @@ void CMarketCenterWnd::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
 
 // ============ 页面2：ETF申购净流入 ============
 
-void CMarketCenterWnd::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc)
 {
 	DrawPageTitle(g, rc, m_inflow_out ? L"实时ETF申购净流出" : L"实时ETF申购净流入", L"口径：ETF 场内主力资金净流入");
 
@@ -941,7 +792,7 @@ void CMarketCenterWnd::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc)
 		DrawThemePanel(g, chartRc);
 }
 
-void CMarketCenterWnd::DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc)
+void CMarketCenterPanel::DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc)
 {
 	auto f10 = MkFont(10);
 	auto f10b = MkFont(10, true);
@@ -1009,7 +860,7 @@ void CMarketCenterWnd::DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc
 
 // ============ 页面3：主力资金 ============
 
-void CMarketCenterWnd::DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc)
 {
 	DrawPageTitle(g, rc, L"实时主力资金", L"沪深两市大盘资金流");
 
@@ -1236,7 +1087,7 @@ void CMarketCenterWnd::DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc)
 
 // ============ 页面4：涨跌趋势 ============
 
-void CMarketCenterWnd::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 {
 	DrawPageTitle(g, rc, L"涨跌趋势", L"全市场涨跌家数与沪深成交额");
 
@@ -1465,7 +1316,7 @@ void CMarketCenterWnd::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 
 // ============ 页面5：ETF涨跌榜 ============
 
-std::vector<int> CMarketCenterWnd::SortedRankList() const
+std::vector<int> CMarketCenterPanel::SortedRankList() const
 {
 	std::vector<int> order;
 	for (int i = 0; i < static_cast<int>(m_etfs_snapshot.size()); i++)
@@ -1493,7 +1344,7 @@ std::vector<int> CMarketCenterWnd::SortedRankList() const
 	return order;
 }
 
-void CMarketCenterWnd::DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc)
+void CMarketCenterPanel::DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc)
 {
 	DrawPageTitle(g, rc, L"ETF涨跌榜", L"按涨跌幅排序（列头点击排序）");
 
@@ -1657,14 +1508,8 @@ void CMarketCenterWnd::DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc)
 
 // ============ 交互 ============
 
-void CMarketCenterWnd::OnMouseMove(UINT nFlags, CPoint point)
+bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 {
-	if (!m_tracking_mouse)
-	{
-		TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, GetSafeHwnd(), 0 };
-		if (TrackMouseEvent(&tme))
-			m_tracking_mouse = true;
-	}
 	m_mouse_pos = point;
 
 	bool changed = false;
@@ -1789,14 +1634,11 @@ void CMarketCenterWnd::OnMouseMove(UINT nFlags, CPoint point)
 		}
 	}
 
-	if (changed)
-		Invalidate(FALSE);
-	CWnd::OnMouseMove(nFlags, point);
+	return changed;
 }
 
-void CMarketCenterWnd::OnMouseLeave()
+void CMarketCenterPanel::HandleMouseLeave()
 {
-	m_tracking_mouse = false;
 	if (m_hover_menu != -1 || m_hover_bubble != -1 || m_hover_inflow_bar != -1 ||
 		m_hover_mainflow_card != -1 || m_hover_inflow_card != -1 || m_hover_dist_bar != -1 ||
 		m_hover_rank_header != -1 || m_hover_rank_row != -1)
@@ -1809,11 +1651,10 @@ void CMarketCenterWnd::OnMouseLeave()
 		m_hover_dist_bar = -1;
 		m_hover_rank_header = -1;
 		m_hover_rank_row = -1;
-		Invalidate(FALSE);
 	}
 }
 
-void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
+void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 {
 	// 菜单切换
 	for (int i = 0; i < PAGE_COUNT; i++)
@@ -1827,7 +1668,6 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (point.x < m_content_rect.left || m_clock_rect.PtInRect(point))
 	{
-		CWnd::OnLButtonDown(nFlags, point);
 		return;
 	}
 
@@ -1841,7 +1681,6 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 			if (rc.PtInRect(point))
 			{
 				m_selected_sector = nd.sectorIdx;
-				Invalidate(FALSE);
 				return;
 			}
 		}
@@ -1852,7 +1691,6 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		if (m_theme_panel_open && m_theme_close_rect.PtInRect(point))
 		{
 			m_theme_panel_open = false;
-			Invalidate(FALSE);
 			return;
 		}
 		for (int i = 0; i < 2 && i < static_cast<int>(m_inflow_stat_rects.size()); i++)
@@ -1863,8 +1701,7 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				if (out != m_inflow_out)
 				{
 					m_inflow_out = out;
-					Invalidate(FALSE);
-				}
+					}
 				return;
 			}
 		}
@@ -1885,8 +1722,7 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 						m_theme_panel_title = theme + L" · 共" + std::to_wstring(m_theme_row_etfs.size()) + L"只";
 						m_theme_panel_scroll = 0;
 						m_theme_panel_open = true;
-						Invalidate(FALSE);
-					}
+							}
 				}
 				return;
 			}
@@ -1902,7 +1738,6 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				m_mainflow_series_mask ^= (1 << i);
 				if (m_mainflow_series_mask == 0)
 					m_mainflow_series_mask = 0xF;
-				Invalidate(FALSE);
 				return;
 			}
 		}
@@ -1923,7 +1758,6 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 				}
 				m_rank_scroll = 0;
 				m_hover_rank_row = -1;
-				Invalidate(FALSE);
 				return;
 			}
 		}
@@ -1932,14 +1766,10 @@ void CMarketCenterWnd::OnLButtonDown(UINT nFlags, CPoint point)
 	default:
 		break;
 	}
-
-	CWnd::OnLButtonDown(nFlags, point);
 }
 
-BOOL CMarketCenterWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
+void CMarketCenterPanel::HandleMouseWheel(short zDelta, CPoint point)
 {
-	CPoint point = pt;
-	ScreenToClient(&point);
 	bool scrolled = false;
 	if (m_page == PAGE_ETF_INFLOW && m_theme_panel_open && m_theme_panel_rect.PtInRect(point))
 	{
@@ -1954,55 +1784,42 @@ BOOL CMarketCenterWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		m_rank_scroll = max(0, m_rank_scroll - (zDelta / 120) * g_data.DPI(28) * 3);   // 每格滚动3行
 		scrolled = (old != m_rank_scroll);
 	}
-	if (scrolled)
-		Invalidate(FALSE);
-	return CWnd::OnMouseWheel(nFlags, zDelta, pt);
+	(void)scrolled;
 }
 
-BOOL CMarketCenterWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
+bool CMarketCenterPanel::IsCursorOverInteractive(CPoint point) const
 {
-	if (nHitTest == HTCLIENT)
+	bool hand = false;
+	for (int i = 0; i < PAGE_COUNT && !hand; i++)
+		hand = m_menu_item_rects[i].PtInRect(point) != FALSE;
+	if (!hand)
 	{
-		CPoint pt;
-		GetCursorPos(&pt);
-		ScreenToClient(&pt);
-		bool hand = false;
-		for (int i = 0; i < PAGE_COUNT && !hand; i++)
-			hand = m_menu_item_rects[i].PtInRect(pt) != FALSE;
-		if (!hand)
+		switch (m_page)
 		{
-			switch (m_page)
+		case PAGE_BUBBLE:
+			for (const auto& nd : m_bubble_nodes)
 			{
-			case PAGE_BUBBLE:
-				for (const auto& nd : m_bubble_nodes)
-				{
-					CRect rc(static_cast<int>(nd.x - nd.r), static_cast<int>(nd.y - nd.r), static_cast<int>(nd.x + nd.r), static_cast<int>(nd.y + nd.r));
-					if (rc.PtInRect(pt)) { hand = true; break; }
-				}
-				break;
-			case PAGE_ETF_INFLOW:
-				hand = (m_theme_panel_open && m_theme_close_rect.PtInRect(pt)) ||
-					(m_inflow_stat_rects.size() > 1 && (m_inflow_stat_rects[0].rect.PtInRect(pt) || m_inflow_stat_rects[1].rect.PtInRect(pt)));
-				for (const auto& bar : m_inflow_bars)
-					if (bar.rect.PtInRect(pt)) { hand = true; break; }
-				break;
-			case PAGE_MAINFLOW:
-				for (const auto& c : m_mainflow_stat_rects)
-					if (c.rect.PtInRect(pt)) { hand = true; break; }
-				break;
-			case PAGE_ETF_RANK:
-				for (const auto& c : m_rank_cols)
-					if (c.rect.PtInRect(pt)) { hand = true; break; }
-				break;
-			default:
-				break;
+				CRect rc(static_cast<int>(nd.x - nd.r), static_cast<int>(nd.y - nd.r), static_cast<int>(nd.x + nd.r), static_cast<int>(nd.y + nd.r));
+				if (rc.PtInRect(point)) { hand = true; break; }
 			}
-		}
-		if (hand)
-		{
-			::SetCursor(::LoadCursor(NULL, IDC_HAND));
-			return TRUE;
+			break;
+		case PAGE_ETF_INFLOW:
+			hand = (m_theme_panel_open && m_theme_close_rect.PtInRect(point)) ||
+				(m_inflow_stat_rects.size() > 1 && (m_inflow_stat_rects[0].rect.PtInRect(point) || m_inflow_stat_rects[1].rect.PtInRect(point)));
+			for (const auto& bar : m_inflow_bars)
+				if (bar.rect.PtInRect(point)) { hand = true; break; }
+			break;
+		case PAGE_MAINFLOW:
+			for (const auto& c : m_mainflow_stat_rects)
+				if (c.rect.PtInRect(point)) { hand = true; break; }
+			break;
+		case PAGE_ETF_RANK:
+			for (const auto& c : m_rank_cols)
+				if (c.rect.PtInRect(point)) { hand = true; break; }
+			break;
+		default:
+			break;
 		}
 	}
-	return CWnd::OnSetCursor(pWnd, nHitTest, message);
+	return hand;
 }

@@ -5,29 +5,38 @@
 #include <vector>
 #include <string>
 
-// ===== 行情中心独立窗口 =====
-// 客户区 memDC+GDI+ 全自绘：左侧菜单栏（品牌+5项）+ 右侧内容区（5个页面）+ 右上角时钟。
-// 布局与交互对齐 demo/market_center_demo.html 定稿；数据来自 CMarketCenterData（后台线程抓取）。
-
-class CMarketCenterWnd : public CWnd
+// ===== 行情中心面板（悬浮窗视图模式）=====
+// 纯绘制类（非窗口）：悬浮窗在 OnPaint 里调用 Draw 把行情中心画进自身客户区，
+// 与总览/分时一样是悬浮窗的一个视图，不建子窗口、不改窗口尺寸。
+// 布局与交互对齐 demo/market_center_demo.html 定稿；数据来自 CMarketCenterData。
+class CMarketCenterPanel
 {
-	DECLARE_MESSAGE_MAP()
-
 public:
-	CMarketCenterWnd();
-	virtual ~CMarketCenterWnd();
+	CMarketCenterPanel();
+	~CMarketCenterPanel();
 
-	BOOL Create(CWnd* pParent);
-	// 以子窗口形态嵌入宿主（悬浮窗行情中心视图）：占据 rc，无标题栏、不注册到 Stock 单例
-	BOOL CreateChild(CWnd* pParent, const CRect& rc);
-	// 子窗口形态下右键请求宿主退出行情中心视图
-	bool IsChildMode() const { return m_childMode; }
+	// 数据到达消息（取数线程完成后 PostMessage 到通知窗口；悬浮窗处理它触发重绘）
+	static const UINT WM_MC_DATA_UPDATED = WM_APP + 140;
 
-	// 子窗口右键 → 宿主退出行情中心（父窗口消息映射引用，需 public）
-	static const UINT WM_MC_EXIT_REQUEST = WM_APP + 141;
+	// 绘制行情中心到指定矩形（x,y,w,h 为悬浮窗客户区坐标；顶部标题条由悬浮窗自留）
+	void Draw(CDC& memDC, int x, int y, int w, int h);
 
-	// 创建失败时由 Stock 调用以自清理（delete this）
-	virtual void PostNcDestroy() override;
+	// 交互（坐标均为悬浮窗客户区坐标）；返回是否需要重绘
+	bool HandleMouseMove(CPoint clientPt);
+	void HandleMouseLeave();
+	void HandleLButtonDown(CPoint clientPt);
+	void HandleMouseWheel(short zDelta, CPoint clientPt);
+	bool IsCursorOverInteractive(CPoint clientPt) const;
+
+	// 悬浮窗 1s 定时器调用：刷新时钟 + 拉取过期数据
+	void OnTimerTick();
+	// 数据到达（悬浮窗收到 WM_MC_DATA_UPDATED 后调用，触发重绘由悬浮窗 Invalidate 完成）
+	void OnDataUpdated();
+	// 设置数据到达通知窗口（悬浮窗句柄；取数线程完成后向其 PostMessage WM_MC_DATA_UPDATED）
+	void SetNotifyWnd(HWND h);
+
+	// 当前面板内容矩形（悬浮窗客户区坐标），未绘制前为空
+	const CRect& ContentRect() const { return m_content_rect; }
 
 private:
 	// ===== 页面枚举（与侧栏菜单一一对应）=====
@@ -52,7 +61,7 @@ private:
 	// ===== 气泡图布局节点 =====
 	struct BubbleNode
 	{
-		int sectorIdx{ -1 };    // CMarketCenterData::m_sectors 下标
+		int sectorIdx{ -1 };
 		float x{ 0 }, y{ 0 }, r{ 0 };
 	};
 
@@ -60,7 +69,7 @@ private:
 	struct DistBar
 	{
 		CRect rect;
-		int bin{ 0 };           // bins 下标
+		int bin{ 0 };
 	};
 
 	// ===== ETF涨跌榜列 =====
@@ -75,7 +84,7 @@ private:
 	struct InflowBar
 	{
 		CRect rect;
-		int themeIdx{ -1 };     // m_theme_inflow 下标
+		int themeIdx{ -1 };
 	};
 
 	// ===== 主题聚合净流入 =====
@@ -85,21 +94,6 @@ private:
 		double inflow{ 0.0 };
 	};
 
-	afx_msg void OnPaint();
-	afx_msg BOOL OnEraseBkgnd(CDC* pDC);
-	afx_msg void OnSize(UINT nType, int cx, int cy);
-	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
-	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
-	afx_msg void OnMouseLeave();
-	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
-	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
-	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
-	afx_msg void OnTimer(UINT_PTR nIDEvent);
-	afx_msg void OnDestroy();
-	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
-	afx_msg LRESULT OnDataUpdated(WPARAM wParam, LPARAM lParam);
-
-private:
 	void DrawAll(Gdiplus::Graphics& g, const CRect& client);
 	void DrawSidebar(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawPage(Gdiplus::Graphics& g, const CRect& content);
@@ -112,28 +106,24 @@ private:
 	void DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc);
 
-	// 气泡图确定性装箱布局（demo drawBubble 的 C++ 移植；数据/尺寸变化时重排）
 	void RebuildBubbleLayout(const CRect& chartRc);
-	// 主题聚合净流入榜（ETF快照变化时重算）
 	void BuildThemeInflow();
-	// 涨跌榜排序结果（m_etfs_snapshot 下标序列）
 	std::vector<int> SortedRankList() const;
 
 	void UpdateClock();
 	void RequestData();
 	void SwitchPage(McPage page);
-	// 数据快照同步（数据版本变化时拷贝到 UI 成员）
 	void RefreshSnapshots();
 
+	CRect m_content_rect;               // 面板内容矩形（悬浮窗客户区坐标）
 	CRect m_clock_rect;
-	CRect m_content_rect;
-	int m_clock_status{ 1 };        // 0开市 1休市
-	std::wstring m_clock_time;      // HH:MM:SS
+	int m_clock_status{ 1 };
+	std::wstring m_clock_time;
 
 	McPage m_page{ PAGE_BUBBLE };
 	CRect m_menu_item_rects[PAGE_COUNT];
 	int m_hover_menu{ -1 };
-	bool m_inflow_out{ false };     // ETF申购净流入榜方向：false=流入榜 true=流出榜
+	bool m_inflow_out{ false };
 
 	// ===== 数据快照 =====
 	std::vector<MC::SectorFlow> m_sectors_snapshot;
@@ -169,7 +159,7 @@ private:
 
 	// ===== 主力资金页 =====
 	std::vector<StatCardRect> m_mainflow_stat_rects;
-	int m_mainflow_series_mask{ 0xF };  // bit0沪主力 bit1深主力 bit2ETF bit3上证
+	int m_mainflow_series_mask{ 0xF };
 	int m_hover_mainflow_card{ -1 };
 
 	// ===== 涨跌趋势页 =====
@@ -191,9 +181,7 @@ private:
 
 	// hover
 	CPoint m_mouse_pos;
-	bool m_tracking_mouse{ false };
-	bool m_childMode{ false };      // 子窗口形态（悬浮窗内嵌视图）
 
-	static const UINT WM_MC_DATA_UPDATED = WM_APP + 140;   // 数据到达（与 CMarketCenterData::RequestIfStale 一致）
-	static const int MC_REFRESH_TIMER = 3001;
+	HWND m_notify_wnd{ nullptr };   // 数据到达通知窗口（悬浮窗）
+	CSize m_draw_size{ 0, 0 };       // 上次绘制尺寸（变化时重排气泡布局）
 };

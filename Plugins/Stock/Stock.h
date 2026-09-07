@@ -17,7 +17,6 @@ constexpr auto kBJ = L"bj";    // 北京
 constexpr auto kNF = L"nf";    // 国内期货
 constexpr auto kHF = L"hf";    // 海外期货
 
-class CMarketCenterWnd;
 
 const std::vector<CString> StockTypeSet{ kSH, kSZ, kHK, kMG, kBJ };
 
@@ -51,8 +50,6 @@ public:
 	virtual void OnInitialize(ITrafficMonitor* pApp) override;
 
 	INT_PTR ShowStockManageDlg(CWnd* pWnd);
-	void ShowMarketCenterWnd(CWnd* pWnd);   // 打开/激活行情中心独立窗口（插件菜单命令入口；悬浮窗右键走内嵌视图）
-	void OnMarketCenterWndClosed();          // 窗口自毁回调（PostNcDestroy 中调用，清指针）
 	void SendStockInfoRequest();
 	void ShowContextMenu(CWnd* pWnd);
 
@@ -86,7 +83,6 @@ private:
 	CMenu m_menu;
 	std::mutex m_wndMutex;
 	CFloatingWnd* m_pFloatingWnd;
-	CMarketCenterWnd* m_pMarketCenterWnd{ nullptr };   // 行情中心独立窗口（单例，模式less）
 
 	ITrafficMonitor* m_pMonitor{};          // 主程序接口指针
 

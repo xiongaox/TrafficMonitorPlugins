@@ -281,7 +281,7 @@
     <ClInclude Include="TimelineChart.h" />
     <ClInclude Include="DataManager.h" />
     <ClInclude Include="MarketCenterData.h" />
-    <ClInclude Include="MarketCenterWnd.h" />
+    <ClInclude Include="MarketCenterPanel.h" />
     <ClInclude Include="FloatingWnd.h" />
     <ClInclude Include="SignalAnalyzer.h" />
     <ClInclude Include="StockIndicator.h" />
@@ -321,7 +321,7 @@
     <ClCompile Include="TimelineChart.cpp" />
     <ClCompile Include="DataManager.cpp" />
     <ClCompile Include="MarketCenterData.cpp" />
-    <ClCompile Include="MarketCenterWnd.cpp" />
+    <ClCompile Include="MarketCenterPanel.cpp" />
     <ClCompile Include="FloatingWnd.cpp" />
     <ClCompile Include="LocalHttpProxy.cpp" />
     <ClCompile Include="SignalAnalyzer.cpp" />
