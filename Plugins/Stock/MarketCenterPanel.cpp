@@ -250,6 +250,41 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	// 重绘由悬浮窗在 HandleLButtonDown 后 Invalidate 完成
 }
 
+CMarketCenterData::DataSet CMarketCenterPanel::CurrentDataSet() const
+{
+	switch (m_page)
+	{
+	case PAGE_BUBBLE: return CMarketCenterData::DS_SECTORS;
+	case PAGE_ETF_INFLOW:
+	case PAGE_ETF_RANK: return CMarketCenterData::DS_ETFS;
+	case PAGE_MAINFLOW: return CMarketCenterData::DS_MAINFLOW;
+	case PAGE_TREND: return CMarketCenterData::DS_TREND;
+	default: return CMarketCenterData::DS_SECTORS;
+	}
+}
+
+std::wstring CMarketCenterPanel::StatusText(CMarketCenterData::DataSet ds, const std::wstring& loading) const
+{
+	if (CMarketCenterData::Instance().HasFailed(ds))
+		return L"获取失败（网络或接口异常），点击此处重试";
+	return loading;
+}
+
+void CMarketCenterPanel::RetryCurrentPage()
+{
+	CMarketCenterData::DataSet ds = CurrentDataSet();
+	CMarketCenterData::Instance().Retry(ds, m_notify_wnd);
+	RequestData();   // 立即重新请求
+}
+
+void CMarketCenterPanel::DrawStatus(Gdiplus::Graphics& g, const CRect& rc, CMarketCenterData::DataSet ds,
+	const std::wstring& loading, const Gdiplus::Font* font)
+{
+	m_status_rect = rc;
+	bool failed = CMarketCenterData::Instance().HasFailed(ds);
+	DrawStrMid(g, StatusText(ds, loading), font, rc, failed ? RGB(240, 173, 107) : MC_TEXT_DIM);
+}
+
 void CMarketCenterPanel::RefreshSnapshots()
 {
 	CMarketCenterData& mc = CMarketCenterData::Instance();
@@ -509,7 +544,7 @@ void CMarketCenterPanel::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
 	if (m_sectors_snapshot.empty())
 	{
 		auto f12 = MkFont(12);
-		DrawStrMid(g, m_sectors_snapshot_time == 0 ? L"正在获取行业板块资金流…" : L"暂无数据", f12.get(), rc, MC_TEXT_DIM);
+		DrawStatus(g, rc, CMarketCenterData::DS_SECTORS, L"正在获取行业板块资金流…", f12.get());
 		return;
 	}
 
@@ -670,7 +705,7 @@ void CMarketCenterPanel::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc
 	if (m_etfs_snapshot.empty())
 	{
 		auto f12 = MkFont(12);
-		DrawStrMid(g, m_etfs_snapshot_time == 0 ? L"正在获取ETF数据…" : L"暂无数据", f12.get(), rc, MC_TEXT_DIM);
+		DrawStatus(g, rc, CMarketCenterData::DS_ETFS, L"正在获取ETF数据…", f12.get());
 		return;
 	}
 
@@ -924,7 +959,7 @@ void CMarketCenterPanel::DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc)
 	if (!hasAny)
 	{
 		auto f12 = MkFont(12);
-		DrawStrMid(g, L"正在获取沪深主力资金分时…", f12.get(), rc, MC_TEXT_DIM);
+		DrawStatus(g, rc, CMarketCenterData::DS_MAINFLOW, L"正在获取沪深主力资金分时…", f12.get());
 		// 统计条仍然绘制（无数据状态）
 		shArr.clear();
 	}
@@ -1186,7 +1221,7 @@ void CMarketCenterPanel::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 	if (dist.buckets.empty())
 	{
 		auto f12 = MkFont(12);
-		DrawStrMid(g, L"正在获取涨跌分布…", f12.get(), CRect(rc.left, blockRc.bottom, rc.right, rc.bottom), MC_TEXT_DIM);
+		DrawStatus(g, CRect(rc.left, blockRc.bottom, rc.right, rc.bottom), CMarketCenterData::DS_TREND, L"正在获取涨跌分布…", f12.get());
 		return;
 	}
 
@@ -1376,7 +1411,7 @@ void CMarketCenterPanel::DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc)
 	if (m_etfs_snapshot.empty())
 	{
 		auto f12 = MkFont(12);
-		DrawStrMid(g, m_etfs_snapshot_time == 0 ? L"正在获取ETF数据…" : L"暂无数据", f12.get(), rc, MC_TEXT_DIM);
+		DrawStatus(g, rc, CMarketCenterData::DS_ETFS, L"正在获取ETF数据…", f12.get());
 		return;
 	}
 
@@ -1673,6 +1708,14 @@ void CMarketCenterPanel::HandleMouseLeave()
 
 void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 {
+	// 点击"获取失败，点击重试"文案 → 重试当前页
+	if (!m_status_rect.IsRectEmpty() && m_status_rect.PtInRect(point) &&
+		CMarketCenterData::Instance().HasFailed(CurrentDataSet()))
+	{
+		RetryCurrentPage();
+		return;
+	}
+
 	// 菜单切换
 	for (int i = 0; i < PAGE_COUNT; i++)
 	{
@@ -1806,6 +1849,11 @@ void CMarketCenterPanel::HandleMouseWheel(short zDelta, CPoint point)
 
 bool CMarketCenterPanel::IsCursorOverInteractive(CPoint point) const
 {
+	// "获取失败，点击重试"文案
+	if (!m_status_rect.IsRectEmpty() && m_status_rect.PtInRect(point) &&
+		CMarketCenterData::Instance().HasFailed(CurrentDataSet()))
+		return true;
+
 	bool hand = false;
 	for (int i = 0; i < PAGE_COUNT && !hand; i++)
 		hand = m_menu_item_rects[i].PtInRect(point) != FALSE;

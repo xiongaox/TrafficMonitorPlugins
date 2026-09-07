@@ -115,6 +115,16 @@ private:
 	void SwitchPage(McPage page);
 	void RefreshSnapshots();
 
+	// 数据集状态文案：加载中 / 获取失败（点击重试）
+	std::wstring StatusText(CMarketCenterData::DataSet ds, const std::wstring& loading) const;
+	// 绘制状态文案（加载中/失败），并设置可点击重试区域
+	void DrawStatus(Gdiplus::Graphics& g, const CRect& rc, CMarketCenterData::DataSet ds,
+		const std::wstring& loading, const Gdiplus::Font* font);
+	// 当前页对应的数据集
+	CMarketCenterData::DataSet CurrentDataSet() const;
+	// 用户点击"获取失败"文案时重试当前页
+	void RetryCurrentPage();
+
 	CRect m_content_rect;               // 面板内容矩形（悬浮窗客户区坐标）
 	CRect m_clock_rect;
 	int m_clock_status{ 1 };
@@ -181,6 +191,8 @@ private:
 
 	// hover
 	CPoint m_mouse_pos;
+
+	CRect m_status_rect;   // "获取失败，点击重试"文案的可点击区域（Draw 时设置）
 
 	HWND m_notify_wnd{ nullptr };   // 数据到达通知窗口（悬浮窗）
 	CSize m_draw_size{ 0, 0 };       // 上次绘制尺寸（变化时重排气泡布局）

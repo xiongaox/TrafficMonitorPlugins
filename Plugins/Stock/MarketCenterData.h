@@ -116,7 +116,8 @@ public:
 	// ===== 失败退避：某数据集连续失败后的一段时间内不再重试 =====
 	time_t m_fail_until[5]{ 0, 0, 0, 0, 0 };            // 对应 DataSet 枚举
 	bool m_inflight[5]{ false, false, false, false, false }; // 后台任务在途标记
-	static const int FAIL_BACKOFF_SEC = 300;
+	bool m_last_failed[5]{ false, false, false, false, false }; // 最近一次请求是否失败（供 UI 显示错误态）
+	static const int FAIL_BACKOFF_SEC = 15;
 
 	// 数据集枚举（取数任务调度与失败退避共用）
 	enum DataSet
@@ -124,7 +125,7 @@ public:
 		DS_SECTORS = 0,   // 气泡图板块资金流
 		DS_ETFS = 1,      // ETF 全量列表
 		DS_MAINFLOW = 2,  // 主力资金分时（沪深 fflow + 指数 trends2）
-		DS_TREND = 3,     // 涨跌分布 + 涨停跌停池 + 指数成交额
+		DS_TREND = 3,     // 涨跌分布 + 涨停/跌停池 + 指数成交额
 		DS_COUNT = 5
 	};
 
@@ -132,6 +133,10 @@ public:
 	void MarkSuccess(DataSet ds);
 	void MarkFailure(DataSet ds);
 	bool IsStale(DataSet ds, int staleSec) const;
+	// 最近一次请求是否失败（且当前无数据）：供 UI 显示"获取失败，点击重试"
+	bool HasFailed(DataSet ds) const;
+	// 用户主动重试：清除退避并立即重新请求（UI 线程调用）
+	void Retry(DataSet ds, HWND notifyWnd);
 
 	// 取数调度（UI 线程调用）：数据过期且未在退避/在途时，投递后台任务抓取。
 	// 任务完成后清理在途标记并向 notifyWnd 投递 WM_APP+140 消息刷新界面。

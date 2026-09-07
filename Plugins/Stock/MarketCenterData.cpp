@@ -95,11 +95,26 @@ bool CMarketCenterData::IsInBackOff(DataSet ds) const
 void CMarketCenterData::MarkSuccess(DataSet ds)
 {
 	m_fail_until[ds] = 0;
+	m_last_failed[ds] = false;
 }
 
 void CMarketCenterData::MarkFailure(DataSet ds)
 {
 	m_fail_until[ds] = time(nullptr) + FAIL_BACKOFF_SEC;
+	m_last_failed[ds] = true;
+}
+
+bool CMarketCenterData::HasFailed(DataSet ds) const
+{
+	return m_last_failed[ds];
+}
+
+void CMarketCenterData::Retry(DataSet ds, HWND notifyWnd)
+{
+	// 用户主动重试：清除退避，强制重新请求
+	std::lock_guard<std::mutex> lock(m_sched_mutex);
+	m_fail_until[ds] = 0;
+	m_inflight[ds] = false;
 }
 
 bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
