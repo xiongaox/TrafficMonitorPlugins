@@ -74,6 +74,9 @@ public:
 	bool HasKLineCache(const std::wstring& stockCode, STOCK::Period period);
 	std::vector<STOCK::KLinePoint> LoadKLineCache(const std::wstring& stockCode,
 		STOCK::Period period);
+	// 自愈：删除日K缓存中存在异常跳变（不复权口径断崖）的股票数据，返回清理的股票数
+	// 用于修复历史版本混入的不复权缓存；被清理的股票等下次网络获取成功后重建
+	int HealAbnormalDayKLineCache();
 
 	// 股票基础数据
 	bool SaveStockBasicData(const std::wstring& stockCode, STOCK::Volume circulatingAShares);

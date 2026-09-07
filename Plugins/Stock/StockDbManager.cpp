@@ -127,6 +127,9 @@ bool CStockDbManager::Init(const std::wstring& config_path)
 
 	// 启用 WAL 日志模式，提升读写并发性能（读不阻塞写，写不阻塞读）
 	sqlite3_exec(m_db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
+	// 写锁冲突时等待而非立即失败：SaveKLineCache 的 BEGIN IMMEDIATE 可能与
+	// 同连接上的分时/快照写入交错，无超时会静默丢掉整批K线缓存
+	sqlite3_busy_timeout(m_db, 3000);
 
 	// 创建交易记录表
 	const char* sql = "CREATE TABLE IF NOT EXISTS trades ("
@@ -603,34 +606,69 @@ bool CStockDbManager::SaveKLineCache(const std::wstring& stockCode, STOCK::Perio
 	const char* table = GetKLineCacheTable(period);
 	if (table[0] == '\0') return false;
 
-	// 用 OR REPLACE：新抓取的数据始终覆盖旧缓存。
-	// 此前用 OR IGNORE，导致历史上一次异常抓取（复权基准/数据源不一致、volume=0）
-	// 写入的行永久固化，K线图新旧两段价格错位。
-	std::string sql = std::string("INSERT OR REPLACE INTO ") + table + "(stock_code, day, open, high, low, close, volume, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
-	sqlite3_stmt* stmt = nullptr;
-	int rc = sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr);
-	if (rc != SQLITE_OK) return false;
+	// 整批重建（单事务内先删后插）：调用方传入的总是某周期完整的K线序列（如日K为750根），
+	// 删除该股票旧行后整体写入，保证缓存中同一股票始终是最近一次成功获取的单一复权口径，
+	// 避免旧口径残留行与新口径行拼接形成虚假断崖（旧实现 INSERT OR IGNORE 永不更新旧行）
+	if (sqlite3_exec(m_db, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		return false;
+
+	bool ok = true;
+	{
+		std::wstring delSql = std::wstring(L"DELETE FROM ") + GetKLineCacheTableW(period) + L" WHERE stock_code = ?;";
+		sqlite3_stmt* delStmt = nullptr;
+		if (sqlite3_prepare16_v2(m_db, delSql.c_str(), -1, &delStmt, nullptr) == SQLITE_OK)
+		{
+			sqlite3_bind_text16(delStmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
+			if (sqlite3_step(delStmt) != SQLITE_DONE)
+				ok = false;
+			sqlite3_finalize(delStmt);
+		}
+		else
+		{
+			ok = false;
+		}
+	}
 
 	time_t now = time(nullptr);
-	bool ok = true;
-	for (const auto& item : data)
+	sqlite3_stmt* stmt = nullptr;
+	if (ok && sqlite3_prepare_v2(m_db, (std::string("INSERT INTO ") + table + "(stock_code, day, open, high, low, close, volume, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?);").c_str(), -1, &stmt, nullptr) == SQLITE_OK)
 	{
-		if (item.day.empty()) continue;
-		sqlite3_reset(stmt);
-		sqlite3_clear_bindings(stmt);
-		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_text(stmt, 2, item.day.c_str(), -1, SQLITE_TRANSIENT);
-		sqlite3_bind_double(stmt, 3, item.open);
-		sqlite3_bind_double(stmt, 4, item.high);
-		sqlite3_bind_double(stmt, 5, item.low);
-		sqlite3_bind_double(stmt, 6, item.close);
-		sqlite3_bind_int64(stmt, 7, static_cast<sqlite3_int64>(item.volume));
-		sqlite3_bind_int64(stmt, 8, static_cast<sqlite3_int64>(now));
-		rc = sqlite3_step(stmt);
-		if (rc != SQLITE_DONE)
+		for (const auto& item : data)
+		{
+			if (item.day.empty()) continue;
+			sqlite3_reset(stmt);
+			sqlite3_clear_bindings(stmt);
+			sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_text(stmt, 2, item.day.c_str(), -1, SQLITE_TRANSIENT);
+			sqlite3_bind_double(stmt, 3, item.open);
+			sqlite3_bind_double(stmt, 4, item.high);
+			sqlite3_bind_double(stmt, 5, item.low);
+			sqlite3_bind_double(stmt, 6, item.close);
+			sqlite3_bind_int64(stmt, 7, static_cast<sqlite3_int64>(item.volume));
+			sqlite3_bind_int64(stmt, 8, static_cast<sqlite3_int64>(now));
+			int rc = sqlite3_step(stmt);
+			if (rc != SQLITE_DONE)
+			{
+				ok = false;
+				break;
+			}
+		}
+		sqlite3_finalize(stmt);
+	}
+	else
+	{
+		ok = false;
+	}
+
+	if (ok)
+	{
+		if (sqlite3_exec(m_db, "COMMIT;", nullptr, nullptr, nullptr) != SQLITE_OK)
 			ok = false;
 	}
-	sqlite3_finalize(stmt);
+	else
+	{
+		sqlite3_exec(m_db, "ROLLBACK;", nullptr, nullptr, nullptr);
+	}
 	return ok;
 }
 
@@ -746,6 +784,47 @@ std::vector<STOCK::KLinePoint> CStockDbManager::LoadKLineCache(const std::wstrin
 	}
 	sqlite3_finalize(stmt);
 	return points;
+}
+
+int CStockDbManager::HealAbnormalDayKLineCache()
+{
+	if (m_db == nullptr) return 0;
+
+	// 取每只股票的日K按日期排序后逐点检测，发现异常跳变（如份额折算造成的不复权断崖）
+	// 则删除该股票全部日K缓存——半删半留会得到跨口径拼接的缝合数据
+	std::wstring sql = L"SELECT DISTINCT stock_code FROM kline_day_cache;";
+	sqlite3_stmt* stmt = nullptr;
+	if (sqlite3_prepare16_v2(m_db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return 0;
+	std::vector<std::wstring> codes;
+	while (sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		const wchar_t* codeText = reinterpret_cast<const wchar_t*>(sqlite3_column_text16(stmt, 0));
+		if (codeText) codes.push_back(codeText);
+	}
+	sqlite3_finalize(stmt);
+
+	int healed = 0;
+	for (const auto& code : codes)
+	{
+		auto points = LoadKLineCache(code, STOCK::Period::DAY);
+		std::string detail;
+		if (!STOCK::HasAbnormalKLineMove(points, &detail))
+			continue;
+
+		std::wstring delSql = L"DELETE FROM kline_day_cache WHERE stock_code = ?;";
+		sqlite3_stmt* delStmt = nullptr;
+		if (sqlite3_prepare16_v2(m_db, delSql.c_str(), -1, &delStmt, nullptr) == SQLITE_OK)
+		{
+			sqlite3_bind_text16(delStmt, 1, code.c_str(), -1, SQLITE_TRANSIENT);
+			if (sqlite3_step(delStmt) == SQLITE_DONE)
+				healed++;
+			sqlite3_finalize(delStmt);
+		}
+		std::string log = "[KLine] heal: cleared poisoned day kline cache of " + CCommon::UnicodeToStr(code.c_str())
+			+ ", abnormal at " + detail;
+		CCommon::WriteLog(log.c_str(), (m_db_path.substr(0, m_db_path.find_last_of(L"\\/") + 1) + L"Stock.log").c_str());
+	}
+	return healed;
 }
 
 bool CStockDbManager::SaveStockBasicData(const std::wstring& stockCode, STOCK::Volume circulatingAShares)

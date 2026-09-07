@@ -1542,6 +1542,32 @@ static Volume GetValVolume(yyjson_val* val)
 	return 0L;
 }
 
+bool STOCK::HasAbnormalKLineMove(const std::vector<STOCK::KLinePoint>& points, std::string* detail)
+{
+	if (detail) detail->clear();
+	if (points.size() < 2) return false;
+
+	for (size_t i = 1; i < points.size(); ++i)
+	{
+		const double prevClose = points[i - 1].close;
+		const double curClose = points[i].close;
+		if (prevClose <= 0 || curClose <= 0) continue;
+		const double ratio = (curClose - prevClose) / prevClose;
+		if (std::abs(ratio) > STOCK::KLINE_ABNORMAL_MOVE_RATIO)
+		{
+			if (detail)
+			{
+				char buf[128];
+				sprintf_s(buf, "%s close %.3f -> %s close %.3f (%.1f%%)",
+					points[i - 1].day.c_str(), prevClose, points[i].day.c_str(), curClose, ratio * 100);
+				*detail = buf;
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
 std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey)
 {
 	std::vector<STOCK::KLinePoint> points;

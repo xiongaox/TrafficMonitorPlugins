@@ -144,6 +144,12 @@ public:
 	bool HasKLineCache(const std::wstring& stockCode, STOCK::Period period);
 	STOCK::Volume GetCirculatingAShares(const std::wstring& code);
 
+	// 拉取进度状态（取数线程写入、UI线程读取，内部互斥；每只股票保留最近4条）
+	// 供悬浮窗在数据未就绪时显示"正在XX源拉取… / XX源失败，切换YY源…"等实时进度
+	void PushFetchStatus(const std::wstring& code, const std::wstring& stage,
+		const std::wstring& source, const std::wstring& note);
+	std::vector<STOCK::FetchStatusEntry> GetFetchStatusEntries(const std::wstring& code);
+
 	SettingData m_setting_data;
 	std::wstring m_log_path;
 	bool m_right_align{}; // 数值是否右对齐
@@ -224,6 +230,10 @@ private:
 
 	std::wstring m_config_path;
 	std::wstring m_config_dir;   // 启动时由 EI_CONFIG_DIR 记住的配置目录，重载配置时沿用
+
+	// 拉取进度状态存储（PushFetchStatus/GetFetchStatusEntries 共用，m_fetch_status_mutex 保护）
+	std::mutex m_fetch_status_mutex;
+	std::map<std::wstring, std::vector<STOCK::FetchStatusEntry>> m_fetch_status;  // code -> 最近状态（新在后，最多保留4条）
 
 	std::map<UINT, CString> m_string_table;
 	std::map<UINT, HICON> m_icons;

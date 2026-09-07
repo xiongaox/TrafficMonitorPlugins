@@ -217,6 +217,12 @@ void CStockFetchThread::Start()
 
 	m_stopping = false;
 
+	// 注册多级数据源拉取进度回调：悬浮窗数据未就绪时显示"正在XX源拉取/XX源失败切换YY源"实时进度
+	g_http_fetcher.SetFetchStatusCallback([](const std::wstring& code, const std::wstring& stage,
+		const std::wstring& source, const std::wstring& note) {
+		g_data.PushFetchStatus(code, stage, source, note);
+	});
+
 	// 启动外部共享内存程序
 	StartExternalProcess();
 

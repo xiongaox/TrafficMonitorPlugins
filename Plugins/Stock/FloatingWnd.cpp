@@ -1503,7 +1503,8 @@ void CFloatingWnd::OnPaint()
 				auto stockData = g_data.GetStockData(m_stock_id);
 				STOCK::EtfHoldingsData holdingsData;
 				if (stockData) holdingsData = stockData->etfHoldings;
-				m_etfHoldingsPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, holdingsData, m_etfHoldingsScrollOffset, m_stock_id);
+				m_etfHoldingsPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, holdingsData, m_etfHoldingsScrollOffset, m_stock_id,
+					g_data.GetFetchStatusEntries(m_stock_id));
 			}
 			else if (IsInfoPanelVisible(isIndexKLine))
 			{
@@ -1512,10 +1513,62 @@ void CFloatingWnd::OnPaint()
 		}
 		else
 		{
-			CPen pMiddleLine(PS_DASHDOT, 1, COLOR_GRAY_MIDDLE);
-			memDC.SelectObject(&pMiddleLine);
-			memDC.SetTextColor(COLOR_GRAY_PURPLE);
-			memDC.TextOut((chartWidth - memDC.GetTextExtent(loading_state_txt).cx) / 2, headerHeight + g_data.RDPI(10), loading_state_txt);
+			// 数据未就绪：显示实时拉取进度（正在哪个源拉取、失败后切换到哪个源），替代原先的空白
+			// 每条状态渲染为两行（第一行"阶段 源"，第二行"状态说明"），说明过宽时按像素折行
+			std::vector<STOCK::FetchStatusEntry> entries = g_data.GetFetchStatusEntries(m_stock_id);
+			if (entries.empty())
+			{
+				STOCK::FetchStatusEntry fallback;
+				fallback.header = L"";
+				fallback.detail = L"正在加载行情数据…";
+				entries.push_back(fallback);
+			}
+			CFont statusFont;
+			CreateStockFont(statusFont, memDC, g_data.RDPI(11), FW_NORMAL);
+			CFont* pOldStatusFont = memDC.SelectObject(&statusFont);
+			memDC.SetTextColor(COLOR_TEXT_DIM);
+			const int lineH = g_data.RDPI(18);
+			const int chartAreaLeft = stockListWidth;
+			const int chartAreaW = max(g_data.RDPI(60), chartWidth - stockListWidth);
+			// 展开为渲染行序列：每条状态 = header 行 + detail 行（detail 超宽时按像素折成多行）
+			std::vector<std::pair<std::wstring, bool>> renderLines;  // (text, isHeader)
+			for (const auto& entry : entries)
+			{
+				if (!entry.header.empty())
+					renderLines.emplace_back(entry.header, true);
+				std::wstring detail = entry.detail;
+				const int maxTextW = chartAreaW - g_data.RDPI(16);
+				if (memDC.GetTextExtent(detail.c_str()).cx > maxTextW && detail.size() > 1)
+				{
+					// 按字符折行（中文每字符等宽，直接按宽度反推字符数）
+					std::wstring remaining = detail;
+					while (!remaining.empty())
+					{
+						int fit = static_cast<int>(remaining.size());
+						while (fit > 1 && memDC.GetTextExtent(remaining.substr(0, fit).c_str()).cx > maxTextW)
+							--fit;
+						renderLines.emplace_back(remaining.substr(0, fit), false);
+						remaining = remaining.substr(fit);
+					}
+				}
+				else
+				{
+					renderLines.emplace_back(detail, false);
+				}
+			}
+			int statusY = headerHeight + relatedBarHeight + g_data.RDPI(16);
+			const int blockH = static_cast<int>(renderLines.size()) * lineH;
+			const int areaTop = headerHeight + relatedBarHeight + g_data.RDPI(8);
+			const int areaBottom = h - indexBarHeight - g_data.RDPI(8);
+			if (areaBottom > areaTop && blockH < areaBottom - areaTop)
+				statusY = areaTop + max(0, (areaBottom - areaTop - blockH) / 2);
+			for (const auto& rl : renderLines)
+			{
+				int tw = memDC.GetTextExtent(rl.first.c_str()).cx;
+				memDC.TextOut(chartAreaLeft + max(0, (chartAreaW - tw) / 2), statusY, rl.first.c_str());
+				statusY += lineH;
+			}
+			memDC.SelectObject(pOldStatusFont);
 		}
 
 

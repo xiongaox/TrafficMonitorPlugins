@@ -299,12 +299,15 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 {
 	// 1. 主数据源：腾讯前复权(QFQ)接口
 	{
+		NotifyStatus(code, L"日K线", L"腾讯源", L"正在拉取数据…");
 		std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",day,,," + std::to_wstring(days) + L",qfq";
 		CString strHeaders = _T("Referer: https://finance.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"data\"") != std::string::npos && outResp.find(CCommon::UnicodeToStr(code.c_str())) != std::string::npos)
 		{
+			NotifyStatus(code, L"日K线", L"腾讯源", L"拉取成功");
 			return true;
 		}
+		NotifyStatus(code, L"日K线", L"腾讯源", L"拉取失败，正切换到东方财富源拉取数据…");
 	}
 
 	// 2. 一级保底：东方财富前复权(QFQ)接口
@@ -314,52 +317,48 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 	{
 		try
 		{
+			NotifyStatus(code, L"日K线", L"东方财富源", L"正在拉取数据…");
 			std::wstring url = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=101&fqt=1&lmt=" + std::to_wstring(days) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString strHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
+				NotifyStatus(code, L"日K线", L"东方财富源", L"拉取成功");
 				return true;
 			}
 			else
 			{
+				NotifyStatus(code, L"日K线", L"东方财富源", L"拉取失败");
 				m_eastmoney_fail_until = time(nullptr) + 600;
 			}
 		}
 		catch (...)
 		{
+			NotifyStatus(code, L"日K线", L"东方财富源", L"拉取异常");
 			m_eastmoney_fail_until = time(nullptr) + 600;
 		}
 	}
+	if (skip_eastmoney)
+		NotifyStatus(code, L"日K线", L"东方财富源", L"处于失败冷却期，已跳过");
 
-	// 3. 二级保底：新浪日K接口
-	{
-		std::wstring sinaUrl{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
-		std::vector<std::wstring> params;
-		params.push_back(L"symbol=" + code);
-		params.push_back(L"scale=240");
-		params.push_back(L"ma=no");
-		params.push_back(L"datalen=" + std::to_wstring(days));
-		sinaUrl += CCommon::vectorJoinString(params, L"&");
-
-		CString sinaHeaders = _T("Referer: http://finance.sina.com.cn");
-		if (CCommon::GetURL(sinaUrl, outResp, false, WEB_USERAGENT, sinaHeaders, sinaHeaders.GetLength()) && !outResp.empty())
-		{
-			return true;
-		}
-	}
-
+	// 注：不使用新浪日K接口作回退——其数据为不复权口径，在基金份额折算/除权日会形成
+	// 巨幅断崖，与前复权主源混用会导致K线出现虚假暴跌（ApplyDayKLine 另有口径校验兜底）。
+	// 主源与保底均失败时返回 false，由调用方保持内存现有数据不变。
+	NotifyStatus(code, L"日K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 	return false;
 }
 
 bool CStockHttpFetcher::FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp)
 {
 	// 1. 主数据源：腾讯周K
+	NotifyStatus(code, L"周K线", L"腾讯源", L"正在拉取数据…");
 	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",week,,," + std::to_wstring(weeks) + L",qfq";
 	CString strHeaders = _T("Referer: https://finance.qq.com");
 	if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"data\"") != std::string::npos)
 	{
+		NotifyStatus(code, L"周K线", L"腾讯源", L"拉取成功");
 		return true;
 	}
+	NotifyStatus(code, L"周K线", L"腾讯源", L"拉取失败，正切换到东方财富源拉取数据…");
 
 	// 2. 一级保底：东方财富周K
 	std::wstring secId = GetEastMoneySecId(code);
@@ -368,28 +367,35 @@ bool CStockHttpFetcher::FetchWeekKLine(const std::wstring& code, int weeks, std:
 	{
 		try
 		{
+			NotifyStatus(code, L"周K线", L"东方财富源", L"正在拉取数据…");
 			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=102&fqt=1&lmt=" + std::to_wstring(weeks) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
+				NotifyStatus(code, L"周K线", L"东方财富源", L"拉取成功");
 				return true;
 			}
+			NotifyStatus(code, L"周K线", L"东方财富源", L"拉取失败");
 		}
 		catch (...) {}
 	}
 
+	NotifyStatus(code, L"周K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 	return false;
 }
 
 bool CStockHttpFetcher::FetchMonthKLine(const std::wstring& code, int months, std::string& outResp)
 {
 	// 1. 主数据源：腾讯月K
+	NotifyStatus(code, L"月K线", L"腾讯源", L"正在拉取数据…");
 	std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + code + L",month,,," + std::to_wstring(months) + L",qfq";
 	CString strHeaders = _T("Referer: https://finance.qq.com");
 	if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"data\"") != std::string::npos)
 	{
+		NotifyStatus(code, L"月K线", L"腾讯源", L"拉取成功");
 		return true;
 	}
+	NotifyStatus(code, L"月K线", L"腾讯源", L"拉取失败，正切换到东方财富源拉取数据…");
 
 	// 2. 一级保底：东方财富月K
 	std::wstring secId = GetEastMoneySecId(code);
@@ -398,16 +404,20 @@ bool CStockHttpFetcher::FetchMonthKLine(const std::wstring& code, int months, st
 	{
 		try
 		{
+			NotifyStatus(code, L"月K线", L"东方财富源", L"正在拉取数据…");
 			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=103&fqt=1&lmt=" + std::to_wstring(months) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
+				NotifyStatus(code, L"月K线", L"东方财富源", L"拉取成功");
 				return true;
 			}
+			NotifyStatus(code, L"月K线", L"东方财富源", L"拉取失败");
 		}
 		catch (...) {}
 	}
 
+	NotifyStatus(code, L"月K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 	return false;
 }
 
@@ -415,16 +425,20 @@ bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, st
 {
 	// 1. 主数据源：腾讯5分钟K
 	{
+		NotifyStatus(code, L"5分钟K线", L"腾讯源", L"正在拉取数据…");
 		std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=" + code + L",m5,," + std::to_wstring(datalen);
 		CString strHeaders = _T("Referer: https://finance.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"m5\"") != std::string::npos)
 		{
+			NotifyStatus(code, L"5分钟K线", L"腾讯源", L"拉取成功");
 			return true;
 		}
+		NotifyStatus(code, L"5分钟K线", L"腾讯源", L"拉取失败，正切换到新浪源拉取数据…");
 	}
 
 	// 2. 一级保底：新浪5分钟K
 	{
+		NotifyStatus(code, L"5分钟K线", L"新浪源", L"正在拉取数据…");
 		std::wstring url{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
 		std::vector<std::wstring> params;
 		params.push_back(L"symbol=" + code);
@@ -436,8 +450,10 @@ bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, st
 		CString strHeaders = _T("Referer: http://finance.sina.com.cn");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
+			NotifyStatus(code, L"5分钟K线", L"新浪源", L"拉取成功");
 			return true;
 		}
+		NotifyStatus(code, L"5分钟K线", L"新浪源", L"拉取失败，正切换到东方财富源拉取数据…");
 	}
 
 	// 3. 二级保底：东方财富5分钟K
@@ -447,16 +463,20 @@ bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, st
 	{
 		try
 		{
+			NotifyStatus(code, L"5分钟K线", L"东方财富源", L"正在拉取数据…");
 			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=5&fqt=1&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
+				NotifyStatus(code, L"5分钟K线", L"东方财富源", L"拉取成功");
 				return true;
 			}
+			NotifyStatus(code, L"5分钟K线", L"东方财富源", L"拉取失败");
 		}
 		catch (...) {}
 	}
 
+	NotifyStatus(code, L"5分钟K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 	return false;
 }
 
@@ -464,16 +484,20 @@ bool CStockHttpFetcher::FetchMin30KLine(const std::wstring& code, int datalen, s
 {
 	// 1. 主数据源：腾讯30分钟K
 	{
+		NotifyStatus(code, L"30分钟K线", L"腾讯源", L"正在拉取数据…");
 		std::wstring url = L"https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=" + code + L",m30,," + std::to_wstring(datalen);
 		CString strHeaders = _T("Referer: https://finance.qq.com");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty() && outResp.find("\"m30\"") != std::string::npos)
 		{
+			NotifyStatus(code, L"30分钟K线", L"腾讯源", L"拉取成功");
 			return true;
 		}
+		NotifyStatus(code, L"30分钟K线", L"腾讯源", L"拉取失败，正切换到新浪源拉取数据…");
 	}
 
 	// 2. 一级保底：新浪30分钟K
 	{
+		NotifyStatus(code, L"30分钟K线", L"新浪源", L"正在拉取数据…");
 		std::wstring url{ L"https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?" };
 		std::vector<std::wstring> params;
 		params.push_back(L"symbol=" + code);
@@ -485,8 +509,10 @@ bool CStockHttpFetcher::FetchMin30KLine(const std::wstring& code, int datalen, s
 		CString strHeaders = _T("Referer: http://finance.sina.com.cn");
 		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 		{
+			NotifyStatus(code, L"30分钟K线", L"新浪源", L"拉取成功");
 			return true;
 		}
+		NotifyStatus(code, L"30分钟K线", L"新浪源", L"拉取失败，正切换到东方财富源拉取数据…");
 	}
 
 	// 3. 二级保底：东方财富30分钟K
@@ -496,16 +522,20 @@ bool CStockHttpFetcher::FetchMin30KLine(const std::wstring& code, int datalen, s
 	{
 		try
 		{
+			NotifyStatus(code, L"30分钟K线", L"东方财富源", L"正在拉取数据…");
 			std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=30&fqt=1&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
 			CString emHeaders = _T("Referer: https://quote.eastmoney.com");
 			if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
 			{
+				NotifyStatus(code, L"30分钟K线", L"东方财富源", L"拉取成功");
 				return true;
 			}
+			NotifyStatus(code, L"30分钟K线", L"东方财富源", L"拉取失败");
 		}
 		catch (...) {}
 	}
 
+	NotifyStatus(code, L"30分钟K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 	return false;
 }
 
@@ -605,6 +635,9 @@ bool CStockHttpFetcher::FetchEtfHoldings(const std::wstring& stock_id, STOCK::Et
 	CString strHeaders = _T("Referer: https://quote.eastmoney.com/");
 	std::string response;
 
+	// 拉取进度：悬浮窗持仓面板实时显示当前阶段
+	NotifyStatus(stock_id, L"持仓数据", L"东方财富源", L"正在拉取指数信息…");
+
 	// 1. 获取 ETF 跟踪的指数代码及指数名称
 	std::wstring selectorUrl = L"https://datacenter.eastmoney.com/stock/etfselector/api/data/get?type=RPTA_APP_ETFSELECT&sty=DERIVE_INDEX_CODE,INDEXNAME,SECURITY_CODE&source=SECURITIES&client=APP&filter=(SECURITY_CODE%3D%22" + pureCode + L"%22)&p=1&ps=1";
 
@@ -649,6 +682,7 @@ bool CStockHttpFetcher::FetchEtfHoldings(const std::wstring& stock_id, STOCK::Et
 	// 2. 若获取到跟踪指数，查询成分股列表
 	if (!deriveIndexCode.empty())
 	{
+		NotifyStatus(stock_id, L"持仓数据", L"东方财富源", L"已获取跟踪指数，正在拉取成分股…");
 		std::wstring compUrl = L"https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_INDEX_COMPONENT&columns=ALL&filter=(INDEX_CODE%3D%22" + deriveIndexCode + L"%22)&pageNumber=1&pageSize=100&source=WEB&client=WEB";
 		if (CCommon::GetURL(compUrl, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
 		{
@@ -682,6 +716,7 @@ bool CStockHttpFetcher::FetchEtfHoldings(const std::wstring& stock_id, STOCK::Et
 	// 3. 回退保底：若成分股为空（如国证/深交所指数399365等），从天天基金季度公开持仓获取
 	if (componentCodes.empty())
 	{
+		NotifyStatus(stock_id, L"持仓数据", L"天天基金源", L"指数成分缺失，改用季报持仓…");
 		std::wstring f10Url = L"https://fundmobapi.eastmoney.com/FundMNewApi/FundMNInverstPosition?FCODE=" + pureCode + L"&deviceid=1&plat=Iphone&appType=ttjj&product=EFund&Version=1";
 		if (CCommon::GetURL(f10Url, response, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !response.empty())
 		{
@@ -821,7 +856,11 @@ bool CStockHttpFetcher::FetchEtfHoldings(const std::wstring& stock_id, STOCK::Et
 	}
 
 	if (items.empty())
+	{
+		NotifyStatus(stock_id, L"持仓数据", L"全部数据源", L"拉取失败，稍后重试");
 		return false;
+	}
+	NotifyStatus(stock_id, L"持仓数据", L"拉取成功", (std::to_wstring(items.size()) + L" 只成分股").c_str());
 
 	// 若未直接提供仓位比（如指数全量成分股），按总市值权重计算
 	bool hasDirectRatio = !directRatios.empty();
@@ -1140,4 +1179,10 @@ bool CStockHttpFetcher::FetchChipKLines(const std::wstring& stock_id, STOCK::Vol
 
 	outKlines = std::move(klines);
 	return true;
+}
+
+void CStockHttpFetcher::NotifyStatus(const std::wstring& code, const wchar_t* stage, const wchar_t* source, const wchar_t* note)
+{
+	if (m_status_cb)
+		m_status_cb(code, stage, source, note);
 }

@@ -37,7 +37,8 @@ int CEtfHoldingsPanel::HitTest(CPoint pt, int left, int right, int height, int s
 }
 
 void CEtfHoldingsPanel::Draw(CDC& memDC, int left, int right, int height,
-	const STOCK::EtfHoldingsData& data, int scrollOffset, const std::wstring& currentStockId)
+	const STOCK::EtfHoldingsData& data, int scrollOffset, const std::wstring& currentStockId,
+	const std::vector<STOCK::FetchStatusEntry>& statusEntries)
 {
 	const int headerHeight = g_data.RDPI(26);
 	const int obTitleH = g_data.RDPI(16);
@@ -112,8 +113,55 @@ void CEtfHoldingsPanel::Draw(CDC& memDC, int left, int right, int height,
 		memDC.SelectObject(&textFont);
 		memDC.SetTextColor(COLOR_TEXT_DIM);
 		CRect rcMsg = listClipRect;
-		const wchar_t* msg = data.fetchFailed ? _T("暂无持仓数据") : _T("加载持仓数据中...");
-		memDC.DrawText(msg, rcMsg, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		if (!data.fetchFailed && !statusEntries.empty())
+		{
+			// 实时拉取进度：每条两行（"阶段 源" / "状态说明"），说明超宽时按面板宽度折行
+			const int statusLineH = g_data.RDPI(17);
+			const int entryGap = g_data.RDPI(4);
+			const int maxTextW = panelW - g_data.RDPI(12);
+			std::vector<std::pair<std::wstring, bool>> renderLines;  // (text, isHeader)
+			for (const auto& entry : statusEntries)
+			{
+				if (!entry.header.empty())
+					renderLines.emplace_back(entry.header, true);
+				std::wstring detail = entry.detail;
+				if (memDC.GetTextExtent(detail.c_str()).cx > maxTextW && detail.size() > 1)
+				{
+					std::wstring remaining = detail;
+					while (!remaining.empty())
+					{
+						int fit = static_cast<int>(remaining.size());
+						while (fit > 1 && memDC.GetTextExtent(remaining.substr(0, fit).c_str()).cx > maxTextW)
+							--fit;
+						renderLines.emplace_back(remaining.substr(0, fit), false);
+						remaining = remaining.substr(fit);
+					}
+				}
+				else
+				{
+					renderLines.emplace_back(detail, false);
+				}
+			}
+			int blockH = static_cast<int>(renderLines.size()) * statusLineH
+				+ static_cast<int>(statusEntries.size()) * entryGap - entryGap;
+			int statusY = listTop + max(0, (listH - blockH) / 2);
+			for (size_t i = 0; i < renderLines.size(); ++i)
+			{
+				bool isHeader = renderLines[i].second;
+				memDC.SetTextColor(isHeader ? COLOR_TEXT_MUTED : COLOR_TEXT_DIM);
+				CRect rcLine(left, statusY, right, statusY + statusLineH);
+				memDC.DrawText(renderLines[i].first.c_str(), rcLine, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+				statusY += statusLineH;
+				// 条目之间留小间距（detail 行之后）
+				if (!isHeader && i + 1 < renderLines.size())
+					statusY += entryGap;
+			}
+		}
+		else
+		{
+			const wchar_t* msg = data.fetchFailed ? _T("暂无持仓数据") : _T("加载持仓数据中…");
+			memDC.DrawText(msg, rcMsg, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		}
 		memDC.SelectClipRgn(nullptr);
 		memDC.SelectObject(pOldFont);
 		return;
