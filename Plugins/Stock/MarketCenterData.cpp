@@ -123,11 +123,10 @@ bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd)
 	if (m_inflight[ds] || IsInBackOff(ds) || !IsStale(ds, staleSec))
 		return false;
 	m_inflight[ds] = true;
-	CStockFetchThread::Instance().PostBackgroundTask([this, ds, notifyWnd]() {
+	// 高优先级后台任务：插队到后台队列最前，优先于 K线/筹码等预加载任务执行，
+	// 避免用户切到行情中心后数据在后台队列里长时间排队
+	CStockFetchThread::Instance().PostHighPriorityBackgroundTask([this, ds, notifyWnd]() {
 		AFX_MANAGE_STATE(AfxGetStaticModuleState());   // 工作线程内使用 MFC(CInternetSession) 必需
-		// 错峰：后台任务队列本身串行，这里再加固定间隔，避免开盘时 4 个数据集
-		// 连续 10+ 个请求触发东财 WAF（低频指纹通过率远高于突发）
-		Sleep(300 * static_cast<int>(ds));
 		bool ok = false;
 		switch (ds)
 		{
