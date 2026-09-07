@@ -17,6 +17,7 @@ constexpr auto kBJ = L"bj";    // 北京
 constexpr auto kNF = L"nf";    // 国内期货
 constexpr auto kHF = L"hf";    // 海外期货
 
+
 const std::vector<CString> StockTypeSet{ kSH, kSZ, kHK, kMG, kBJ };
 
 // 大盘指数优先级列表（用于总览列表排序）

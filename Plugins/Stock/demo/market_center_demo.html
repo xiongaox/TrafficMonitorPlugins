@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>行情中心 - 原型</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #12141A;
+    --panel: #1A1D26;
+    --card: #20242F;
+    --border: #2A2F3C;
+    --text: #E8EAF0;
+    --text-sub: #9AA1B0;
+    --text-dim: #616878;
+    --up: #F6465D;
+    --down: #0ECB81;
+    --accent: #3B82F6;
+    --menu-w: 108px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    overflow: hidden;
+    display: flex;
+  }
+  /* ===== 左侧菜单 ===== */
+  #sidebar {
+    width: var(--menu-w);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  #sidebar .brand {
+    padding: 14px 14px 10px;
+    font-size: 14px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  #sidebar .brand::before {
+    content: "";
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .menu-item {
+    padding: 9px 14px;
+    cursor: pointer;
+    color: var(--text-sub);
+    position: relative;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .menu-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .menu-item.active {
+    background: rgba(59,130,246,0.12);
+    color: #fff;
+    font-weight: bold;
+  }
+  .menu-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+  #sidebar .foot {
+    margin-top: auto;
+    padding: 8px 14px;
+    color: var(--text-dim);
+    font-size: 10px;
+    border-top: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  #vp-badge {
+    position: fixed;
+    right: 6px; bottom: 6px;
+    color: var(--text-dim);
+    font-size: 10px;
+    background: rgba(26,29,38,0.8);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    z-index: 99;
+    pointer-events: none;
+  }
+  /* ===== 右上角股市状态时钟（挂在内容区右上，与统计条两端对齐） ===== */
+  #content { position: relative; }
+  #mkt-clock {
+    position: absolute;
+    top: 8px; right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 3px 9px;
+    font-size: 11px;
+    color: var(--text);
+    z-index: 50;
+  }
+  #mkt-clock .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  #mkt-clock .dot.open { background: var(--up); box-shadow: 0 0 5px var(--up); }
+  #mkt-clock .dot.closed { background: var(--text-dim); }
+  #mkt-clock #mkt-time { color: var(--text); font-variant-numeric: tabular-nums; font-weight: bold; }
+  #mkt-clock #mkt-status-text.closed { color: var(--text-dim); }
+  /* ===== 右侧内容 ===== */
+  #content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .page-title {
+    padding: 8px 170px 12px 0;
+    font-size: 13px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .page-sub { color: var(--text-dim); font-size: 10px; font-weight: normal; margin-left: 8px; }
+  @media (max-width: 900px) {
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 4px 12px; }
+  }
+  .page { flex: 1; display: none; flex-direction: column; min-height: 0; padding: 0 16px 12px; }
+  .page.active { display: flex; }
+  .chart { flex: 1; min-height: 0; }
+  /* ===== 主力资金页：指标卡兼作图例（复用 .stat-row.grid4 上下结构） ===== */
+  #mainflow-stats .stat { cursor: pointer; transition: background 0.15s; }
+  #mainflow-stats .stat:hover { background: rgba(255,255,255,0.04); }
+  #mainflow-stats .stat .lbl { display: flex; align-items: center; gap: 5px; }
+  #mainflow-stats .stat .swatch {
+    display: inline-block; width: 14px; height: 4px; border-radius: 2px;
+    flex-shrink: 0;
+  }
+  #mainflow-stats .stat.off .val,
+  #mainflow-stats .stat.off .lbl { opacity: 0.38; }
+  #mainflow-stats .stat.off .swatch { background: var(--text-dim) !important; }
+  /* ===== 涨跌趋势页：全宽统计卡（9 格均分，无分组标题） + 全宽双图堆叠 ===== */
+  .trend-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 8px 11px;
+    margin-bottom: 8px;
+  }
+  .trend-grid { display: grid; }
+  .trend-grid .cell {
+    text-align: center;
+    border-left: 1px solid var(--border);
+    padding: 1px 4px;
+    min-width: 0;
+  }
+  .trend-grid .cell:first-child { border-left: none; }
+  .trend-grid .lbl { display: block; font-size: 10px; color: var(--text-sub); margin-bottom: 4px; white-space: nowrap; }
+  .trend-grid .val { font-size: 15px; font-weight: bold; white-space: nowrap; }
+  .chart-heading { font-size: 12px; font-weight: bold; color: var(--text); padding: 2px 4px 6px 0; }
+  /* ETF 主题列表浮层 */
+  #etfinflow-body { flex: 1; display: flex; min-height: 0; position: relative; }
+  #etf-theme-panel {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 300px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; display: flex; flex-direction: column; gap: 6px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45); z-index: 20;
+  }
+  .hidden { display: none !important; } /* 工具类：需压过 #id 的 display:flex */
+  #etf-theme-head { display: flex; justify-content: space-between; align-items: center; }
+  #etf-theme-title { font-size: 12px; color: var(--text); font-weight: bold; }
+  #etf-theme-close { cursor: pointer; color: var(--text-dim); font-size: 12px; padding: 0 4px; }
+  #etf-theme-close:hover { color: var(--text); }
+  #etf-theme-scroll {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;            /* Firefox 隐藏滚动条 */
+  }
+  #etf-theme-scroll::-webkit-scrollbar { display: none; }  /* Chrome/Edge 隐藏滚动条 */
+  #etf-theme-table th, #etf-theme-table td { padding: 4px 6px; font-size: 11px; }
+  /* 主题浮层小表：名称左对齐窄列，其余居中 */
+  #etf-theme-table th, #etf-theme-table td { text-align: center; }
+  #etf-theme-table th:first-child, #etf-theme-table td:first-child { text-align: left; width: 34%; }
+  #etf-theme-table th:nth-child(2), #etf-theme-table td:nth-child(2) { width: 24%; }
+  #etf-theme-table th:nth-child(3), #etf-theme-table td:nth-child(3) { width: 20%; }
+  /* 顶部统计条 */
+  .stat-row {
+    display: flex;
+    gap: 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 12px;
+    margin-bottom: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stat .lbl { color: var(--text-sub); margin-right: 6px; }
+  .stat .val { font-size: 14px; font-weight: bold; }
+  /* 气泡页统计条：四字段等分、上下两行（标签在上、数值在下），格间分隔线 */
+  .stat-row.grid4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+  .stat-row.grid4 .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+    padding: 9px 0;
+    white-space: nowrap;
+    border-right: 1px solid var(--border);
+  }
+  .stat-row.grid4 .stat:last-child { border-right: none; }
+  .stat-row.grid4 .stat .lbl { margin-right: 0; font-size: 11px; }
+  .stat-row.grid4 .stat .val { font-size: 15px; }
+  .stat-row.grid4 .stat.clickable { cursor: pointer; transition: background 0.15s; }
+  .stat-row.grid4 .stat.clickable:hover { background: rgba(255,255,255,0.04); }
+  .stat-row.grid4 .stat.active-up { background: rgba(246,70,93,0.10); box-shadow: inset 0 -2px 0 var(--up); margin: -1px 0; padding-top: 10px; padding-bottom: 10px; }
+  .stat-row.grid4 .stat.active-down { background: rgba(14,203,129,0.10); box-shadow: inset 0 -2px 0 var(--down); margin: -1px 0; padding-top: 10px; padding-bottom: 10px; }
+  .stat-row.grid4 .stat.active-up:first-child,
+  .stat-row.grid4 .stat.active-down:first-child { border-radius: 6px 0 0 6px; }
+  .stat-row.grid4 .stat.active-up:last-child,
+  .stat-row.grid4 .stat.active-down:last-child { border-radius: 0 6px 6px 0; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .flat { color: var(--text-sub); }
+  /* 气泡图页布局：图表占左侧，详情固定在右栏（通到页面底部，不遮挡气泡点击） */
+  #page-bubble { position: relative; }
+  #bubble-body { flex: 1; display: flex; min-height: 0; gap: 8px; }
+  #chart-bubble { flex: 1; min-width: 0; }
+  #bubble-detail {
+    width: 138px;
+    flex-shrink: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  #bubble-detail h3 { font-size: 13px; }
+  #bubble-detail .big { font-size: 16px; font-weight: bold; }
+  #bubble-detail .row { display: flex; justify-content: space-between; color: var(--text-sub); padding: 3px 0; border-top: 1px solid var(--border); font-size: 11px; }
+  #bubble-detail .row b { color: var(--text); }
+  #bd-legend {
+    margin-top: auto;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    font-size: 11px;
+  }
+  .legend-note { color: var(--text-dim); font-size: 11px; padding: 4px 4px 8px; }
+  /* ETF 榜单表 */
+  table.rank { width: 100%; border-collapse: collapse; }
+  table.rank th, table.rank td { padding: 6px 8px; text-align: right; white-space: nowrap; }
+  table.rank th { color: var(--text-dim); font-weight: normal; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+  table.rank td:first-child, table.rank th:first-child { text-align: left; }
+  table.rank tr:hover td { background: rgba(255,255,255,0.04); cursor: default; }
+  .scroll-wrap { flex: 1; overflow-y: auto; min-height: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+    scrollbar-width: none; }  /* Firefox 隐藏滚动条 */
+  .scroll-wrap::-webkit-scrollbar { display: none; }  /* Chrome/Edge 隐藏滚动条 */
+  .num { font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 9px; font-size: 11px; }
+  .pill.up { background: rgba(246,70,93,0.15); }
+  .pill.down { background: rgba(14,203,129,0.15); }
+  /* ===== ETF涨跌榜：除名称列外全部居中 ===== */
+  #etfrank-table th, #etfrank-table td { text-align: center; }
+  #etfrank-table th:first-child, #etfrank-table td:first-child { text-align: left; }
+  #etfrank-table th.sortable { cursor: pointer; user-select: none; }
+  #etfrank-table th.sortable:hover { color: var(--text); }
+  #etfrank-table .sort-arrow { margin-left: 4px; color: var(--accent); font-size: 10px; }
+  #etfrank-table .theme-tag {
+    display: inline-block; padding: 1px 8px; border-radius: 9px;
+    font-size: 10px; color: var(--text-sub);
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  }
+  /* ===== ETF涨跌榜：排序分段控件 ===== */
+  /* ===== ETF涨跌榜：工具条六等分（与 grid4 统计条同风格） ===== */
+  .rank-toolbar {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 8px 9px;
+    margin-bottom: 8px;
+  }
+  .rank-toolbar .tb-item {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    border-left: 1px solid var(--border);
+    min-width: 0; white-space: nowrap;
+  }
+  .rank-toolbar .tb-item:first-child { border-left: none; }
+  .rank-toolbar .lbl { font-size: 11px; color: var(--text-sub); }
+  .rank-toolbar .tb-item b { font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="brand">行情中心</div>
+  <div class="menu-item active" data-page="bubble">基金气泡图</div>
+  <div class="menu-item" data-page="etfinflow">ETF申购净流入</div>
+  <div class="menu-item" data-page="mainflow">主力资金</div>
+  <div class="menu-item" data-page="trend">涨跌趋势</div>
+  <div class="menu-item" data-page="etfrank">ETF涨跌榜</div>
+  <div class="foot">演示原型 · 模拟数据</div>
+</div>
+<div id="vp-badge"></div>
+<div id="mkt-clock">
+  <span id="mkt-status-dot" class="dot open"></span>
+  <span id="mkt-status-text">开市</span>
+  <span id="mkt-time">--:--:--</span>
+</div>
+
+<div id="content">
+  <!-- 1. 基金气泡图 -->
+  <div class="page active" id="page-bubble">
+    <div class="page-title">公开基金气泡图 <span class="page-sub">圆大小 = 主力净流入 · 红 = 流入 · 绿 = 流出（模拟）</span></div>
+    <div class="stat-row grid4" id="bubble-stats"></div>
+    <div id="bubble-body">
+      <div class="chart" id="chart-bubble"></div>
+      <div id="bubble-detail">
+        <div style="color:var(--text-sub);font-size:11px">板块详情</div>
+        <h3 id="bd-name">—</h3>
+        <div class="big" id="bd-flow">—</div>
+        <div id="bd-time" style="color:var(--text-dim);font-size:10px"></div>
+        <div id="bd-rows"></div>
+        <div id="bd-legend"><span style="color:var(--up)">● 流入</span><span style="color:var(--text-dim)">|</span><span style="color:var(--down)">● 流出</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ETF申购净流入 -->
+  <div class="page" id="page-etfinflow">
+    <div class="page-title" id="etfinflow-title">实时ETF申购净流入 <span class="page-sub">口径：ETF 场内资金净流入（模拟数据）</span></div>
+    <div class="stat-row grid4" id="etfinflow-stats"></div>
+    <div class="chart-heading" id="etfinflow-heading">ETF 当日主力净流入 Top10（亿）</div>
+    <div id="etfinflow-body">
+      <div class="chart" id="chart-etfinflow"></div>
+      <div id="etf-theme-panel" class="hidden">
+        <div id="etf-theme-head">
+          <span id="etf-theme-title">—</span>
+          <span id="etf-theme-close">✕</span>
+        </div>
+        <div class="scroll-wrap" id="etf-theme-scroll">
+          <table class="rank" id="etf-theme-table">
+            <thead><tr><th>名称</th><th>代码</th><th>现价</th><th>涨跌幅</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 主力资金（参考同花顺实时主力资金页） -->
+  <div class="page" id="page-mainflow">
+    <div class="page-title">实时主力资金 <span class="page-sub">沪深两市大盘资金流（模拟数据）</span></div>
+    <div class="stat-row grid4" id="mainflow-stats"></div>
+    <div class="chart" id="chart-mainflow"></div>
+  </div>
+
+  <!-- 4. 涨跌趋势（含成交量概览：全宽统计条 + 全宽双图堆叠） -->
+  <div class="page" id="page-trend">
+    <div class="page-title">涨跌趋势 <span class="page-sub">全市场涨跌家数与沪深成交额（模拟数据）</span></div>
+    <div class="trend-block">
+      <div class="trend-grid" style="grid-template-columns:repeat(9,1fr)">
+        <div style="display:contents" id="trend-stats"></div>
+        <div style="display:contents" id="volume-stats"></div>
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px; flex:1; min-height:0;">
+      <div class="chart" id="chart-trend-dist" style="flex:1"></div>
+      <div class="chart" id="chart-trend-line" style="flex:1.15"></div>
+    </div>
+  </div>
+
+  <!-- 6. ETF涨跌榜 -->
+  <div class="page" id="page-etfrank">
+    <div class="page-title">ETF涨跌榜 <span class="page-sub">按涨跌幅排序（模拟数据）</span></div>
+    <div class="rank-toolbar" id="etfrank-tabs"></div>
+    <div class="scroll-wrap">
+      <table class="rank" id="etfrank-table"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= 模拟数据 =================
+function rnd(min, max) { return min + Math.random() * (max - min); }
+function rndInt(min, max) { return Math.floor(rnd(min, max + 1)); }
+function fmtYi(v) { // 亿元
+  const s = v >= 0 ? "+" : "-";
+  return s + Math.abs(v).toFixed(1) + "亿";
+}
+// 可复现的伪随机数生成器（移植 C++ 时同样实现这个即可）
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+// 分钟时间轴 09:30 - 15:00
+const TIME_AXIS = (() => {
+  const arr = [];
+  for (let h = 9; h <= 15; h++) {
+    for (let m = 0; m < 60; m += 1) {
+      if (h === 9 && m < 30) continue;
+      if (h === 11 && m >= 30) break;
+      if (h === 12) continue;
+      if (h === 15 && m > 0) break;
+      arr.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
+    }
+  }
+  return arr;
+})();
+const NOW_IDX = Math.floor(TIME_AXIS.length * 0.65);
+
+// ---- 气泡图板块数据：[名称, 主力净流入(亿), 涨跌幅%] ----
+const SECTORS = [
+  ["AI应用", 25.2, 2.35], ["证券", 10.6, 1.12], ["电力", 11.0, 0.86],
+  ["保险", 9.0, 0.74], ["白酒", 7.2, 0.45], ["游戏", 4.8, 1.05],
+  ["畜禽", 3.5, 0.62], ["生物疫苗", 2.1, 0.31], ["创新药", 1.8, 0.22],
+  ["稀土", 1.2, 0.18], ["国产芯片", -153.1, -2.87], ["半导体", -92.5, -2.31],
+  ["PCB", -112.8, -3.05], ["CPO", -108.2, -2.95], ["新能源车", -100.7, -2.42],
+  ["存储芯片", -96.5, -2.66], ["液冷", -57.5, -3.12], ["算力", -56.0, -2.2],
+  ["固态电池", -49.8, -2.05], ["商业航天", -49.8, -2.51], ["光伏", -47.9, -1.86],
+  ["人形机器人", -36.4, -1.95], ["储能", -36.0, -1.72], ["MLCC", -25.8, -2.14],
+  ["有色金属", -25.4, -1.35], ["消费电子", -24.7, -1.42], ["云计算", -16.2, -0.88],
+  ["银行", -9.0, -0.32], ["煤炭", -6.5, -0.45], ["军工", -5.8, -0.51],
+  ["锂矿", -7.2, -1.02], ["细化工", -8.2, -0.66], ["黄金", -3.2, -0.28]
+].map(d => ({ name: d[0], flow: d[1], pct: d[2] }));
+
+// ---- 主力资金（参考同花顺实时主力资金页：上证/深证/ETF申购净流入 + 上证指数双轴） ----
+function genFlowSeries(base, volatility) {
+  const arr = [];
+  let v = 0;
+  for (let i = 0; i < TIME_AXIS.length; i++) {
+    if (i > NOW_IDX) { arr.push(null); continue; }
+    v += rnd(-volatility, volatility);
+    arr.push(+(base + v).toFixed(1));
+  }
+  return arr;
+}
+function genIndexSeries(base) { // 指数分时：围绕基准小幅波动
+  const arr = [];
+  let v = base;
+  for (let i = 0; i < TIME_AXIS.length; i++) {
+    if (i > NOW_IDX) { arr.push(null); continue; }
+    v += rnd(-3.5, 3.8);
+    arr.push(+v.toFixed(2));
+  }
+  return arr;
+}
+const mainflow = {
+  sh: genFlowSeries(0, 9),          // 上证主力净流入(亿)
+  sz: genFlowSeries(-30, 11),       // 深证主力净流入(亿)
+  etf: genFlowSeries(15, 4),        // ETF申购净流入(亿)，走势平稳
+  index: genIndexSeries(3980)       // 上证指数(点)
+};
+
+// ---- 涨跌趋势 ----
+function genCountSeries(startV, drift, vol) {
+  const arr = [];
+  let v = startV;
+  for (let i = 0; i < TIME_AXIS.length; i++) {
+    if (i > NOW_IDX) { arr.push(null); continue; }
+    v = Math.max(300, v + rnd(-vol, vol) + drift);
+    arr.push(Math.round(v));
+  }
+  return arr;
+}
+const trend = {
+  up: genCountSeries(1800, 5, 150),
+  down: genCountSeries(3300, -5, 150),
+  dist: [["涨停", 46, "up"], [">10%", 11, "up"], ["7~5%", 43, "up"], ["5~3%", 55, "up"],
+         ["3~0", 313, "up"], ["0", 133, "flat"], ["0~-3", 201, "down"], ["-3~-5", 69, "down"],
+         ["-5~-7", 69, "down"], ["-7~-10", 36, "down"], [">-10%", 313, "down"], ["跌停", 16, "down"]]
+};
+
+// ---- 成交量 ----
+function genVolumeSeries(total, seed) {
+  const arr = [];
+  let sum = 0;
+  for (let i = 0; i < TIME_AXIS.length; i++) {
+    if (i > NOW_IDX) { arr.push(null); continue; }
+    const shape = (i < 30 ? 2.2 : i > TIME_AXIS.length - 40 ? 1.6 : 0.7);
+    const w = shape * (0.55 + 0.9 * Math.abs(Math.sin(seed + i * 0.37)));
+    sum += (total * w) / (TIME_AXIS.length * 1.15);
+    arr.push(+sum.toFixed(0));
+  }
+  return arr;
+}
+const volume = { today: genVolumeSeries(17800, 1.3), yday: genVolumeSeries(18200, 4.7) };
+
+// ---- ETF 榜单（主题 → 多只具体ETF）----
+const ETF_THEMES = ["科创50", "芯片", "证券", "半导体", "光伏", "医药", "军工",
+  "黄金", "证券保险", "新能源车", "银行", "5G", "人工智能", "机器人",
+  "白酒", "稀土", "豆粕", "煤炭", "钢铁", "化工", "地产", "旅游", "PCB", "CPO"];
+const ETF_SUFFIX = ["ETF", "ETF联接", "龙头ETF", "产业ETF"];
+const THEME_BIAS = Object.fromEntries(ETF_THEMES.map((t, i) => [t, i % 2 === 0 ? rnd(5, 30) : rnd(-30, -5)]));
+const etfs = ETF_THEMES.flatMap(theme => {
+  const n = rndInt(6, 14);
+  return Array.from({ length: n }, (_, i) => ({
+    code: String(510000 + rndInt(100, 999)),
+    name: theme + (i === 0 ? "ETF" : ETF_SUFFIX[rndInt(0, ETF_SUFFIX.length - 1)]) + (i === 0 ? "" : i),
+    theme,
+    price: +rnd(0.5, 6).toFixed(3),
+    pct: +rnd(-4.5, 6.5).toFixed(2),
+    turnover: rnd(1, 120),
+    inflow: THEME_BIAS[theme] / n + rnd(-8, 8),
+    ydayInflow: rnd(-20, 30),
+    inflow60d: rnd(-300, 600)
+  }));
+}).sort((a, b) => b.pct - a.pct);
+
+// ================= 公共图表配置 =================
+const AXIS_STYLE = {
+  axisLine: { lineStyle: { color: "#2A2F3C" } },
+  axisLabel: { color: "#9AA1B0", fontSize: 11 },
+  splitLine: { lineStyle: { color: "#1E222C" } },
+  axisTick: { show: false }
+};
+const charts = {};
+function mkChart(id) {
+  const el = document.getElementById(id);
+  const c = echarts.getInstanceByDom(el) || echarts.init(el, null, { renderer: "canvas" });
+  charts[id] = c;
+  return c;
+}
+function updateVpBadge() {
+  const el = document.getElementById("vp-badge");
+  if (el) el.textContent = window.innerWidth + " × " + window.innerHeight;
+}
+window.addEventListener("resize", () => { Object.values(charts).forEach(c => c.resize()); updateVpBadge(); });
+updateVpBadge();
+
+// ================= 1. 气泡图 =================
+function drawBubble() {
+  const totalIn = SECTORS.filter(s => s.flow > 0).reduce((a, s) => a + s.flow, 0);
+  const totalOut = SECTORS.filter(s => s.flow < 0).reduce((a, s) => a + s.flow, 0);
+  const strongest = SECTORS.reduce((a, b) => (b.flow > a.flow ? b : a));
+  const weakest = SECTORS.reduce((a, b) => (b.flow < a.flow ? b : a));
+  document.getElementById("bubble-stats").innerHTML = `
+    <div class="stat"><span class="lbl">流入合计</span><span class="val up">+${totalIn.toFixed(1)}亿</span></div>
+    <div class="stat"><span class="lbl">流出合计</span><span class="val down">${totalOut.toFixed(1)}亿</span></div>
+    <div class="stat"><span class="lbl">最强板块</span><span class="val" style="color:var(--text)">${strongest.name} <span class="up" style="font-size:12px">+${strongest.flow.toFixed(1)}亿</span></span></div>
+    <div class="stat"><span class="lbl">最弱板块</span><span class="val" style="color:var(--text)">${weakest.name} <span class="down" style="font-size:12px">${weakest.flow.toFixed(1)}亿</span></span></div>`;
+
+  // 力导向有机布局（思路移植自水哥养基 D3 forceSimulation，纯确定性、可直接搬 C++）：
+  // 1) 黄金角散布目标 X；2) 规模越大被推得离中轴越远（小泡贴线、大泡沉深）；
+  // 3) 目标点吸引 + 两两碰撞分离迭代 → 自然沉降出有机气泡云
+  const el = document.getElementById("chart-bubble");
+  const W = el.clientWidth, H = el.clientHeight;
+  const TOP_PAD = 26, BOTTOM_PAD = 10, SIDE_GAP = 6, COLLIDE_GAP = 5;
+  const maxMag = Math.max(...SECTORS.map(s => Math.abs(s.flow)), 1);
+  const midY = H / 2;
+  // 半径从大到小搜索：模拟收敛后仍有残余重叠说明带内拥挤，缩小最大半径重排
+  const layout = (mR) => {
+    const radOf = mag => 15 + Math.sqrt(mag / maxMag) * (mR - 15);
+    const nodes = SECTORS.map((s, i) => {
+      const r = radOf(Math.abs(s.flow));
+      const sign = s.flow >= 0 ? -1 : 1; // 流入悬浮轴上方，流出沉降轴下方
+      const bandH = sign < 0 ? midY - TOP_PAD : H - BOTTOM_PAD - midY;
+      const avail = Math.max(0, bandH - r - SIDE_GAP);
+      const dist = SIDE_GAP + r + avail * (0.18 + 0.72 * Math.pow(Math.abs(s.flow) / maxMag, 0.58));
+      const tx = r + 14 + ((i * 0.61803398875) % 1) * Math.max(1, W - 28 - r * 2);
+      const ty = midY + sign * dist;
+      return { ...s, r, x: tx, y: ty, tx, ty, vx: 0, vy: 0 };
+    });
+    for (let tick = 0; tick < 260; tick++) {
+      const alpha = Math.pow(0.978, tick);
+      for (const n of nodes) {
+        n.vx = (n.vx + (n.tx - n.x) * 0.10 * alpha) * 0.62;
+        n.vy = (n.vy + (n.ty - n.y) * 0.24 * alpha) * 0.62;
+        n.x += n.vx; n.y += n.vy;
+      }
+      for (let a = 0; a < nodes.length; a++) {
+        const na = nodes[a];
+        for (let b = a + 1; b < nodes.length; b++) {
+          const nb = nodes[b];
+          let dx = nb.x - na.x, dy = nb.y - na.y;
+          const rr = na.r + nb.r + COLLIDE_GAP;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < rr * rr) {
+            const d = Math.sqrt(d2) || 0.01;
+            const push = (rr - d) / d * 0.5;
+            na.x -= dx * push; na.y -= dy * push;
+            nb.x += dx * push; nb.y += dy * push;
+          }
+        }
+      }
+      for (const n of nodes) {
+        n.x = Math.max(n.r + 8, Math.min(W - n.r - 8, n.x));
+        if (n.flow >= 0) n.y = Math.max(TOP_PAD + n.r, Math.min(midY - n.r - 3, n.y));
+        else n.y = Math.max(midY + n.r + 3, Math.min(H - BOTTOM_PAD - n.r, n.y));
+      }
+    }
+    let residual = 0;
+    for (let a = 0; a < nodes.length; a++) for (let b = a + 1; b < nodes.length; b++) {
+      const dx = nodes[b].x - nodes[a].x, dy = nodes[b].y - nodes[a].y;
+      const rr = nodes[a].r + nodes[b].r + COLLIDE_GAP;
+      if (dx * dx + dy * dy < (rr - 1.5) * (rr - 1.5)) residual++;
+    }
+    return { nodes, residual };
+  };
+  let all = [];
+  for (let mR = Math.min(54, W / 6.2, H / 7.4); mR >= 24; mR -= 4) {
+    const res = layout(mR);
+    all = res.nodes;
+    if (res.residual === 0) break;
+  }
+
+  const c = mkChart("chart-bubble");
+  c.setOption({
+    backgroundColor: "transparent",
+    tooltip: {
+      formatter: p => `<b>${p.data.name}</b><br>主力净流入: ${fmtYi(p.data.flow)}<br>涨跌幅: ${p.data.pct.toFixed(2)}%`
+    },
+    xAxis: { type: "value", min: 0, max: W, show: false },
+    yAxis: { type: "value", min: 0, max: H, show: false },
+    graphic: [{
+      type: "line", shape: { x1: 12, y1: midY, x2: W - 12, y2: midY },
+      style: { stroke: "#2A2F3C", lineWidth: 1 }, silent: true, z: 0
+    }],
+    series: [{
+      type: "custom", roam: false,
+      coordinateSystem: "none",
+      renderItem: (params, api) => {
+        const d = all[params.dataIndex];
+        const twoLine = d.r >= 28;
+        // 按规模做颜色插值：小泡暗、大泡亮（移植水哥养基的 interpolateRgb 思路）
+        const mag = Math.min(1, Math.sqrt(Math.abs(d.flow) / maxMag));
+        const mix = (c1, c2, t) => Math.round(c1 + (c2 - c1) * t);
+        const base = d.flow >= 0 ? [0xa3, 0x39, 0x34] : [0x17, 0x6c, 0x4d];
+        const bright = d.flow >= 0 ? [0xff, 0x3b, 0x30] : [0x00, 0xd1, 0x7d];
+        const t = 0.38 + mag * 0.62;
+        const fill = `rgba(${mix(base[0], bright[0], t)},${mix(base[1], bright[1], t)},${mix(base[2], bright[2], t)},0.92)`;
+        return {
+          type: "circle",
+          shape: { cx: d.x, cy: d.y, r: d.r },
+          style: {
+            fill,
+            stroke: d.flow >= 0 ? "#ff9d92" : "#7cf0b9",
+            lineWidth: 1.2
+          },
+          textContent: {
+            style: {
+              text: twoLine ? `${d.name}\n${fmtYi(d.flow)}` : d.name,
+              fill: "#fff", fontSize: Math.max(11, Math.min(14, d.r * 0.24)), lineHeight: 13,
+              align: "center", verticalAlign: "middle"
+            }
+          },
+          textConfig: { position: "inside" }
+        };
+      },
+      data: all.map(d => ({ name: d.name, flow: d.flow, pct: d.pct, value: [d.x, d.y] }))
+    }]
+  });
+  c.off("click");
+  c.on("click", p => { if (p.data && p.data.name) selectSector(p.data.name); });
+}
+function selectSector(name) {
+  const s = SECTORS.find(x => x.name === name);
+  if (!s) return;
+  document.getElementById("bd-name").textContent = s.name;
+  const el = document.getElementById("bd-flow");
+  el.textContent = fmtYi(s.flow);
+  el.className = "big " + (s.flow >= 0 ? "up" : "down");
+  document.getElementById("bd-time").textContent = "数据时间 " + TIME_AXIS[NOW_IDX];
+  const rows = [["涨跌幅", s.pct.toFixed(2) + "%"], ["主力净流入", fmtYi(s.flow)],
+    ["超大单", fmtYi(s.flow * 0.45)], ["大单", fmtYi(s.flow * 0.32)],
+    ["中单", fmtYi(-s.flow * 0.21)], ["小单", fmtYi(-s.flow * 0.12)]];
+  document.getElementById("bd-rows").innerHTML = rows.map(r =>
+    `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join("");
+}
+
+// ================= 3. 主力资金 =================
+const MF_SERIES = [
+  { key: "sh",    label: "主力净流入", color: "#4D8AF0", yAxis: 1, width: 1.8 },
+  { key: "sz",    label: "深证",       color: "#F5A623", yAxis: 1, width: 1.8 },
+  { key: "etf",   label: "ETF申购净流入", color: "#ED5BC4", yAxis: 1, width: 1.6 },
+  { key: "index", label: "上证指数",   color: "#9AA1B0", yAxis: 0, width: 1.2 }
+];
+const mfOff = new Set(); // 点击卡片段落隐藏/显示对应线
+function drawMainflow() {
+  const f = v => (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(2) + "亿";
+  const vals = { sh: mainflow.sh[NOW_IDX], sz: mainflow.sz[NOW_IDX], etf: mainflow.etf[NOW_IDX], index: mainflow.index[NOW_IDX] };
+  document.getElementById("mainflow-stats").innerHTML = MF_SERIES.map(s => {
+    const v = vals[s.key];
+    const cls = v >= 0 ? "up" : "down";
+    const num = s.key === "index" ? v.toFixed(2) : f(v);
+    return `<div class="stat clickable ${mfOff.has(s.key) ? "off" : ""}" data-key="${s.key}">
+      <span class="lbl"><i class="swatch" style="background:${s.color}"></i>${s.label}</span>
+      <span class="val ${s.key === "index" ? "" : cls}">${num}</span></div>`;
+  }).join("");
+  document.querySelectorAll("#mainflow-stats .stat").forEach(el => {
+    el.addEventListener("click", () => {
+      const k = el.dataset.key;
+      mfOff.has(k) ? mfOff.delete(k) : mfOff.add(k);
+      drawMainflow();
+    });
+  });
+  const line = (s, data) => ({
+    name: s.label, type: "line", data, yAxis: s.yAxis, showSymbol: false, smooth: false,
+    lineStyle: { width: s.width, color: s.color, opacity: mfOff.has(s.key) ? 0.08 : 1 },
+    itemStyle: { color: s.color }, emphasis: { focus: "series" }
+  });
+  mkChart("chart-mainflow").setOption({
+    backgroundColor: "transparent",
+    legend: { show: false },
+    grid: { left: 2, right: 2, top: 20, bottom: 28 }, // 图区与指标卡两端对齐
+    tooltip: { trigger: "axis",
+      valueFormatter: v => v == null ? "--" : (+v).toFixed(2) },
+    xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59,
+        alignMinLabel: "left", alignMaxLabel: "right" } },
+    yAxis: [
+      { type: "value", ...AXIS_STYLE, scale: true, // 左轴：指数点位（标签画在图内）
+        axisLine: { show: false },
+        axisLabel: { ...AXIS_STYLE.axisLabel, inside: true, margin: 8,
+          align: "left", formatter: v => v.toFixed(2),
+          textBorderColor: "rgba(13,15,20,0.8)", textBorderWidth: 2 } },
+      { type: "value", ...AXIS_STYLE, scale: true, // 右轴：净流入(亿)（标签画在图内）
+        axisLine: { show: false }, splitLine: { show: false },
+        axisLabel: { ...AXIS_STYLE.axisLabel, inside: true, margin: 8,
+          align: "right", formatter: v => v.toFixed(0) + "亿",
+          textBorderColor: "rgba(13,15,20,0.8)", textBorderWidth: 2 } }
+    ],
+    series: MF_SERIES.map(s => line(s, mainflow[s.key]))
+  }, { notMerge: true });
+}
+
+// ================= 4. 涨跌趋势 =================
+function drawTrend() {
+  const upNow = trend.up[NOW_IDX], downNow = trend.down[NOW_IDX];
+  document.getElementById("trend-stats").innerHTML = `
+    <div class="cell"><span class="lbl">上涨</span><span class="val up">${upNow}</span></div>
+    <div class="cell"><span class="lbl">平盘</span><span class="val">133</span></div>
+    <div class="cell"><span class="lbl">下跌</span><span class="val down">${downNow}</span></div>
+    <div class="cell"><span class="lbl">涨停</span><span class="val up">46</span></div>
+    <div class="cell"><span class="lbl">跌停</span><span class="val down">16</span></div>`;
+  // 分布柱状图
+  mkChart("chart-trend-dist").setOption({
+    backgroundColor: "transparent",
+    title: { text: "涨跌分布", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
+    grid: { left: 40, right: 8, top: 30, bottom: 42 },
+    tooltip: {},
+    xAxis: { type: "category", data: trend.dist.map(d => d[0]), ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 9, interval: 0,
+        hideOverlap: true, formatter: v => v.replace("%", "") } },
+    yAxis: { type: "value", ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
+    series: [{ type: "bar", barWidth: "60%",
+      label: { show: true, position: "top", color: "#9AA1B0", fontSize: 9 },
+      data: trend.dist.map(d => ({ value: d[1],
+        itemStyle: { color: d[2] === "up" ? "#F6465D" : d[2] === "down" ? "#0ECB81" : "#616878" } }))
+    }]
+  });
+  // 家数分时
+  const line = (name, data, color) => ({
+    name, type: "line", data, showSymbol: false,
+    lineStyle: { width: 1.6, color }, itemStyle: { color }
+  });
+  mkChart("chart-trend-line").setOption({
+    backgroundColor: "transparent",
+    title: { text: "涨跌家数分时", left: 6, top: 2, textStyle: { color: "#E8EAF0", fontSize: 12 } },
+    legend: { right: 8, top: 4, itemWidth: 14, itemHeight: 3,
+      textStyle: { color: "#9AA1B0", fontSize: 10 } },
+    grid: { left: 40, right: 12, top: 34, bottom: 26 },
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59, fontSize: 10 } },
+    yAxis: { type: "value", ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 10 } },
+    series: [line("上涨家数", trend.up, "#F6465D"), line("下跌家数", trend.down, "#0ECB81")]
+  });
+}
+
+// ================= 5. 成交量（并入涨跌趋势页左栏统计） =================
+function drawVolume() {
+  const now = volume.today[NOW_IDX];
+  const yday = volume.yday[NOW_IDX]; // 同一时刻对比昨日同时点
+  const delta = now - yday;
+  const elapsed = (NOW_IDX + 1) / TIME_AXIS.length;
+  const forecast = Math.round(now / elapsed);
+  document.getElementById("volume-stats").innerHTML = `
+    <div class="cell"><span class="lbl">当日成交额</span><span class="val">${now}亿</span></div>
+    <div class="cell"><span class="lbl">昨日成交</span><span class="val">${yday}亿</span></div>
+    <div class="cell"><span class="lbl">较昨日变动</span><span class="val ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta}亿</span></div>
+    <div class="cell"><span class="lbl">预测全天</span><span class="val">${forecast}亿</span></div>`;
+}
+
+// ================= 6. ETF涨跌榜 =================
+// 排序状态：key 列索引（0=名称 1=行业 2=现价 3=涨跌幅 4=成交额 5=主力净流入），dir=1 升序 / -1 降序
+let rankSort = { key: 3, dir: -1 };
+const RANK_SORTERS = [
+  (a, b) => a.name.localeCompare(b.name, "zh"),
+  (a, b) => a.theme.localeCompare(b.theme, "zh") || b.pct - a.pct,  // 同行业内按涨跌幅降序
+  (a, b) => a.price - b.price,
+  (a, b) => a.pct - b.pct,
+  (a, b) => a.turnover - b.turnover,
+  (a, b) => a.inflow - b.inflow
+];
+function drawEtfRank() {
+  // 工具条：从当前数据汇总市场概览（5 项核心指标，防止窄面板挤压）
+  const upN = etfs.filter(e => e.pct > 0).length;
+  const downN = etfs.filter(e => e.pct < 0).length;
+  const avgPct = etfs.reduce((a, e) => a + e.pct, 0) / etfs.length;
+  const totalTurnover = etfs.reduce((a, e) => a + e.turnover, 0);
+  const totalInflow = etfs.reduce((a, e) => a + e.inflow, 0);
+  document.getElementById("etfrank-tabs").innerHTML = `
+    <div class="tb-item"><span class="lbl">上涨</span><b class="up">${upN}</b></div>
+    <div class="tb-item"><span class="lbl">下跌</span><b class="down">${downN}</b></div>
+    <div class="tb-item"><span class="lbl">平均涨跌</span><b class="${avgPct >= 0 ? "up" : "down"}">${avgPct >= 0 ? "+" : ""}${avgPct.toFixed(2)}%</b></div>
+    <div class="tb-item"><span class="lbl">合计成交</span><b>${totalTurnover.toFixed(0)}亿</b></div>
+    <div class="tb-item"><span class="lbl">主力净流入</span><b class="${totalInflow >= 0 ? "up" : "down"}">${totalInflow >= 0 ? "+" : ""}${totalInflow.toFixed(1)}亿</b></div>
+    <div class="tb-item"><span class="lbl">ETF总数</span><b>${etfs.length}</b></div>`;
+  const cols = ["名称 / 代码", "行业", "现价", "涨跌幅", "成交额(亿)", "主力净流入(亿)"];
+  let html = `<thead><tr>`;
+  cols.forEach((c, i) => {
+    const active = rankSort.key === i;
+    const arrow = active ? `<span class="sort-arrow">${rankSort.dir === 1 ? "▲" : "▼"}</span>` : "";
+    html += `<th class="sortable${active ? " sorted" : ""}" onclick="setRankSort(${i})">${c}${arrow}</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+  const list = [...etfs].sort((a, b) => RANK_SORTERS[rankSort.key](a, b) * rankSort.dir);
+  list.forEach((e) => {
+    const cls = e.pct >= 0 ? "up" : "down";
+    html += `<tr>
+      <td><b>${e.name}</b> <span style="color:var(--text-dim)">${e.code}</span></td>
+      <td><span class="theme-tag">${e.theme}</span></td>
+      <td class="num">${e.price.toFixed(3)}</td>
+      <td class="num"><span class="pill ${cls} ${cls}" style="font-weight:bold">${e.pct >= 0 ? "+" : ""}${e.pct.toFixed(2)}%</span></td>
+      <td class="num">${e.turnover.toFixed(1)}</td>
+      <td class="num ${e.inflow >= 0 ? "up" : "down"}">${e.inflow >= 0 ? "+" : ""}${e.inflow.toFixed(2)}</td>
+    </tr>`;
+  });
+  html += "</tbody>";
+  document.getElementById("etfrank-table").innerHTML = html;
+}
+function setRankSort(key) {
+  if (rankSort.key === key) rankSort.dir = -rankSort.dir;  // 同列再点反转
+  else rankSort = { key, dir: key === 3 ? -1 : 1 };        // 新列：涨跌幅默认降序，其余升序
+  drawEtfRank();
+}
+
+// ================= 2. ETF申购净流入 =================
+let etfInflowMode = "in"; // in=净流入榜 / out=净流出榜
+function drawEtfInflow() {
+  // 模拟：按主题聚合当日净流入，Top10 + 点击展开主题内 ETF 列表
+  const byTheme = {};
+  for (const e of etfs) byTheme[e.theme] = (byTheme[e.theme] || 0) + e.inflow;
+  let entries = Object.entries(byTheme).map(([t, v]) => ({ name: t + "ETF", inflow: v }));
+  const totalIn = etfs.filter(e => e.inflow > 0).reduce((a, e) => a + e.inflow, 0);
+  const totalOut = etfs.filter(e => e.inflow < 0).reduce((a, e) => a + e.inflow, 0);
+  const ydayIn = etfs.filter(e => (e.ydayInflow ?? 0) > 0).reduce((a, e) => a + e.ydayInflow, 0);
+  const ydayOut = etfs.filter(e => (e.ydayInflow ?? 0) < 0).reduce((a, e) => a + e.ydayInflow, 0);
+  document.getElementById("etfinflow-stats").innerHTML = `
+    <div class="stat clickable ${etfInflowMode === "in" ? "active-up" : ""}" id="stat-etf-in"><span class="lbl">ETF净流入</span><span class="val up">+${totalIn.toFixed(1)}亿</span></div>
+    <div class="stat clickable ${etfInflowMode === "out" ? "active-down" : ""}" id="stat-etf-out"><span class="lbl">ETF净流出</span><span class="val down">${totalOut.toFixed(1)}亿</span></div>
+    <div class="stat"><span class="lbl">昨日净流出</span><span class="val down">${ydayOut.toFixed(1)}亿</span></div>
+    <div class="stat"><span class="lbl">昨日净流入</span><span class="val up">+${ydayIn.toFixed(1)}亿</span></div>`;
+  document.getElementById("stat-etf-in").addEventListener("click", () => setEtfInflowMode("in"));
+  document.getElementById("stat-etf-out").addEventListener("click", () => setEtfInflowMode("out"));
+
+  // 净流入榜：值降序取前10；净流出榜：值升序取前10
+  const top = entries
+    .sort((a, b) => etfInflowMode === "in" ? b.inflow - a.inflow : a.inflow - b.inflow)
+    .slice(0, 10);
+  document.getElementById("etfinflow-heading").textContent =
+    (etfInflowMode === "in" ? "ETF 当日主力净流入 Top10" : "ETF 当日主力净流出 Top10") + "（亿）";
+  document.getElementById("etfinflow-title").childNodes[0].textContent =
+    etfInflowMode === "in" ? "实时ETF申购净流入 " : "实时ETF申购净流出 ";
+  document.querySelector('.menu-item[data-page="etfinflow"]').textContent =
+    etfInflowMode === "in" ? "ETF申购净流入" : "ETF申购净流出";
+  mkChart("chart-etfinflow").setOption({
+    backgroundColor: "transparent",
+    title: null,
+    grid: { left: 8, right: 44, top: 10, bottom: 24, containLabel: true },
+    tooltip: { show: false },
+    xAxis: { type: "value", ...AXIS_STYLE,
+      min: v => Math.min(0, Math.floor(v.min * 100 * 1.12) / 100),
+      max: v => Math.max(0, Math.ceil(v.max * 100 * 1.12) / 100) },
+    yAxis: { type: "category", data: top.map(e => e.name).reverse(),
+      ...AXIS_STYLE,
+      axisTick: { show: false },
+      axisLabel: { ...AXIS_STYLE.axisLabel, fontSize: 11, align: "right", margin: 8 } },
+    series: [{ type: "bar", barWidth: "55%",
+      data: top.map(e => ({ value: e.inflow,
+        itemStyle: { color: e.inflow >= 0 ? "#F6465D" : "#0ECB81" } })).reverse(),
+      label: { show: true, position: "right", color: "#9AA1B0", fontSize: 10,
+        formatter: p => (p.value >= 0 ? "+" : "") + p.value.toFixed(2) }
+    }]
+  }, true);
+  const chart = charts["chart-etfinflow"];
+  chart.off("click");
+  chart.on("click", params => {
+    if (params.componentType === "series") showEtfThemeList(params.name);
+  });
+}
+function setEtfInflowMode(mode) {
+  if (etfInflowMode === mode) return;
+  etfInflowMode = mode;
+  drawEtfInflow();
+}
+
+// 点击主题条目 → 弹出该主题下 ETF 列表
+function showEtfThemeList(themeName) {
+  const panel = document.getElementById("etf-theme-panel");
+  const theme = themeName.replace(/ETF$/, "");
+  const members = etfs.filter(e => e.theme === theme);
+  if (!members.length) return;
+  document.getElementById("etf-theme-title").textContent = theme + " · 共" + members.length + "只";
+  const tb = document.querySelector("#etf-theme-table tbody");
+  tb.innerHTML = members.map(e => {
+    const cls = e.pct >= 0 ? "up" : "down";
+    return `<tr><td>${e.name}</td><td class="num" style="color:var(--text-sub)">${e.code}</td>
+      <td class="num">${e.price.toFixed(3)}</td>
+      <td class="num ${cls}">${e.pct >= 0 ? "+" : ""}${e.pct.toFixed(2)}%</td></tr>`;
+  }).join("");
+  panel.classList.remove("hidden");
+}
+
+// ================= 页面切换 =================
+const PAGE_DRAWERS = {
+  bubble: () => { drawBubble(); selectSector("AI应用"); },
+  etfinflow: drawEtfInflow,
+  mainflow: drawMainflow,
+  trend: () => { drawTrend(); drawVolume(); },
+  etfrank: drawEtfRank
+};
+document.querySelectorAll(".menu-item").forEach(item => {
+  item.addEventListener("click", () => {
+    document.querySelectorAll(".menu-item").forEach(m => m.classList.remove("active"));
+    item.classList.add("active");
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById("page-" + item.dataset.page).classList.add("active");
+    PAGE_DRAWERS[item.dataset.page]();
+    Object.values(charts).forEach(c => c.resize());
+  });
+});
+
+document.getElementById("etf-theme-close").addEventListener("click", () => {
+  document.getElementById("etf-theme-panel").classList.add("hidden");
+});
+
+// 初始化首页
+drawBubble();
+selectSector("AI应用");
+
+// ================= 股市状态时钟 =================
+// A股交易时段：周一~周五 09:30-11:30 / 13:00-15:00（demo 用本地时间模拟判断）
+function marketSession(now) {
+  const day = now.getDay();
+  if (day === 0 || day === 6) return { open: false, label: "休市" };
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const inMorning = mins >= 9 * 60 + 30 && mins < 11 * 60 + 30;
+  const inAfternoon = mins >= 13 * 60 && mins < 15 * 60;
+  return { open: inMorning || inAfternoon, label: (inMorning || inAfternoon) ? "开市" : "休市" };
+}
+function updateClock() {
+  const now = new Date();
+  const ses = marketSession(now);
+  const dot = document.getElementById("mkt-status-dot");
+  const txt = document.getElementById("mkt-status-text");
+  dot.className = "dot " + (ses.open ? "open" : "closed");
+  txt.textContent = ses.label;
+  txt.className = ses.open ? "" : "closed";
+  document.getElementById("mkt-time").textContent =
+    `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+</script>
+</body>
+</html>

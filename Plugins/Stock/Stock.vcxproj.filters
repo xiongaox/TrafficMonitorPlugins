@@ -48,6 +48,12 @@
     <ClInclude Include="DataManager.h">
       <Filter>DataManager</Filter>
     </ClInclude>
+    <ClInclude Include="MarketCenterData.h">
+      <Filter>DataManager</Filter>
+    </ClInclude>
+    <ClInclude Include="MarketCenterPanel.h">
+      <Filter>DataManager</Filter>
+    </ClInclude>
     <ClInclude Include="Common.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -159,6 +165,12 @@
       <Filter>StockItem</Filter>
     </ClCompile>
     <ClCompile Include="DataManager.cpp">
+      <Filter>DataManager</Filter>
+    </ClCompile>
+    <ClCompile Include="MarketCenterData.cpp">
+      <Filter>DataManager</Filter>
+    </ClCompile>
+    <ClCompile Include="MarketCenterPanel.cpp">
       <Filter>DataManager</Filter>
     </ClCompile>
     <ClCompile Include="Common.cpp">

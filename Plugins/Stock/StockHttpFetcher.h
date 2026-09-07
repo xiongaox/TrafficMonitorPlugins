@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <functional>
 #include "StockDef.h"
 
 // 股票数据 HTTP 获取器（统一收拢至腾讯主数据源 + 多级保底容灾体系）
@@ -12,7 +13,7 @@
 // 多级保底设计说明：
 //  - 实时行情：腾讯 (qt.gtimg.cn) -> 新浪 (hq.sinajs.cn)
 //  - 分时图：腾讯分时 (minute/query) -> 新浪分时 (getMinlineData) -> 东方财富分时 (trends2)
-//  - 日/周/月K线：腾讯前复权 (fqkline) -> 东方财富前复权 (kline/get) -> 新浪K线兜底
+//  - 日/周/月K线：腾讯前复权 (fqkline) -> 东方财富前复权 (kline/get)
 //  - 5/30分钟K线：腾讯分钟K (kline/kline) -> 新浪分钟K (CN_MarketData) -> 东方财富分钟K
 //  - 流通股本：东方财富 (f85) -> 腾讯行情换算 -> 数据库缓存
 //  - 筹码K线：东方财富官方换手率 -> 腾讯/新浪K线结合流通股本自算
@@ -20,6 +21,12 @@
 class CStockHttpFetcher
 {
 public:
+	// 拉取进度回调：在取数线程同步调用（uiCode 为目标代码，如 sh515880）
+	// stage: 正在拉取的数据类型（如 "日K线"）；source: 当前尝试的数据源名称；note: 附加说明（如"失败,切换下一源"）
+	using FetchStatusCallback = std::function<void(const std::wstring& uiCode, const std::wstring& stage,
+		const std::wstring& source, const std::wstring& note)>;
+	void SetFetchStatusCallback(FetchStatusCallback cb) { m_status_cb = std::move(cb); }
+
 	// 实时行情（多级保底：腾讯 -> 新浪）：onlyNonAG=true 时仅获取非A股代码
 	// outCodes 返回实际请求的代码列表，outResp 返回响应体；无代码或请求失败返回 false
 	bool FetchRealtimeHtml(const std::vector<std::wstring>& allCodes, bool onlyNonAG,
@@ -32,7 +39,7 @@ public:
 
 	// 分时图（多级保底：腾讯分时 -> 新浪分时 -> 东财分时）
 	bool FetchTimeline(const std::wstring& code, std::string& outResp);
-	// 日K线（多级保底：腾讯前复权 -> 东方财富前复权 -> 新浪日K）
+	// 日K线（多级保底：腾讯前复权 -> 东方财富前复权）
 	bool FetchDayKLine(const std::wstring& code, int days, std::string& outResp);
 	// 周K线（多级保底：腾讯前复权 -> 东方财富前复权）
 	bool FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp);
@@ -54,9 +61,13 @@ public:
 		std::vector<STOCK::ChipKLinePoint>& outKlines);
 
 private:
+	// 状态回调触发（code 为 wide string 代码；回调为空时无操作）
+	void NotifyStatus(const std::wstring& code, const wchar_t* stage, const wchar_t* source, const wchar_t* note);
+
 	// 东方财富接口失败缓存：WAF 拦截 WinINet 后，一段时间内不再尝试
 	// 值为失败截止时间戳（秒），0 表示未缓存
 	time_t m_eastmoney_fail_until{ 0 };
+	FetchStatusCallback m_status_cb;
 };
 
 // 全局实例（与 g_data 同模式，供工作线程直接访问）

@@ -342,7 +342,11 @@ void Stock::ShowFloatingWnd(void* hWnd, CPoint ptScreen, std::wstring stock_id)
 
 	CWnd* pWnd = CWnd::FromHandle((HWND)hWnd);
 
-	CFont* font = pWnd->GetParent()->GetFont();
+	// 宿主窗口无父窗口时（如插件测试器顶层对话框）回退默认字体，避免解引用空指针
+	CFont* font = nullptr;
+	CWnd* pHostParent = pWnd ? pWnd->GetParent() : nullptr;
+	if (pHostParent != nullptr)
+		font = pHostParent->GetFont();
 
 	std::lock_guard<std::mutex> lock(m_wndMutex);
 	// 创建新的悬浮窗
@@ -369,6 +373,7 @@ void Stock::DestroyFloatingWnd()
 		m_pFloatingWnd = NULL;
 	}
 }
+
 
 void Stock::PreloadAllKLineData()
 {

@@ -117,12 +117,14 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONUP()
 	ON_WM_MOUSELEAVE()
+	ON_WM_SETCURSOR()
 	ON_WM_MOUSEWHEEL()
 	ON_WM_DESTROY()
 	ON_WM_TIMER()
 	ON_WM_CTLCOLOR()
 	ON_WM_DRAWITEM()
 	ON_MESSAGE((WM_USER + 100), OnUpdateStatus)
+	ON_MESSAGE((CMarketCenterPanel::WM_MC_DATA_UPDATED), OnMarketCenterDataUpdated)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
@@ -223,6 +225,9 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	UpdateModeButtons();
 	UpdatePeriodComboVisibility();
 
+	// 行情中心面板：数据到达通知窗口（取数线程完成后向其 PostMessage 触发重绘）
+	m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
+
 	// 固定1秒定时检查：数据变化时才重绘，无变化则跳过
 	SetTimer(IDC_REFRESH_TIMER, 1000, NULL);
 
@@ -238,6 +243,16 @@ LRESULT CFloatingWnd::OnUpdateStatus(WPARAM wParam, LPARAM lParam)
 		m_orderBookDirty = true;
 	else
 		m_chartDirty = true;
+	return 0;
+}
+
+LRESULT CFloatingWnd::OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(wParam);
+	UNREFERENCED_PARAMETER(lParam);
+	// 行情中心数据到达：重绘（仅行情中心视图下有效，其他视图重绘无害）
+	if (m_marketCenterMode)
+		Invalidate(FALSE);
 	return 0;
 }
 
@@ -393,7 +408,29 @@ void CFloatingWnd::OnPaint()
 	// 填充现代暗黑专业底色 (#12141A)
 	memDC.FillSolidRect(rect, COLOR_BG_DARK);
 
-	memDC.SetBkMode(TRANSPARENT);
+		memDC.SetBkMode(TRANSPARENT);
+
+	// 行情中心视图：顶部标题条（股票名，真实按钮子控件仍可交互）+ 面板绘制其下方
+	if (m_marketCenterMode)
+	{
+		const int mcHeaderH = g_data.RDPI(26);
+		const int mcW = rect.Width(), mcH = rect.Height();
+		memDC.FillSolidRect(0, 0, mcW, mcHeaderH, COLOR_BG_HEADER);
+		memDC.FillSolidRect(0, mcHeaderH, mcW, 1, COLOR_DARK_GRAY_BORDER);
+		CString name(m_stock_id.c_str());
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			auto stockData = g_data.GetStockData(m_stock_id);
+			if (stockData)
+				name = stockData->info.GetStockShortName();
+		}
+		memDC.SetTextColor(COLOR_TEXT_PRIMARY);
+		memDC.TextOut(g_data.RDPI(8), max(0, (mcHeaderH - memDC.GetTextExtent(name).cy) / 2), name);
+		m_marketCenterPanel.Draw(memDC, 0, mcHeaderH, mcW, mcH - mcHeaderH);
+		dc.BitBlt(0, 0, mcW, mcH, &memDC, 0, 0, SRCCOPY);
+		memDC.SelectObject(pOldBitmap);
+		return;
+	}
 
 	int x = rect.left, y = rect.top, h = rect.Height(), w = rect.Width();
 
@@ -533,7 +570,7 @@ void CFloatingWnd::OnPaint()
 			const int activeGroupTab = CStockListPanel::ClampGroupTab(m_activeGroupTab);
 			m_groupTabs = CStockListPanel::LayoutGroupTabs(memDC, w, headerHeight, activeGroupTab);
 			CStockListPanel::DrawGroupTabs(memDC, m_groupTabs, m_hoverGroupTab);
-			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab);
+			m_stockListPanel.Draw(memDC, 0, headerHeight + relatedBarHeight, stockListWidth, h - headerHeight - indexBarHeight - relatedBarHeight, m_stock_id, m_stockListScrollOffset, activeGroupTab, m_groupListSort, m_hoverSortArrow);
 		}
 
 		// 顶部汇总/指标信息行：位于主图标题栏上方，仅占图表区域，不覆盖左侧列表和右侧盘口。
@@ -631,13 +668,13 @@ void CFloatingWnd::OnPaint()
 					currentStockText = hasCurrentStockProfitLoss ? formatPercent(currentStockProfitLossPercent) : _T("--");
 				}
 
-				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当日盈亏: "), _T("当前盈亏: ") };
-				const CString values[] = { marketText, floatingText, todayText, currentStockText };
+				const CString labels[] = { _T("总市值: "), _T("浮动盈亏: "), _T("当前盈亏: "), _T("当日盈亏: ") };
+				const CString values[] = { marketText, floatingText, currentStockText, todayText };
 				const COLORREF valueColors[] = {
 					COLOR_TEXT_PRIMARY,
 					floatingProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN,
-					!hasCurrentStockProfitLoss ? COLOR_TEXT_MUTED : (currentStockProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN)
+					!hasCurrentStockProfitLoss ? COLOR_TEXT_MUTED : (currentStockProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN),
+					todayProfitLoss >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN
 				};
 
 				const int columnWidth = summaryContentW / 4;
@@ -657,10 +694,10 @@ void CFloatingWnd::OnPaint()
 			}
 			else
 			{
-				// 非持仓分组：展示配置的指标（最多4项，默认：总市值、成交额、成交量、换手率）
+				// 非持仓分组：展示配置的指标（最多4项，默认：总市值、成交额、成交量、量比）
 				std::vector<std::wstring> headerMetrics = g_data.m_setting_data.m_header_metrics;
 				if (headerMetrics.empty())
-					headerMetrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+					headerMetrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 				int metricCount = min(4, static_cast<int>(headerMetrics.size()));
 				if (metricCount > 0 && summaryContentW > 0)
 				{
@@ -1503,7 +1540,8 @@ void CFloatingWnd::OnPaint()
 				auto stockData = g_data.GetStockData(m_stock_id);
 				STOCK::EtfHoldingsData holdingsData;
 				if (stockData) holdingsData = stockData->etfHoldings;
-				m_etfHoldingsPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, holdingsData, m_etfHoldingsScrollOffset, m_stock_id);
+				m_etfHoldingsPanel.Draw(memDC, chartWidth, w, h - headerHeight - indexBarHeight - relatedBarHeight, holdingsData, m_etfHoldingsScrollOffset, m_stock_id,
+					g_data.GetFetchStatusEntries(m_stock_id));
 			}
 			else if (IsInfoPanelVisible(isIndexKLine))
 			{
@@ -1512,10 +1550,62 @@ void CFloatingWnd::OnPaint()
 		}
 		else
 		{
-			CPen pMiddleLine(PS_DASHDOT, 1, COLOR_GRAY_MIDDLE);
-			memDC.SelectObject(&pMiddleLine);
-			memDC.SetTextColor(COLOR_GRAY_PURPLE);
-			memDC.TextOut((chartWidth - memDC.GetTextExtent(loading_state_txt).cx) / 2, headerHeight + g_data.RDPI(10), loading_state_txt);
+			// 数据未就绪：显示实时拉取进度（正在哪个源拉取、失败后切换到哪个源），替代原先的空白
+			// 每条状态渲染为两行（第一行"阶段 源"，第二行"状态说明"），说明过宽时按像素折行
+			std::vector<STOCK::FetchStatusEntry> entries = g_data.GetFetchStatusEntries(m_stock_id);
+			if (entries.empty())
+			{
+				STOCK::FetchStatusEntry fallback;
+				fallback.header = L"";
+				fallback.detail = L"正在加载行情数据…";
+				entries.push_back(fallback);
+			}
+			CFont statusFont;
+			CreateStockFont(statusFont, memDC, g_data.RDPI(11), FW_NORMAL);
+			CFont* pOldStatusFont = memDC.SelectObject(&statusFont);
+			memDC.SetTextColor(COLOR_TEXT_DIM);
+			const int lineH = g_data.RDPI(18);
+			const int chartAreaLeft = stockListWidth;
+			const int chartAreaW = max(g_data.RDPI(60), chartWidth - stockListWidth);
+			// 展开为渲染行序列：每条状态 = header 行 + detail 行（detail 超宽时按像素折成多行）
+			std::vector<std::pair<std::wstring, bool>> renderLines;  // (text, isHeader)
+			for (const auto& entry : entries)
+			{
+				if (!entry.header.empty())
+					renderLines.emplace_back(entry.header, true);
+				std::wstring detail = entry.detail;
+				const int maxTextW = chartAreaW - g_data.RDPI(16);
+				if (memDC.GetTextExtent(detail.c_str()).cx > maxTextW && detail.size() > 1)
+				{
+					// 按字符折行（中文每字符等宽，直接按宽度反推字符数）
+					std::wstring remaining = detail;
+					while (!remaining.empty())
+					{
+						int fit = static_cast<int>(remaining.size());
+						while (fit > 1 && memDC.GetTextExtent(remaining.substr(0, fit).c_str()).cx > maxTextW)
+							--fit;
+						renderLines.emplace_back(remaining.substr(0, fit), false);
+						remaining = remaining.substr(fit);
+					}
+				}
+				else
+				{
+					renderLines.emplace_back(detail, false);
+				}
+			}
+			int statusY = headerHeight + relatedBarHeight + g_data.RDPI(16);
+			const int blockH = static_cast<int>(renderLines.size()) * lineH;
+			const int areaTop = headerHeight + relatedBarHeight + g_data.RDPI(8);
+			const int areaBottom = h - indexBarHeight - g_data.RDPI(8);
+			if (areaBottom > areaTop && blockH < areaBottom - areaTop)
+				statusY = areaTop + max(0, (areaBottom - areaTop - blockH) / 2);
+			for (const auto& rl : renderLines)
+			{
+				int tw = memDC.GetTextExtent(rl.first.c_str()).cx;
+				memDC.TextOut(chartAreaLeft + max(0, (chartAreaW - tw) / 2), statusY, rl.first.c_str());
+				statusY += lineH;
+			}
+			memDC.SelectObject(pOldStatusFont);
 		}
 
 
@@ -1617,6 +1707,14 @@ BOOL CFloatingWnd::OnEraseBkgnd(CDC* pDC)
 
 void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 {
+	// 行情中心视图：点击交给面板处理
+	if (m_marketCenterMode)
+	{
+		m_marketCenterPanel.HandleLButtonDown(point);
+		Invalidate(FALSE);
+		return;
+	}
+
 	// 检测双击
 	DWORD currentTime = GetTickCount();
 	int dx = point.x - m_lastClickPos.x;
@@ -1659,6 +1757,25 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 					SwitchFloatingGroup(m_groupTabs[i].tabIndex);
 				return;
 			}
+		}
+	}
+
+	// 左侧列表面板分组标题右侧的实心排序箭头：▲涨最多在上，▼跌最多在上；再次点击恢复默认顺序
+	if (m_viewMode != UI_VIEW_OVERVIEW && m_showStockList)
+	{
+		const CRect& upRect = CStockListPanel::m_titleSortUpRect;
+		const CRect& downRect = CStockListPanel::m_titleSortDownRect;
+		const bool hitUp = (!upRect.IsRectEmpty() && upRect.PtInRect(point));
+		const bool hitDown = (!downRect.IsRectEmpty() && downRect.PtInRect(point));
+		if (hitUp || hitDown)
+		{
+			if (hitUp)
+				m_groupListSort = (m_groupListSort == 1) ? 0 : 1;
+			else
+				m_groupListSort = (m_groupListSort == 2) ? 0 : 2;
+			m_stockListScrollOffset = 0;
+			Invalidate();
+			return;
 		}
 	}
 
@@ -1957,7 +2074,7 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 			if (contentY >= 0)
 			{
 				int rowIndex = contentY / rowHeight;
-				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
+				std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab), m_groupListSort);
 				if (rowIndex >= 0 && rowIndex < static_cast<int>(stockCodes.size()))
 				{
 					const std::wstring& clickedCode = stockCodes[rowIndex];
@@ -2037,28 +2154,61 @@ void CFloatingWnd::OnLButtonUp(UINT nFlags, CPoint point)
 
 void CFloatingWnd::OnRButtonDown(UINT nFlags, CPoint point)
 {
-	if (m_viewMode != UI_VIEW_OVERVIEW)
+	// 右键在悬浮窗内原地切换“行情中心”视图（替代原总览↔分时切换；视图切换仍由顶栏模式按钮承担）
+	UNREFERENCED_PARAMETER(nFlags);
+	UNREFERENCED_PARAMETER(point);
+	ToggleMarketCenter();
+}
+
+void CFloatingWnd::ToggleMarketCenter()
+{
+	// 原地切换行情中心视图模式（像总览/分时一样是悬浮窗的一个视图，不建子窗口、不改窗口尺寸）
+	m_marketCenterMode = !m_marketCenterMode;
+	if (m_marketCenterMode)
 	{
-		m_viewMode = UI_VIEW_OVERVIEW;
-		m_showChipPeak = false;
-		UpdateModeButtons();
-		UpdatePeriodComboVisibility();
-		Invalidate();
+		// 进入：隐藏所有图表视图按钮（模式标签/指标/盘口/筹码/ETF持仓/展开/列表开关），只留关闭
+		HideChartButtons(true);
+		// 设置数据到达通知窗口并立即拉取当前页数据
+		m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
+		m_marketCenterPanel.OnTimerTick();
 	}
 	else
 	{
-		m_viewMode = UI_VIEW_TIMELINE;
-		m_showChipPeak = false;
-		m_showJZCurve = CCommon::IsFundCode(m_stock_id);  // 基金默认显示净值曲线
+		// 退出：恢复图表视图按钮
+		HideChartButtons(false);
 		UpdateModeButtons();
 		UpdatePeriodComboVisibility();
-		Invalidate();
+		UpdateIndicatorButtons();
 	}
+	Invalidate();
+}
+
+void CFloatingWnd::HideChartButtons(bool hide)
+{
+	// 行情中心视图下隐藏图表视图专属按钮，避免串进行情中心界面
+	CButton* btns[] = {
+		&m_btnTimeLine, &m_btnKLine, &m_btnWeekKLine, &m_btnMonthKLine, &m_btnCallAuction,
+		&m_btnMA, &m_btnBoll, &m_btnIndicatorCJL, &m_btnIndicatorMACD,
+		&m_btnIndicatorKDJ, &m_btnIndicatorWR, &m_btnIndicatorRSI,
+		&m_btnChipPeak, &m_btnOrderBook, &m_btnEtfHoldings,
+		&m_btnExpand, &m_btnToggleStockList,
+	};
+	for (auto* b : btns)
+		if (b->GetSafeHwnd())
+			b->ShowWindow(hide ? SW_HIDE : SW_SHOW);
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 {
 	m_mousePos = point;
+
+	// 行情中心视图：鼠标交给面板处理
+	if (m_marketCenterMode)
+	{
+		if (m_marketCenterPanel.HandleMouseMove(point))
+			Invalidate(FALSE);
+		return;
+	}
 
 	// 顶栏分组标签悬停跟踪（进入时申请 WM_MOUSELEAVE）
 	if (!m_trackingTabHover)
@@ -2068,6 +2218,23 @@ void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
 			m_trackingTabHover = true;
 	}
 	UpdateGroupTabHover(point);
+
+	// 分组标题排序箭头悬停高亮
+	{
+		int hoverArrow = -1;
+		if (m_showStockList && m_viewMode != UI_VIEW_OVERVIEW)
+		{
+			if (!CStockListPanel::m_titleSortUpRect.IsRectEmpty() && CStockListPanel::m_titleSortUpRect.PtInRect(point))
+				hoverArrow = 0;
+			else if (!CStockListPanel::m_titleSortDownRect.IsRectEmpty() && CStockListPanel::m_titleSortDownRect.PtInRect(point))
+				hoverArrow = 1;
+		}
+		if (hoverArrow != m_hoverSortArrow)
+		{
+			m_hoverSortArrow = hoverArrow;
+			Invalidate();
+		}
+	}
 
 	// 左侧股票列表拖动处理
 	if (m_isStockListDragging)
@@ -2716,6 +2883,14 @@ BOOL CFloatingWnd::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 	if (!clientRect.PtInRect(clientPt) && clientRect.PtInRect(m_mousePos))
 	{
 		clientPt = m_mousePos;
+	}
+
+	// 行情中心视图：滚轮交给面板处理
+	if (m_marketCenterMode)
+	{
+		m_marketCenterPanel.HandleMouseWheel(zDelta, clientPt);
+		Invalidate(FALSE);
+		return TRUE;
 	}
 
 	const int headerHeight = g_data.RDPI(26);
@@ -3672,6 +3847,14 @@ void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 {
 	if (nIDEvent == IDC_REFRESH_TIMER)
 	{
+		// 行情中心视图：刷新时钟 + 拉取过期数据，并重绘（时钟每秒变化）
+		if (m_marketCenterMode)
+		{
+			m_marketCenterPanel.OnTimerTick();
+			Invalidate(FALSE);
+			return;
+		}
+
 		// 鼠标移出图表区超过2秒自动清除悬停信息卡，避免长期遮挡图表
 		CheckHoverCardAutoHide();
 
@@ -3750,7 +3933,7 @@ void CFloatingWnd::EnsureStockListVisible()
 	if (listAreaH <= 0)
 		return;
 
-	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab));
+	std::vector<std::wstring> stockCodes = CStockListPanel::GetStockListCodes(CStockListPanel::ClampGroupTab(m_activeGroupTab), m_groupListSort);
 	int totalH = static_cast<int>(stockCodes.size()) * rowHeight;
 	int maxOffset = max(0, totalH - listAreaH);
 
@@ -3836,9 +4019,37 @@ void CFloatingWnd::UpdateGroupTabHover(const CPoint& point)
 	}
 }
 
+BOOL CFloatingWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
+{
+	// 行情中心视图：可交互元素上显示手型光标
+	if (m_marketCenterMode && nHitTest == HTCLIENT)
+	{
+		CPoint pt;
+		GetCursorPos(&pt);
+		ScreenToClient(&pt);
+		if (m_marketCenterPanel.IsCursorOverInteractive(pt))
+		{
+			::SetCursor(::LoadCursor(NULL, IDC_HAND));
+			return TRUE;
+		}
+	}
+	return CWnd::OnSetCursor(pWnd, nHitTest, message);
+}
+
 void CFloatingWnd::OnMouseLeave()
 {
+	// 行情中心视图：清除面板悬停
+	if (m_marketCenterMode)
+	{
+		m_marketCenterPanel.HandleMouseLeave();
+		Invalidate(FALSE);
+	}
 	m_trackingTabHover = false;
 	UpdateGroupTabHover(CPoint(-1, -1));
+	if (m_hoverSortArrow != -1)
+	{
+		m_hoverSortArrow = -1;
+		Invalidate();
+	}
 	CWnd::OnMouseLeave();
 }

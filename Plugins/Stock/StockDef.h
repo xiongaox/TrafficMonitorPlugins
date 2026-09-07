@@ -219,6 +219,13 @@ namespace STOCK
 	// 用于拦截混入的不复权数据（份额折算/除权断崖）。检测到返回true，detail非空时输出首个异常点描述
 	bool HasAbnormalKLineMove(const std::vector<KLinePoint>& points, std::string* detail = nullptr);
 
+	// 单条数据拉取进度（悬浮窗数据未就绪时的实时提示，每条在UI上渲染为两行）
+	struct FetchStatusEntry
+	{
+		std::wstring header;  // 形如 "5分钟K线 腾讯源"
+		std::wstring detail;  // 形如 "正在拉取数据…"
+	};
+
 	// ========== 智能分析模块：统一K线基础结构体 ==========
 	// 每一根K线统一存储，用于30min/5min周期指标计算
 	struct Bar

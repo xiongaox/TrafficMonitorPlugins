@@ -1928,7 +1928,7 @@ BOOL CManagerDialog::OnInitDialog()
 		m_data.m_ma_days = { 5, 17, 60 };
 
 	if (m_data.m_header_metrics.empty())
-		m_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+		m_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 
 	RefreshStockList();
 	RefreshPositionList();
@@ -2688,6 +2688,33 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	g.DrawString(L"Stock Plugin v1.15", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(14)), static_cast<Gdiplus::REAL>(clientRect.Height() - g_data.DPI(28))), &verBrush);
 }
 
+// 计算与 DrawString 文字墨迹垂直居中的标题竖条 top。
+// GDI+ DrawString 的 y 是行框顶，字形墨迹相对它有明显偏移（雅黑粗体约 0.22em），
+// 直接按行框摆放竖条会导致蓝条与标题上下错位；这里用路径实测墨迹范围后取中心对齐。
+static Gdiplus::REAL CalcTitleBarTop(const Gdiplus::Font& font, const std::wstring& title, int textTop, int barHeight)
+{
+	// 兜底：按雅黑字形墨迹中心约在 0.71em 处估算
+	Gdiplus::REAL fallback = static_cast<Gdiplus::REAL>(textTop) + font.GetSize() * 0.71f - barHeight / 2.0f;
+	if (title.empty())
+		return fallback;
+
+	Gdiplus::FontFamily family;
+	if (font.GetFamily(&family) != Gdiplus::Ok)
+		return fallback;
+
+	Gdiplus::GraphicsPath path;
+	if (path.AddString(title.c_str(), -1, &family, font.GetStyle(), font.GetSize(),
+		Gdiplus::PointF(0.0f, 0.0f), Gdiplus::StringFormat::GenericDefault()) != Gdiplus::Ok)
+		return fallback;
+
+	Gdiplus::RectF ink;
+	if (path.GetBounds(&ink) != Gdiplus::Ok || ink.Height <= 0.0f)
+		return fallback;
+
+	Gdiplus::REAL inkCenter = static_cast<Gdiplus::REAL>(textTop) + ink.Y + ink.Height / 2.0f;
+	return inkCenter - barHeight / 2.0f;
+}
+
 void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 {
 	int rightLeft = m_menu_width + g_data.DPI(18);
@@ -2708,9 +2735,10 @@ void CManagerDialog::DrawHeader(Gdiplus::Graphics& g, const CRect& clientRect)
 	Gdiplus::Font headFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(14)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush headBrush(Gdiplus::Color(255, 241, 245, 249));
 
-	// 标题前的品牌蓝竖条（与卡片章节标题同一视觉语言）
+	// 标题前的品牌蓝竖条（与卡片章节标题同一视觉语言）：按文字墨迹垂直居中
 	Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 37, 99, 235));
-	g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(rightLeft), static_cast<Gdiplus::REAL>(headerTop + g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
+	Gdiplus::REAL headBarTop = CalcTitleBarTop(headFont, titles[m_current_page], headerTop, g_data.DPI(16));
+	g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(rightLeft), headBarTop, static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(16)));
 	g.DrawString(titles[m_current_page], -1, &headFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(10)), static_cast<Gdiplus::REAL>(headerTop)), &headBrush);
 
 	Gdiplus::Font subFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
@@ -3574,7 +3602,7 @@ void CManagerDialog::DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRe
 		std::vector<const wchar_t*> items;
 	};
 	const MetricGroupDef candGroups[] = {
-		{ L"行情量价", { L"总市值", L"成交额", L"成交量", L"换手率", L"量比", L"委比", L"振幅", L"今开", L"昨收", L"最高", L"最低", L"涨停", L"跌停", L"盘后量", L"盘后额" } },
+		{ L"行情量价", { L"总市值", L"成交额", L"成交量", L"量比", L"换手率", L"委比", L"振幅", L"今开", L"昨收", L"最高", L"最低", L"涨停", L"跌停", L"盘后量", L"盘后额" } },
 		{ L"估值股本", { L"流通值", L"市盈率(动)", L"市盈率(TTM)", L"市盈率(静)", L"市净率", L"股息率(TTM)", L"总股本", L"流通股" } },
 		{ L"ETF与基金", { L"溢价率", L"IOPV净值", L"基金规模" } },
 		{ L"财务与区间", { L"每股收益", L"每股净资产", L"52周最高", L"52周最低" } }
@@ -6609,13 +6637,15 @@ void CManagerDialog::PlaceEditInField(UINT nID, const CRect& fieldRect)
 // 章节标题：品牌蓝竖条 + 白色加粗文字（页头与卡片统一视觉语言）
 void CManagerDialog::DrawSectionTitle(Gdiplus::Graphics& g, int x, int y, const std::wstring& title)
 {
-	Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 37, 99, 235));
-	g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y + g_data.DPI(2)),
-		static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(12)));
-
-	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10.5)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
-	g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y - g_data.DPI(1))), &titleBrush);
+
+	// 竖条按文字墨迹垂直居中（不再用固定偏移，避免与标题错位）
+	Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 37, 99, 235));
+	Gdiplus::REAL barTop = CalcTitleBarTop(titleFont, title, y, g_data.DPI(12));
+	g.FillRectangle(&barBrush, static_cast<Gdiplus::REAL>(x), barTop, static_cast<Gdiplus::REAL>(g_data.DPI(3)), static_cast<Gdiplus::REAL>(g_data.DPI(12)));
+
+	g.DrawString(title.c_str(), -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(x + g_data.DPI(10)), static_cast<Gdiplus::REAL>(y)), &titleBrush);
 }
 
 // 列表行自绘：交替行底色 + 选中项深蓝高亮（与浮动窗选中色一致）

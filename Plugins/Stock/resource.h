@@ -9,6 +9,7 @@
 #define IDS_PLUGIN_ITEM_NAME            105
 #define IDS_MENU_STOCK_MANAGE           106
 #define IDS_MENU_UPDATE_STOCK           107
+#define IDS_MENU_MARKET_CENTER          115
 #define IDD_MANAGER_DIALOG              108
 #define IDD_TRADE_RECORD_DIALOG          109
 #define IDS_ADD_STOCK                   108

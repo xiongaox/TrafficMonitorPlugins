@@ -18,6 +18,7 @@
 #include "StatusBarPanel.h"
 #include "KLineChart.h"
 #include "TimelineChart.h"
+#include "MarketCenterPanel.h"
 
 // 定义自定义消息
 #define FWND_MSG_UPDATE_STATUS (WM_USER + 100)
@@ -42,6 +43,9 @@ public:
 	const std::wstring& GetStockId() const { return m_stock_id; }
 	void SetStockId(const std::wstring& stockId);
 	void ToggleKLineMode(); // 切换分时/日K模式
+	// 行情中心内嵌视图：右键在悬浮窗内原地切换；进入时临时放大窗口，退出还原
+	void ToggleMarketCenter();   // 右键切换行情中心视图模式（悬浮窗内原地切换，不建子窗口/不改尺寸）
+	void HideChartButtons(bool hide);   // 行情中心视图下隐藏/恢复图表视图专属按钮
 	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
@@ -56,6 +60,7 @@ protected:
 	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
+	LRESULT OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam);   // 行情中心数据到达，重绘
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
@@ -99,6 +104,7 @@ private:
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseLeave();
+	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
@@ -114,6 +120,8 @@ private:
 	void UpdateGroupTabHover(const CPoint& point);
 
 	CTransparentWnd m_CTransparentWnd;
+	CMarketCenterPanel m_marketCenterPanel;            // 行情中心面板（视图模式，悬浮窗 OnPaint 里绘制）
+	bool m_marketCenterMode{ false };                  // 是否处于行情中心视图
 	CStockListPanel m_stockListPanel;
 	CCallAuctionChart m_callAuctionChart;
 	CChipPeakPanel m_chipPeakPanel;
@@ -218,6 +226,8 @@ private:
 	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
 	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
 	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）
+	int m_groupListSort{ 0 };      // 左侧列表排序：0=默认顺序, 1=涨跌幅降序(涨最多在上), 2=涨跌幅升序(跌最多在上)
+	int m_hoverSortArrow{ -1 };    // 悬停的分组标题排序箭头：0=▲, 1=▼, -1 无
 	bool m_trackingTabHover{ false };  // 是否已申请 WM_MOUSELEAVE 跟踪
 	int m_stockListScrollOffset{ 0 };  // 左侧股票列表垂直滚动偏移
 	bool m_isStockListDragging{ false };  // 左侧股票列表是否正在拖动

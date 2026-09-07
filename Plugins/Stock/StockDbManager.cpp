@@ -678,18 +678,64 @@ bool CStockDbManager::HasKLineCache(const std::wstring& stockCode, STOCK::Period
 	std::wstring table = GetKLineCacheTableW(period);
 	if (table.empty()) return false;
 
-	// 日K线：缓存中最早数据距今超过1个月才算有效
+	// 日K线：缓存中最早数据距今超过1个月，且最新数据不太陈旧（<5天）才算有效；
+	// 若最新数据严重过期（长时间未成功刷新），返回无效以触发重新拉取，
+	// 避免旧数据（如复权基准不一致或成交量缺失的历史行）永久驻留。
 	if (period == STOCK::Period::DAY)
 	{
 		std::string cutoffDate1m = GetLocalDateString(GetLocalMidnightTime(-30));
-		std::wstring sql = L"SELECT 1 FROM " + table + L" WHERE stock_code = ? AND day < ? LIMIT 1;";
+		std::wstring sql = L"SELECT day FROM " + table + L" WHERE stock_code = ? ORDER BY day ASC LIMIT 1;";
 		sqlite3_stmt* stmt = nullptr;
 		if (sqlite3_prepare16_v2(m_db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return false;
 		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 		sqlite3_bind_text(stmt, 2, cutoffDate1m.c_str(), -1, SQLITE_TRANSIENT);
-		bool hasCache = sqlite3_step(stmt) == SQLITE_ROW;
+		bool hasCache = false;
+		if (sqlite3_step(stmt) == SQLITE_ROW)
+		{
+			const unsigned char* dayText = sqlite3_column_text(stmt, 0);
+			if (dayText)
+			{
+				std::string dayStr = reinterpret_cast<const char*>(dayText);
+				hasCache = (dayStr.length() >= 10 && dayStr.substr(0, 10) < cutoffDate1m);
+			}
+		}
 		sqlite3_finalize(stmt);
-		return hasCache;
+		if (!hasCache) return false;
+
+		// 最新数据距今超过5天（含长节假日后），视为过期，重新拉取
+		std::wstring sqlLatest = L"SELECT day FROM " + table + L" WHERE stock_code = ? ORDER BY day DESC LIMIT 1;";
+		stmt = nullptr;
+		if (sqlite3_prepare16_v2(m_db, sqlLatest.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return false;
+		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
+		bool freshEnough = false;
+		if (sqlite3_step(stmt) == SQLITE_ROW)
+		{
+			const unsigned char* dayText = sqlite3_column_text(stmt, 0);
+			if (dayText)
+			{
+				std::string dayStr = reinterpret_cast<const char*>(dayText);
+				if (dayStr.length() >= 10)
+				{
+					std::string lastDate = dayStr.substr(0, 10);
+					// 允许4天余量（周末+短假），超过则强制刷新
+					tm lastTm = {};
+					int y = atoi(lastDate.substr(0, 4).c_str());
+					int mo = atoi(lastDate.substr(5, 2).c_str());
+					int d = atoi(lastDate.substr(8, 2).c_str());
+					if (y > 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31)
+					{
+						lastTm.tm_year = y - 1900;
+						lastTm.tm_mon = mo - 1;
+						lastTm.tm_mday = d;
+						time_t lastTime = _mkgmtime(&lastTm);
+						// 与当前时间比较（UTC日期口径，误差不超过时区偏移，对5天阈值无影响）
+						freshEnough = (lastTime > 0 && difftime(time(nullptr), lastTime) < 5 * 86400);
+					}
+				}
+			}
+		}
+		sqlite3_finalize(stmt);
+		return freshEnough;
 	}
 
 	// 5分钟/30分钟K线：缓存中最新数据在7天内即算有效

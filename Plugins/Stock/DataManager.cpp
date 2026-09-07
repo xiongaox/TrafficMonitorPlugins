@@ -26,6 +26,63 @@ static std::string GetTodayDateString()
 	return GetLocalDateString(time(nullptr));
 }
 
+// 将 "YYYY-MM-DD" 转为自 1970-01-01 起的天数（用于周K去重的周索引计算）
+static long KlineDateToDays(const std::string& d)
+{
+	if (d.length() < 10) return 0;
+	tm t = {};
+	t.tm_year = atoi(d.substr(0, 4).c_str()) - 1900;
+	t.tm_mon = atoi(d.substr(5, 2).c_str()) - 1;
+	t.tm_mday = atoi(d.substr(8, 2).c_str());
+	time_t tt = _mkgmtime(&t);
+	if (tt < 0) return 0;
+	return static_cast<long>(tt / 86400);
+}
+
+// 计算 K 线所属自然周索引（周一对齐）。1970-01-01 是周四，1970-01-05 是第一个周一。
+static long KlineWeekIndex(const std::string& d)
+{
+	return (KlineDateToDays(d) - 3) / 7;
+}
+
+// 清理 K 线缓存中的历史脏数据，返回过滤后的数据：
+// 1) 日K：丢弃 volume<=0 的行（历史异常接口写入的无量数据，会污染成交量图）；
+// 2) 周/月K：同一自然周/月可能出现多行（新老版本写入的 day 键不同），只保留 day 最大（最新）的一行。
+static std::vector<STOCK::KLinePoint> FilterKLineCachePoints(const std::vector<STOCK::KLinePoint>& points, STOCK::Period period)
+{
+	std::vector<STOCK::KLinePoint> filtered;
+	filtered.reserve(points.size());
+	for (const auto& pt : points)
+	{
+		if (period == STOCK::Period::DAY)
+		{
+			if (pt.volume <= 0)
+				continue;
+		}
+		else if (period == STOCK::Period::WEEK || period == STOCK::Period::MONTH)
+		{
+			if (!filtered.empty())
+			{
+				const auto& last = filtered.back();
+				bool samePeriod = false;
+				if (period == STOCK::Period::MONTH)
+					samePeriod = (pt.day.length() >= 7 && last.day.length() >= 7 && pt.day.substr(0, 7) == last.day.substr(0, 7));
+				else
+					samePeriod = (pt.day.length() >= 10 && last.day.length() >= 10 && KlineWeekIndex(pt.day) == KlineWeekIndex(last.day));
+				if (samePeriod)
+				{
+					// 同一周/月保留 day 最大（该周期最后交易日）的一行
+					if (pt.day > last.day)
+						filtered.back() = pt;
+					continue;
+				}
+			}
+		}
+		filtered.push_back(pt);
+	}
+	return filtered;
+}
+
 // 前置声明：筹码分布相关静态函数（定义在文件后方，供 Apply* 方法调用）
 static bool IsSameLocalDate(time_t lhs, time_t rhs);
 static bool CalculateEtfChipDistribution(const std::vector<STOCK::ChipKLinePoint>& klines, STOCK::Volume totalShares, STOCK::ChipDistribution& chipData);
@@ -142,11 +199,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 
 	// 顶部指标栏指标列表（最多4个）
 	ini.GetStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics, std::vector<std::wstring>{
-		L"总市值", L"成交额", L"成交量", L"换手率"
+		L"总市值", L"成交额", L"成交量", L"量比"
 	});
 	if (m_setting_data.m_header_metrics.empty())
 	{
-		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"换手率" };
+		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 	}
 	else if (m_setting_data.m_header_metrics.size() > 4)
 	{
@@ -372,7 +429,7 @@ void CDataManager::LoadKLineCache(STOCK::Period period)
 	{
 		auto stockData = GetStockData(code);
 		if (!stockData) continue;
-		auto points = m_db_mgr.LoadKLineCache(code, period);
+		auto points = FilterKLineCachePoints(m_db_mgr.LoadKLineCache(code, period), period);
 		if (points.empty()) continue;
 
 		// 5分钟/30分钟K线：如果缓存最新数据超过7天，跳过加载（等网络请求更新）
@@ -899,6 +956,66 @@ void CDataManager::ApplyTimeline(const std::wstring& code, const std::string& re
 			}
 		}
 	}
+}
+
+void CDataManager::PushFetchStatus(const std::wstring& code, const std::wstring& stage,
+	const std::wstring& source, const std::wstring& note)
+{
+	// note 可能是组合句（"拉取失败，正切换到东方财富源拉取数据...."），
+	// 按中文逗号拆成两条独立条目，每条渲染为 header/detail 两行，避免长句溢出面板
+	std::vector<std::wstring> notes;
+	{
+		std::wstring cur;
+		for (size_t i = 0; i < note.size(); )
+		{
+			// UTF-16 中文逗号（，)为单码元
+			if (note[i] == L'\uFF0C')
+			{
+				notes.push_back(cur);
+				cur.clear();
+				++i;
+			}
+			else
+			{
+				cur += note[i];
+				++i;
+			}
+		}
+		if (!cur.empty()) notes.push_back(cur);
+	}
+	if (notes.empty()) notes.push_back(note);
+
+	// 统一将 ASCII "...." 结尾换成省略号"…"
+	for (auto& n : notes)
+	{
+		size_t pos;
+		while ((pos = n.find(L"....")) != std::wstring::npos)
+			n.replace(pos, 4, L"…");
+	}
+
+	STOCK::FetchStatusEntry entry;
+	entry.header = stage + L" " + source;
+
+	std::lock_guard<std::mutex> lock(m_fetch_status_mutex);
+	auto& lines = m_fetch_status[code];
+	for (const auto& n : notes)
+	{
+		entry.detail = n;
+		// 连续重复的状态不重复记录（分钟K周期刷新会反复产生相同条目）
+		if (lines.empty() || lines.back().header != entry.header || lines.back().detail != entry.detail)
+			lines.push_back(entry);
+	}
+	while (lines.size() > 4)
+		lines.erase(lines.begin());
+	// 通知悬浮窗立即重绘（内部有窗口判空，未打开时为无操作）
+	Stock::Instance().UpdateKLine();
+}
+
+std::vector<STOCK::FetchStatusEntry> CDataManager::GetFetchStatusEntries(const std::wstring& code)
+{
+	std::lock_guard<std::mutex> lock(m_fetch_status_mutex);
+	auto it = m_fetch_status.find(code);
+	return it != m_fetch_status.end() ? it->second : std::vector<STOCK::FetchStatusEntry>();
 }
 
 void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& resp, bool ok)

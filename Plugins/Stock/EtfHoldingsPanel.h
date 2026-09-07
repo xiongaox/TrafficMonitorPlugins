@@ -26,6 +26,8 @@ public:
 	// data: ETF 持仓数据
 	// scrollOffset: 列表垂直滚动偏移量
 	// currentStockId: 当前选中的股票代码（用于高亮行）
+	// statusEntries: 数据未就绪时显示的实时拉取进度（每条渲染两行："阶段 源" / "状态说明"），空则显示默认文案
 	void Draw(CDC& memDC, int left, int right, int height, const STOCK::EtfHoldingsData& data,
-		int scrollOffset = 0, const std::wstring& currentStockId = L"");
+		int scrollOffset = 0, const std::wstring& currentStockId = L"",
+		const std::vector<STOCK::FetchStatusEntry>& statusEntries = std::vector<STOCK::FetchStatusEntry>());
 };
