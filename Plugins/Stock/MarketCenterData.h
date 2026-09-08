@@ -117,6 +117,7 @@ public:
 	time_t m_fail_until[5]{ 0, 0, 0, 0, 0 };            // 对应 DataSet 枚举
 	bool m_inflight[5]{ false, false, false, false, false }; // 后台任务在途标记
 	bool m_last_failed[5]{ false, false, false, false, false }; // 最近一次请求是否失败（供 UI 显示错误态）
+	bool m_premarket_no_data[5]{ false, false, false, false, false }; // 接口可达但资金流字段全为"-"（盘前清库，非网络故障）
 	static const int FAIL_BACKOFF_SEC = 15;
 
 	// 数据集枚举（取数任务调度与失败退避共用）
@@ -135,6 +136,8 @@ public:
 	bool IsStale(DataSet ds, int staleSec) const;
 	// 最近一次请求是否失败（且当前无数据）：供 UI 显示"获取失败，点击重试"
 	bool HasFailed(DataSet ds) const;
+	// 盘前清库态：接口正常但资金流字段全为"-"，开盘后自动恢复（供 UI 显示"盘前暂无数据"）
+	bool IsPremarketNoData(DataSet ds) const;
 	// 用户主动重试：清除退避并立即重新请求（UI 线程调用）
 	void Retry(DataSet ds, HWND notifyWnd);
 

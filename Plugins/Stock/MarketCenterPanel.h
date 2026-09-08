@@ -20,6 +20,8 @@ public:
 
 	// 绘制行情中心到指定矩形（x,y,w,h 为悬浮窗客户区坐标；顶部标题条由悬浮窗自留）
 	void Draw(CDC& memDC, int x, int y, int w, int h);
+	// 在悬浮窗顶部标题条内绘制开市/休市时钟（由 FloatingWnd 在行情中心模式下调用）
+	void DrawHeaderClock(CDC& memDC, const CRect& rc);
 
 	// 交互（坐标均为悬浮窗客户区坐标）；返回是否需要重绘
 	bool HandleMouseMove(CPoint clientPt);
@@ -58,11 +60,11 @@ private:
 		COLORREF color;
 	};
 
-	// ===== 气泡图布局节点 =====
-	struct BubbleNode
+	// ===== 板块资金流矩形图布局单元 =====
+	struct TreeCell
 	{
 		int sectorIdx{ -1 };
-		float x{ 0 }, y{ 0 }, r{ 0 };
+		CRect rect;   // 悬浮窗客户区坐标
 	};
 
 	// ===== 涨跌分布柱 =====
@@ -106,7 +108,7 @@ private:
 	void DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc);
 
-	void RebuildBubbleLayout(const CRect& chartRc);
+	void RebuildTreemapLayout(const CRect& chartRc);
 	void BuildThemeInflow();
 	std::vector<int> SortedRankList() const;
 
@@ -126,7 +128,6 @@ private:
 	void RetryCurrentPage();
 
 	CRect m_content_rect;               // 面板内容矩形（悬浮窗客户区坐标）
-	CRect m_clock_rect;
 	int m_clock_status{ 1 };
 	std::wstring m_clock_time;
 
@@ -143,12 +144,15 @@ private:
 	long long m_etf_total{ 0 };
 
 	// ===== 气泡图 =====
-	std::vector<BubbleNode> m_bubble_nodes;
+	std::vector<TreeCell> m_treemap_cells;
 	bool m_bubble_layout_dirty{ true };
 	CRect m_bubble_chart_rect;
 	CRect m_bubble_detail_rect;
 	int m_selected_sector{ -1 };
 	int m_hover_bubble{ -1 };
+	CRect m_bubble_stat_rects[2];   // 流入/流出合计卡片（点击切换树图单色视图）
+	int m_treemap_mode{ 0 };        // 0=全部红绿 1=仅流入 2=仅流出
+	int m_hover_bubble_stat{ -1 };
 
 	// ===== ETF净流入页 =====
 	std::vector<ThemeInflow> m_theme_inflow;

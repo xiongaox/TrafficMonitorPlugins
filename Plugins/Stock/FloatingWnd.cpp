@@ -410,22 +410,24 @@ void CFloatingWnd::OnPaint()
 
 		memDC.SetBkMode(TRANSPARENT);
 
-	// 行情中心视图：顶部标题条（股票名，真实按钮子控件仍可交互）+ 面板绘制其下方
+	// 行情中心视图：顶部标题条（“行情中心”标题取代股票名，真实按钮子控件仍可交互）+ 面板绘制其下方
 	if (m_marketCenterMode)
 	{
 		const int mcHeaderH = g_data.RDPI(26);
 		const int mcW = rect.Width(), mcH = rect.Height();
 		memDC.FillSolidRect(0, 0, mcW, mcHeaderH, COLOR_BG_HEADER);
 		memDC.FillSolidRect(0, mcHeaderH, mcW, 1, COLOR_DARK_GRAY_BORDER);
-		CString name(m_stock_id.c_str());
+		// 标题：粗体“行情中心”（沿用悬浮窗字体族，与整体字号体系一致）
 		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			auto stockData = g_data.GetStockData(m_stock_id);
-			if (stockData)
-				name = stockData->info.GetStockShortName();
+			CFont titleFont;
+			CreateStockFont(titleFont, memDC, g_data.RDPI(12), FW_BOLD);
+			CFont* pOld = memDC.SelectObject(&titleFont);
+			memDC.SetTextColor(COLOR_TEXT_PRIMARY);
+			memDC.TextOut(g_data.RDPI(10), max(0, (mcHeaderH - memDC.GetTextExtent(L"行情中心").cy) / 2), CString(L"行情中心"));
+			memDC.SelectObject(pOld);
 		}
-		memDC.SetTextColor(COLOR_TEXT_PRIMARY);
-		memDC.TextOut(g_data.RDPI(8), max(0, (mcHeaderH - memDC.GetTextExtent(name).cy) / 2), name);
+		// 标题条中央：开市/休市状态时钟（面板状态，随秒级定时器刷新）
+		m_marketCenterPanel.DrawHeaderClock(memDC, CRect(0, 0, mcW, mcHeaderH));
 		m_marketCenterPanel.Draw(memDC, 0, mcHeaderH, mcW, mcH - mcHeaderH);
 		dc.BitBlt(0, 0, mcW, mcH, &memDC, 0, 0, SRCCOPY);
 		memDC.SelectObject(pOldBitmap);

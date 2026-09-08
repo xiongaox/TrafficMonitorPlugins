@@ -109,6 +109,11 @@ bool CMarketCenterData::HasFailed(DataSet ds) const
 	return m_last_failed[ds];
 }
 
+bool CMarketCenterData::IsPremarketNoData(DataSet ds) const
+{
+	return m_premarket_no_data[ds];
+}
+
 void CMarketCenterData::Retry(DataSet ds, HWND notifyWnd)
 {
 	// 用户主动重试：清除退避，强制重新请求
@@ -205,12 +210,15 @@ int CMarketCenterData::TimeIndex(const std::wstring& hhmm)
 	return -1;
 }
 
-// ===== 行业板块主力资金流（双向 Top60，气泡图） =====
+// ===== 行业板块主力资金流（双向 Top25，气泡图） =====
 bool CMarketCenterData::FetchSectors()
 {
-	// fid=f62 按主力净流入排序，po=1 降序取流入 Top60、po=0 升序取流出 Top60
-	auto fetchHalf = [&](bool desc) -> std::vector<MC::SectorFlow> {
-		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=60&";
+	// fid=f62 按主力净流入排序，po=1 降序取流入 Top25、po=0 升序取流出 Top25；
+	// 全量 80+ 板块在悬浮窗内过于密集，只保留头部有信息量的板块
+	// hadDiff：接口本身返回了 diff（区分"网络失败"与"盘前服务端清库（f62 全为'-'）"）
+	auto fetchHalf = [&](bool desc, bool& hadDiff) -> std::vector<MC::SectorFlow> {
+		hadDiff = false;
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=25&";
 		url += desc ? L"po=1" : L"po=0";
 		url += L"&np=1&fltt=2&invt=2&fid=f62&fs=m:90+t:2&fields=f12,f14,f2,f3,f62,f66,f72,f78,f84";
 		std::string resp;
@@ -220,6 +228,8 @@ bool CMarketCenterData::FetchSectors()
 		yyjson_val* root = yyjson_doc_get_root(doc);
 		yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
 		yyjson_val* diff = data ? yyjson_obj_get(data, "diff") : nullptr;
+		if (diff && yyjson_is_arr(diff))
+			hadDiff = true;
 		std::vector<MC::SectorFlow> out;
 		if (diff && yyjson_is_arr(diff))
 		{
@@ -228,6 +238,9 @@ bool CMarketCenterData::FetchSectors()
 			yyjson_arr_iter_init(diff, &iter);
 			while ((item = yyjson_arr_iter_next(&iter)))
 			{
+				// 盘前/清算时段资金流字段为"-"（非数字），条目视为无数据
+				if (JsonIsDash(item, "f62"))
+					continue;
 				MC::SectorFlow s;
 				s.code = JsonWStr(item, "f12");
 				s.name = JsonWStr(item, "f14");
@@ -245,20 +258,35 @@ bool CMarketCenterData::FetchSectors()
 		return out;
 	};
 
-	std::vector<MC::SectorFlow> in = fetchHalf(true);
-	std::vector<MC::SectorFlow> out = fetchHalf(false);
+	bool inHadDiff = false, outHadDiff = false;
+	std::vector<MC::SectorFlow> in = fetchHalf(true, inHadDiff);
+	std::vector<MC::SectorFlow> out = fetchHalf(false, outHadDiff);
 	if (in.empty() && !out.empty())
 	{
 		Sleep(400);
-		in = fetchHalf(true);   // 流入半边偶发失败重试
+		in = fetchHalf(true, inHadDiff);   // 流入半边偶发失败重试
 	}
 	if (out.empty() && !in.empty())
 	{
 		Sleep(400);
-		out = fetchHalf(false);
+		out = fetchHalf(false, outHadDiff);
 	}
 	if (in.empty() && out.empty())
+	{
+		if (inHadDiff || outHadDiff)
+		{
+			// 盘前/清算时段：接口正常但资金流字段被服务端清空。置盘前标记并按成功处理，
+			// 让 UI 显示"盘前暂无数据"而非错误提示/整屏 0；m_sectors_time 照常刷新，
+			// 2 分钟后自然重查，开盘即自动恢复
+			std::lock_guard<std::mutex> lock(m_mutex);
+			m_sectors.clear();
+			m_sectors_time = time(nullptr);
+			m_premarket_no_data[DS_SECTORS] = true;
+			MarkSuccess(DS_SECTORS);
+			return true;
+		}
 		return false;
+	}
 
 	// 合并去重（同板块可能同时出现在两半）
 	std::map<std::wstring, MC::SectorFlow> merged;
@@ -272,6 +300,7 @@ bool CMarketCenterData::FetchSectors()
 	std::lock_guard<std::mutex> lock(m_mutex);
 	m_sectors = std::move(sectors);
 	m_sectors_time = time(nullptr);
+	m_premarket_no_data[DS_SECTORS] = false;
 	MarkSuccess(DS_SECTORS);
 	return true;
 }
