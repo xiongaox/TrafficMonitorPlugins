@@ -165,16 +165,17 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 
 	utilities::CIniHelper ini(m_config_path);
 	const bool isNewConfig = ini.IsEmpty();
+	const std::vector<std::wstring> firstRunWatchlist = {
+		L"sz300750", // 宁德时代
+		L"sz300308", // 中际旭创
+		L"sz300502", // 新易盛
+		L"sz300394", // 天孚通信
+		L"sh688825", // 长鑫科技
+	};
 	ini.GetStringList(L"config", L"stock_code", m_setting_data.m_stock_codes, std::vector<std::wstring>{});
 	if (isNewConfig)
 	{
-		m_setting_data.m_stock_codes = {
-			L"sz300750", // 宁德时代
-			L"sz300308", // 中际旭创
-			L"sz300502", // 新易盛
-			L"sz300394", // 天孚通信
-			L"sh688825", // 长鑫科技
-		};
+		m_setting_data.m_stock_codes = firstRunWatchlist;
 	}
 	m_setting_data.m_full_day = ini.GetBool(L"config", L"full_day", true);
 	m_setting_data.m_show_stock_name = ini.GetBool(L"config", L"show_stock_name", true);
@@ -334,11 +335,25 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 		ini.WriteStringList(L"config", L"stock_code", m_setting_data.m_stock_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
 		ini.WriteInt(L"config", L"group_default_tab", m_setting_data.m_group_default_tab);
+		for (const auto& item : m_stock_statusbar)
+			ini.WriteBool(item.first.c_str(), L"show_in_statusbar", item.second);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
 		ini.Save();
 	}
 
-	m_db_mgr.Init(m_config_path);
+		const bool needsFirstRunStatusbarRegistration = isNewConfig ||
+			(!ini.GetBool(L"config", L"seeded_first_run_watchlist", false) && m_setting_data.m_stock_codes == firstRunWatchlist);
+		if (needsFirstRunStatusbarRegistration)
+		{
+			for (const auto& code : firstRunWatchlist)
+				m_stock_statusbar[code] = true;
+			ini.WriteBool(L"config", L"seeded_first_run_watchlist", true);
+			for (const auto& item : m_stock_statusbar)
+				ini.WriteBool(item.first.c_str(), L"show_in_statusbar", item.second);
+			ini.Save();
+		}
+
+		m_db_mgr.Init(m_config_path);
 	m_db_mgr.CleanExpiredData();
 	// 历史版本曾把新浪不复权日K写入缓存（如基金份额折算形成的-65%断崖），启动时清理，
 	// 被清理的股票由随后的网络获取重建为前复权数据
