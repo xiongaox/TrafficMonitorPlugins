@@ -182,8 +182,8 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_show_fluctuation = ini.GetBool(L"config", L"show_fluctuation", true);
 	m_setting_data.m_show_today_profit = ini.GetBool(L"config", L"show_today_profit", false);
 	m_setting_data.m_color_with_price = ini.GetBool(L"config", L"color_with_price", true);
-	m_setting_data.m_kline_width = ini.GetInt(L"config", L"kline_width", 450);
-	m_setting_data.m_kline_height = ini.GetInt(L"config", L"kline_height", 210);
+	m_setting_data.m_kline_width = ini.GetInt(L"config", L"kline_width", 800);
+	m_setting_data.m_kline_height = ini.GetInt(L"config", L"kline_height", 480);
 	m_setting_data.m_display_area = ini.GetInt(L"config", L"display_area", AREA_RIGHT_BOTTOM);
 	if (m_setting_data.m_display_area < AREA_LEFT_TOP || m_setting_data.m_display_area > AREA_CENTER)
 		m_setting_data.m_display_area = AREA_RIGHT_BOTTOM;
@@ -335,6 +335,8 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 		ini.WriteStringList(L"config", L"stock_code", m_setting_data.m_stock_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
 		ini.WriteInt(L"config", L"group_default_tab", m_setting_data.m_group_default_tab);
+		ini.WriteInt(L"config", L"kline_width", m_setting_data.m_kline_width);
+		ini.WriteInt(L"config", L"kline_height", m_setting_data.m_kline_height);
 		for (const auto& item : m_stock_statusbar)
 			ini.WriteBool(item.first.c_str(), L"show_in_statusbar", item.second);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
