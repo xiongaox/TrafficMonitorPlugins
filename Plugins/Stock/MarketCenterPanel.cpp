@@ -307,7 +307,6 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	if (m_page == page)
 		return;
 	m_page = page;
-	m_theme_panel_open = false;
 	m_rank_scroll = 0;
 	m_hover_bubble = -1;
 	m_hover_inflow_bar = -1;
@@ -316,6 +315,13 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	// 切页后拉取该页数据（懒加载；数据到达由悬浮窗 WM_MC_DATA_UPDATED 触发重绘）
 	RequestData();
 	// 重绘由悬浮窗在 HandleLButtonDown 后 Invalidate 完成
+}
+
+std::wstring CMarketCenterPanel::EtfCodeAt(int idx) const
+{
+	if (idx < 0 || idx >= static_cast<int>(m_etfs_snapshot.size()))
+		return std::wstring();
+	return m_etfs_snapshot[static_cast<size_t>(idx)].code;
 }
 
 CMarketCenterData::DataSet CMarketCenterPanel::CurrentDataSet() const
@@ -384,6 +390,28 @@ void CMarketCenterPanel::BuildThemeInflow()
 		m_theme_inflow.push_back({ p.first, p.second });
 	std::sort(m_theme_inflow.begin(), m_theme_inflow.end(),
 		[](const ThemeInflow& a, const ThemeInflow& b) { return a.inflow > b.inflow; });
+}
+
+int CMarketCenterPanel::ThemeRepresentEtf(int themeIdx) const
+{
+	if (themeIdx < 0 || themeIdx >= static_cast<int>(m_theme_inflow.size()))
+		return -1;
+	const std::wstring& theme = m_theme_inflow[static_cast<size_t>(themeIdx)].theme;
+	int best = -1;
+	double bestAbs = -1.0;
+	for (int i = 0; i < static_cast<int>(m_etfs_snapshot.size()); i++)
+	{
+		const auto& e = m_etfs_snapshot[static_cast<size_t>(i)];
+		if (e.theme != theme)
+			continue;
+		double a = fabs(e.inflow);
+		if (a > bestAbs)
+		{
+			bestAbs = a;
+			best = i;
+		}
+	}
+	return best;
 }
 
 void CMarketCenterPanel::DrawAll(Gdiplus::Graphics& g, const CRect& client)
@@ -958,7 +986,6 @@ void CMarketCenterPanel::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc
 		int yTop = chartRc.top + static_cast<int>(k) * slot + (slot - barH) / 2;
 		CRect nameRc(chartRc.left, yTop - g_data.DPI(2), plotLeft - g_data.DPI(8), yTop + barH + g_data.DPI(2));
 		DrawStr(g, th.theme + L"ETF", f11.get(), nameRc, MC_TEXT_SUB, 255, Gdiplus::StringAlignmentFar);
-
 		double vYi = th.inflow / 1e8;
 		int x1 = plotLeft + static_cast<int>(fabs(vYi) / maxAbs * (plotRight - plotLeft));
 		CRect barRc(plotLeft, yTop, max(plotLeft + g_data.DPI(2), x1), yTop + barH);
@@ -969,84 +996,16 @@ void CMarketCenterPanel::DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc
 			Gdiplus::Pen hoverPen(Gdi(MC_TEXT, 120), 1.2f);
 			g.DrawRectangle(&hoverPen, Gdiplus::REAL(barRc.left), Gdiplus::REAL(barRc.top), Gdiplus::REAL(barRc.Width()), Gdiplus::REAL(barRc.Height()));
 		}
+
 		// 数值标签：条形右端外侧
 		wchar_t vbuf[32];
 		swprintf_s(vbuf, L"%s%.2f", vYi >= 0 ? L"+" : L"", vYi);
 		CRect valRc(barRc.right + g_data.DPI(6), yTop,
 			barRc.right + g_data.DPI(6) + valW, yTop + barH);
 		DrawStr(g, vbuf, f10.get(), valRc, MC_TEXT_SUB, 255, Gdiplus::StringAlignmentNear);
-		m_inflow_bars.push_back({ barRc, idx });
+		// 整行命中区（名称列 + 条形 + 数值），点击直接跳转代表 ETF
+		m_inflow_bars.push_back({ CRect(chartRc.left, yTop - g_data.DPI(2), chartRc.right, yTop + barH + g_data.DPI(2)), barRc, idx });
 	}
-
-	// 主题ETF浮层
-	if (m_theme_panel_open)
-		DrawThemePanel(g, chartRc);
-}
-
-void CMarketCenterPanel::DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc)
-{
-	auto f10 = MkFont(10);
-	auto f10b = MkFont(10, true);
-	auto f11 = MkFont(11);
-	auto f11b = MkFont(11, true);
-	auto f12b = MkFont(12, true);
-
-	const int panelW = g_data.DPI(300);
-	m_theme_panel_rect = CRect(chartRc.right - panelW, chartRc.top, chartRc.right, chartRc.bottom);
-	FillCard(g, m_theme_panel_rect, MC_CARD);
-	// 简易阴影：顶部一条高亮边
-	Gdiplus::Pen topPen(Gdi(MC_TEXT, 18), 1.0f);
-	g.DrawLine(&topPen, Gdiplus::REAL(m_theme_panel_rect.left), Gdiplus::REAL(m_theme_panel_rect.top), Gdiplus::REAL(m_theme_panel_rect.right), Gdiplus::REAL(m_theme_panel_rect.top));
-
-	const int P = g_data.DPI(10);
-	CRect headRc(m_theme_panel_rect.left + P, m_theme_panel_rect.top + P, m_theme_panel_rect.right - P, m_theme_panel_rect.top + P + g_data.DPI(20));
-	DrawStr(g, m_theme_panel_title, f12b.get(), headRc, MC_TEXT);
-	m_theme_close_rect = CRect(headRc.right - g_data.DPI(16), headRc.top, headRc.right, headRc.bottom);
-	DrawStrMid(g, L"✕", f11.get(), m_theme_close_rect, m_theme_close_rect.PtInRect(m_mouse_pos) ? MC_TEXT : MC_TEXT_DIM);
-
-	// 表头
-	CRect headRow(headRc.left, headRc.bottom + g_data.DPI(4), headRc.right, headRc.bottom + g_data.DPI(4) + g_data.DPI(18));
-	const int colW[4] = { 40, 24, 18, 18 };
-	int colWidths[4];
-	int totalW = headRow.Width();
-	for (int i = 0; i < 4; i++)
-		colWidths[i] = totalW * colW[i] / 100;
-	const wchar_t* headers[4] = { L"名称", L"代码", L"现价", L"涨跌幅" };
-	int x = headRow.left;
-	for (int i = 0; i < 4; i++)
-	{
-		CRect c(x, headRow.top, x + colWidths[i], headRow.bottom);
-		DrawStr(g, headers[i], f10.get(), c, MC_TEXT_DIM, 255, i == 0 ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter);
-		x += colWidths[i];
-	}
-	Gdiplus::Pen sepPen(Gdi(MC_BORDER), 1.0f);
-	g.DrawLine(&sepPen, Gdiplus::REAL(headRow.left), Gdiplus::REAL(headRow.bottom), Gdiplus::REAL(headRow.right), Gdiplus::REAL(headRow.bottom));
-
-	// 数据行（可滚动）
-	const int rowH = g_data.DPI(22);
-	CRect listRc(headRow.left, headRow.bottom + g_data.DPI(2), headRow.right, m_theme_panel_rect.bottom - P);
-	int maxVisible = max(1, listRc.Height() / rowH);
-	m_theme_panel_scroll_max = max(0, static_cast<int>(m_theme_row_etfs.size()) - maxVisible);
-	m_theme_panel_scroll = min(m_theme_panel_scroll, m_theme_panel_scroll_max);
-	g.SetClip(Gdiplus::Rect(Gdiplus::REAL(listRc.left), Gdiplus::REAL(listRc.top), Gdiplus::REAL(listRc.Width()), Gdiplus::REAL(listRc.Height())));
-	int row = 0;
-	for (int etfIdx : m_theme_row_etfs)
-	{
-		int drawIdx = row - m_theme_panel_scroll;
-		row++;
-		if (drawIdx < 0) continue;
-		if (drawIdx >= maxVisible) break;
-		const auto& e = m_etfs_snapshot[static_cast<size_t>(etfIdx)];
-		CRect rRow(listRc.left, listRc.top + drawIdx * rowH, listRc.right, listRc.top + (drawIdx + 1) * rowH);
-		wchar_t priceBuf[24], pctBuf[24];
-		swprintf_s(priceBuf, L"%.3f", e.price);
-		swprintf_s(pctBuf, L"%s%.2f%%", e.pct >= 0 ? L"+" : L"", e.pct);
-		DrawStr(g, e.name, f11.get(), CRect(rRow.left, rRow.top, rRow.left + colWidths[0] - g_data.DPI(4), rRow.bottom), MC_TEXT);
-		DrawStrMid(g, e.code, f10.get(), CRect(rRow.left + colWidths[0], rRow.top, rRow.left + colWidths[0] + colWidths[1], rRow.bottom), MC_TEXT_SUB);
-		DrawStrMid(g, priceBuf, f10.get(), CRect(rRow.left + colWidths[0] + colWidths[1], rRow.top, rRow.left + colWidths[0] + colWidths[1] + colWidths[2], rRow.bottom), MC_TEXT_SUB);
-		DrawStrMid(g, pctBuf, f10b.get(), CRect(rRow.left + colWidths[0] + colWidths[1] + colWidths[2], rRow.top, rRow.right, rRow.bottom), UpDownColor(e.pct));
-	}
-	g.ResetClip();
 }
 
 // ============ 页面3：主力资金 ============
@@ -1850,12 +1809,13 @@ bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 			{
 				const int rowH = g_data.DPI(28);
 				int headerH = g_data.DPI(28);
-				int relY = point.y - m_rank_table_rect.top - headerH + m_rank_scroll;
+				// m_rank_row_etf 按可见槽位顺序存放，先算可见槽位再加 firstRow 得绘制时的绝对行号
+				int relY = point.y - m_rank_table_rect.top - headerH;
 				if (relY >= 0)
 				{
-					int rowIdx = relY / rowH;
-					if (rowIdx >= 0 && rowIdx < static_cast<int>(m_rank_row_etf.size()))
-						hovRow = m_rank_scroll / rowH + rowIdx;
+					int slot = relY / rowH;
+					if (slot < static_cast<int>(m_rank_row_etf.size()))
+						hovRow = m_rank_scroll / rowH + slot;
 				}
 			}
 			if (hovRow != m_hover_rank_row)
@@ -1939,11 +1899,6 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 	}
 	case PAGE_ETF_INFLOW:
 	{
-		if (m_theme_panel_open && m_theme_close_rect.PtInRect(point))
-		{
-			m_theme_panel_open = false;
-			return;
-		}
 		for (int i = 0; i < 2 && i < static_cast<int>(m_inflow_stat_rects.size()); i++)
 		{
 			if (m_inflow_stat_rects[static_cast<size_t>(i)].rect.PtInRect(point))
@@ -1960,21 +1915,10 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 		{
 			if (bar.rect.PtInRect(point))
 			{
-				// 打开主题浮层
-				if (bar.themeIdx >= 0 && bar.themeIdx < static_cast<int>(m_theme_inflow.size()))
-				{
-					const std::wstring& theme = m_theme_inflow[static_cast<size_t>(bar.themeIdx)].theme;
-					m_theme_row_etfs.clear();
-					for (int i = 0; i < static_cast<int>(m_etfs_snapshot.size()); i++)
-						if (m_etfs_snapshot[static_cast<size_t>(i)].theme == theme)
-							m_theme_row_etfs.push_back(i);
-					if (!m_theme_row_etfs.empty())
-					{
-						m_theme_panel_title = theme + L" · 共" + std::to_wstring(m_theme_row_etfs.size()) + L"只";
-						m_theme_panel_scroll = 0;
-						m_theme_panel_open = true;
-							}
-				}
+				// 直接跳转该主题的代表 ETF（主题内 |主力净流入| 最大者），不再打开浮层
+				int etfIdx = ThemeRepresentEtf(bar.themeIdx);
+				if (etfIdx >= 0 && m_notify_wnd)
+					::PostMessage(m_notify_wnd, WM_MC_ETF_CLICKED, static_cast<WPARAM>(etfIdx), 0);
 				return;
 			}
 		}
@@ -2015,6 +1959,20 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 				return;
 			}
 		}
+		// 点击数据行 → 通知悬浮窗跳转该 ETF 的 K 线（m_rank_row_etf 按可见槽位顺序存放：
+		// 第 0 项即当前滚到的第一行，点击坐标只除以行高得槽位，不再叠加 m_rank_scroll）
+		if (m_rank_table_rect.PtInRect(point) && !m_rank_row_etf.empty())
+		{
+			const int rowH = g_data.DPI(28);
+			int headerH = g_data.DPI(28);
+			int relY = point.y - m_rank_table_rect.top - headerH;
+			if (relY >= 0)
+			{
+				int slot = relY / rowH;
+				if (slot < static_cast<int>(m_rank_row_etf.size()) && m_notify_wnd)
+					::PostMessage(m_notify_wnd, WM_MC_ETF_CLICKED, static_cast<WPARAM>(m_rank_row_etf[static_cast<size_t>(slot)]), 0);
+			}
+		}
 		break;
 	}
 	default:
@@ -2025,14 +1983,7 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 void CMarketCenterPanel::HandleMouseWheel(short zDelta, CPoint point)
 {
 	bool scrolled = false;
-	if (m_page == PAGE_ETF_INFLOW && m_theme_panel_open && m_theme_panel_rect.PtInRect(point))
-	{
-		int old = m_theme_panel_scroll;
-		m_theme_panel_scroll = max(0, m_theme_panel_scroll - (zDelta / 120) * 3);
-		m_theme_panel_scroll = min(m_theme_panel_scroll, m_theme_panel_scroll_max);
-		scrolled = (old != m_theme_panel_scroll);
-	}
-	else if (m_page == PAGE_ETF_RANK && m_rank_table_rect.PtInRect(point))
+	if (m_page == PAGE_ETF_RANK && m_rank_table_rect.PtInRect(point))
 	{
 		int old = m_rank_scroll;
 		m_rank_scroll = max(0, m_rank_scroll - (zDelta / 120) * g_data.DPI(28) * 3);   // 每格滚动3行
@@ -2063,10 +2014,10 @@ bool CMarketCenterPanel::IsCursorOverInteractive(CPoint point) const
 					if (cellNode.rect.PtInRect(point)) { hand = true; break; }
 			break;
 		case PAGE_ETF_INFLOW:
-			hand = (m_theme_panel_open && m_theme_close_rect.PtInRect(point)) ||
-				(m_inflow_stat_rects.size() > 1 && (m_inflow_stat_rects[0].rect.PtInRect(point) || m_inflow_stat_rects[1].rect.PtInRect(point)));
-			for (const auto& bar : m_inflow_bars)
-				if (bar.rect.PtInRect(point)) { hand = true; break; }
+			hand = (m_inflow_stat_rects.size() > 1 && (m_inflow_stat_rects[0].rect.PtInRect(point) || m_inflow_stat_rects[1].rect.PtInRect(point)));
+			if (!hand)
+				for (const auto& bar : m_inflow_bars)
+					if (bar.rect.PtInRect(point)) { hand = true; break; }
 			break;
 		case PAGE_MAINFLOW:
 			for (const auto& c : m_mainflow_stat_rects)
@@ -2075,6 +2026,8 @@ bool CMarketCenterPanel::IsCursorOverInteractive(CPoint point) const
 		case PAGE_ETF_RANK:
 			for (const auto& c : m_rank_cols)
 				if (c.rect.PtInRect(point)) { hand = true; break; }
+			if (!hand && !m_rank_table_rect.IsRectEmpty() && point.y >= m_rank_table_rect.top + g_data.DPI(28) && m_rank_table_rect.PtInRect(point))
+				hand = true;   // 数据行区域可点击
 			break;
 		default:
 			break;

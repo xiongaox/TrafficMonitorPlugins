@@ -61,6 +61,7 @@ protected:
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
 	LRESULT OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam);   // 行情中心数据到达，重绘
+	LRESULT OnMcEtfClicked(WPARAM wParam, LPARAM lParam);              // 行情中心点击 ETF，跳转首页 K 线临时查看
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
@@ -152,6 +153,7 @@ private:
 	CButton m_btnEtfHoldings;    // ETF持仓按钮（CC）
 	CFont m_chipPeakFont;        // 筹码峰按钮小字体
 	std::wstring m_stock_id;
+	std::wstring m_mc_return_stock_id;  // 非空 = 正在临时查看行情中心 ETF 的 K 线，值为跳转前股票 id
 	UIViewMode m_viewMode{ UI_VIEW_DAY_KLINE };  // 当前界面视图模式
 	bool m_klineDataLoaded{ false };
 	int m_klinePeriodDays{ 250 };

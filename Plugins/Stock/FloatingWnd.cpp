@@ -125,6 +125,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_DRAWITEM()
 	ON_MESSAGE((WM_USER + 100), OnUpdateStatus)
 	ON_MESSAGE((CMarketCenterPanel::WM_MC_DATA_UPDATED), OnMarketCenterDataUpdated)
+	ON_MESSAGE((CMarketCenterPanel::WM_MC_ETF_CLICKED), OnMcEtfClicked)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
@@ -253,6 +254,46 @@ LRESULT CFloatingWnd::OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam)
 	// 行情中心数据到达：重绘（仅行情中心视图下有效，其他视图重绘无害）
 	if (m_marketCenterMode)
 		Invalidate(FALSE);
+	return 0;
+}
+
+// ETF 六位代码转悬浮窗完整 id：50/51/56/58 沪市、15/16/18 深市（前缀表与 CCommon::IsFundCode 一致）
+static std::wstring McEtfFullCode(const std::wstring& code)
+{
+	if (code.size() == 6)
+	{
+		const wchar_t* shPrefixes[] = { L"50", L"51", L"56", L"58" };
+		const wchar_t* szPrefixes[] = { L"15", L"16", L"18" };
+		wchar_t p2[3] = { code[0], code[1], L'\0' };
+		for (auto* pre : shPrefixes)
+			if (wcscmp(p2, pre) == 0) return L"sh" + code;
+		for (auto* pre : szPrefixes)
+			if (wcscmp(p2, pre) == 0) return L"sz" + code;
+	}
+	return code;
+}
+
+LRESULT CFloatingWnd::OnMcEtfClicked(WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+	// 行情中心点击某只 ETF：跳转首页日K临时查看，右键可返回行情中心
+	std::wstring full = McEtfFullCode(m_marketCenterPanel.EtfCodeAt(static_cast<int>(wParam)));
+	if (full.empty())
+		return 0;
+	std::wstring oldId = m_stock_id;
+	if (oldId == full)
+		return 0;   // 点的就是当前股票，无需进入临时视图
+	SetStockId(full);
+	SetDayKLineModeDefaults();
+	m_marketCenterMode = false;   // 跳转首页（退出行情中心视图，恢复图表按钮）
+	HideChartButtons(false);
+	UpdateModeButtons();
+	UpdatePeriodComboVisibility();
+	UpdateIndicatorButtons();
+	EnsureChipPeakData();
+	// SetStockId 会清空临时状态，这里重新记下来源股票供返回按钮恢复
+	m_mc_return_stock_id = oldId;
+	Invalidate();
 	return 0;
 }
 
@@ -2168,6 +2209,12 @@ void CFloatingWnd::ToggleMarketCenter()
 	m_marketCenterMode = !m_marketCenterMode;
 	if (m_marketCenterMode)
 	{
+		// 右键返回：若正在临时查看行情中心跳转的 ETF 日K，先恢复跳转前的股票
+		// （SetStockId 会经 UpdatePeriodComboVisibility 重新显示部分图表按钮，须在隐藏之前做）
+		std::wstring saved = m_mc_return_stock_id;
+		m_mc_return_stock_id.clear();
+		if (!saved.empty() && saved != m_stock_id)
+			SetStockId(saved);
 		// 进入：隐藏所有图表视图按钮（模式标签/指标/盘口/筹码/ETF持仓/展开/列表开关），只留关闭
 		HideChartButtons(true);
 		// 设置数据到达通知窗口并立即拉取当前页数据
@@ -2747,6 +2794,7 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 	if (m_stock_id == stockId)
 		return;
 	m_stock_id = stockId;
+	m_mc_return_stock_id.clear();   // 主动切换股票即结束临时 K 线查看
 	EnsureStockListVisible();
 	// 通知获取线程切换关注股票，线程自动重置计时器并立即获取新股数据
 	CStockFetchThread::Instance().SetFocusStockId(m_stock_id);
