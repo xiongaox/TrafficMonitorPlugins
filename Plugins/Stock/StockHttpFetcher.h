@@ -31,6 +31,8 @@ public:
 	// outCodes 返回实际请求的代码列表，outResp 返回响应体；无代码或请求失败返回 false
 	bool FetchRealtimeHtml(const std::vector<std::wstring>& allCodes, bool onlyNonAG,
 		std::vector<std::wstring>& outCodes, std::string& outResp);
+	// 上金所品种（118.AUTD 等）实时快照（东财 stock/get，独占通道：腾讯/新浪无金交所行情）
+	bool FetchSgeSnapshot(const std::wstring& code, std::string& outResp);
 	// 内外盘（腾讯）：includeAG=true 含A股；港股代码需转 r_ 前缀
 	bool FetchInnerOuterHtml(const std::vector<std::wstring>& allCodes, bool includeAG, std::string& outResp);
 	// 集合竞价（腾讯，仅A股）
@@ -63,6 +65,9 @@ public:
 private:
 	// 状态回调触发（code 为 wide string 代码；回调为空时无操作）
 	void NotifyStatus(const std::wstring& code, const wchar_t* stage, const wchar_t* source, const wchar_t* note);
+
+	// 上金所品种（118.* 前缀）专用：跳过腾讯/新浪，直接走东财 K 线接口（klt=101/102/103）
+	bool FetchSgeKLine(const std::wstring& code, int klt, int lmt, const wchar_t* stage, std::string& outResp);
 
 	// 东方财富接口失败缓存：WAF 拦截 WinINet 后，一段时间内不再尝试
 	// 值为失败截止时间戳（秒），0 表示未缓存

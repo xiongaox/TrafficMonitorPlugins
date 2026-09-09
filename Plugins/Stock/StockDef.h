@@ -47,7 +47,12 @@ inline const std::vector<PresetIndexInfo>& GetPresetIndices()
 		{ L"rt_hkHSHCI", L"恒生医疗保健" },
 		{ L"rt_hkHSHBI", L"港股创新药" },
 		{ L"sh000985", L"中证全指" },
-		{ L"sh000002", L"A股平均股价" }
+		{ L"sh000002", L"A股平均股价" },
+		// 黄金指数（东财 secid 形态：上金所/COMEX 无腾讯/新浪行情，由 FetchSgeSnapshot 单独走东财）
+		{ L"118.AUTD", L"黄金T+D" },
+		{ L"118.SHAU", L"上海金" },
+		{ L"118.AU9999", L"黄金9999" },
+		{ L"101.GC00Y", L"COMEX黄金" }
 	};
 	return s_indices;
 }

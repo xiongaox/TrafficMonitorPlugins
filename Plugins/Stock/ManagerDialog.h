@@ -229,6 +229,7 @@ private:
 	};
 	std::vector<MetricCandidateItem> m_metric_candidates;
 	std::vector<CRect> m_group_tab_rects;
+	std::vector<CRect> m_group_pref_radio_rects; // 分组页右下角「优先展示」单选区域 [0]=自选股 [1]=持仓分组
 	CRect m_about_link_rect;
 
 	// 内部辅助方法

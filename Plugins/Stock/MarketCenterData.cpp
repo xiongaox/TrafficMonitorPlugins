@@ -131,6 +131,7 @@ bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
 	case DS_ETFS: t = m_etfs_time; break;
 	case DS_MAINFLOW: t = m_fflow_time; break;
 	case DS_TREND: t = m_dist_time; break;
+	case DS_GOLD: t = m_gold_time; break;
 	default: break;
 	}
 	return t == 0 || time(nullptr) - t > staleSec;
@@ -154,6 +155,7 @@ bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd)
 		case DS_ETFS: ok = FetchEtfs(); break;
 		case DS_MAINFLOW: ok = FetchMainFlow(); break;
 		case DS_TREND: ok = FetchTrendDist(); break;
+		case DS_GOLD: ok = FetchGold(); break;
 		default: break;
 		}
 		if (!ok)
@@ -210,15 +212,15 @@ int CMarketCenterData::TimeIndex(const std::wstring& hhmm)
 	return -1;
 }
 
-// ===== 行业板块主力资金流（双向 Top25，气泡图） =====
+// ===== 行业板块主力资金流（双向 Top40，气泡图） =====
 bool CMarketCenterData::FetchSectors()
 {
-	// fid=f62 按主力净流入排序，po=1 降序取流入 Top25、po=0 升序取流出 Top25；
-	// 全量 80+ 板块在悬浮窗内过于密集，只保留头部有信息量的板块
+	// fid=f62 按主力净流入排序，po=1 降序取流入 Top40、po=0 升序取流出 Top40；
+	// 行业板块共 80+，双向 Top40 基本全覆盖
 	// hadDiff：接口本身返回了 diff（区分"网络失败"与"盘前服务端清库（f62 全为'-'）"）
 	auto fetchHalf = [&](bool desc, bool& hadDiff) -> std::vector<MC::SectorFlow> {
 		hadDiff = false;
-		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=25&";
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=40&";
 		url += desc ? L"po=1" : L"po=0";
 		url += L"&np=1&fltt=2&invt=2&fid=f62&fs=m:90+t:2&fields=f12,f14,f2,f3,f62,f66,f72,f78,f84";
 		std::string resp;
@@ -635,6 +637,119 @@ bool CMarketCenterData::FetchTrendDist()
 		MarkSuccess(DS_TREND);
 	}
 	AppendTrendSample();
+	return true;
+}
+
+// ===== 黄金榜（四区域） =====
+// 大陆：上金所列表 fs=m:118 单请求（21 品种）；港/美：固定品种清单逐个 stock/get 快照。
+// 台湾：东财无台股黄金品种（台股市场 178 可用但无黄金股/ETF），如实空缺。
+bool CMarketCenterData::FetchGold()
+{
+	// 跨市场固定品种（secid, 名称, 区域）：经实测 stock/get 快照均可用
+	struct FixedGold { const wchar_t* secid; const wchar_t* name; int region; };
+	static const std::vector<FixedGold> fixedGolds = {
+		// 香港：港股黄金股 + 香港金银业贸易场现货
+		{ L"116.01818", L"招金矿业", MC::GOLD_REGION_HK },
+		{ L"116.01787", L"山东黄金股份", MC::GOLD_REGION_HK },
+		{ L"116.02099", L"中国黄金国际", MC::GOLD_REGION_HK },
+		{ L"123.HLAU", L"港伦敦金", MC::GOLD_REGION_HK },
+		{ L"123.HLSI", L"港伦敦银", MC::GOLD_REGION_HK },
+		// 美国：COMEX 主连 + 美股黄金ETF
+		{ L"101.GC00Y", L"COMEX黄金", MC::GOLD_REGION_US },
+		{ L"107.GLD", L"黄金ETF-SPDR", MC::GOLD_REGION_US },
+		{ L"107.GDX", L"金矿ETF-VanEck", MC::GOLD_REGION_US },
+	};
+
+	std::vector<MC::GoldQuote> out;
+
+	// 1. 大陆：上金所品种列表
+	{
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=50&po=1&np=1&fltt=2&invt=2&fid=f3"
+			L"&fs=m:118&fields=f12,f14,f2,f3,f4,f6,f18";
+		std::string resp;
+		if (HttpGet(url, resp))
+		{
+			yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
+			if (doc)
+			{
+				yyjson_val* root = yyjson_doc_get_root(doc);
+				yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
+				yyjson_val* diff = data ? yyjson_obj_get(data, "diff") : nullptr;
+				if (diff && yyjson_is_arr(diff))
+				{
+					yyjson_val* item;
+					yyjson_arr_iter iter;
+					yyjson_arr_iter_init(diff, &iter);
+					while ((item = yyjson_arr_iter_next(&iter)))
+					{
+						MC::GoldQuote q;
+						q.code = JsonWStr(item, "f12");
+						q.name = JsonWStr(item, "f14");
+						if (q.name.empty()) continue;
+						q.secid = L"118." + q.code;
+						q.region = MC::GOLD_REGION_CN;
+						// fltt=2 时 f2-f6 为"-"表示今日无成交（冷门品种整日 0 手），f18 昨收始终有值
+						// 无成交品种以昨收作参考价展示；f6 单独为"-"：上海金/银等净价品种不公布成交额
+						q.hasQuote = !JsonIsDash(item, "f2");
+						q.hasAmount = !JsonIsDash(item, "f6");
+						double prevClose = JsonNum(item, "f18");
+						q.price = q.hasQuote ? JsonNum(item, "f2") : prevClose;
+						q.chg = q.hasQuote ? JsonNum(item, "f4") : 0.0;
+						q.pct = q.hasQuote ? JsonNum(item, "f3") : 0.0;
+						q.amount = q.hasAmount ? JsonNum(item, "f6") : 0.0;
+						out.push_back(std::move(q));
+					}
+				}
+				yyjson_doc_free(doc);
+			}
+		}
+	}
+
+	// 2. 港/美固定品种：逐个 stock/get 快照（9 个串行请求约 2-3s；个别失败不影响其余）
+	for (const auto& fg : fixedGolds)
+	{
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/stock/get?secid=" + std::wstring(fg.secid)
+			+ L"&invt=2&fltt=2&fields=f43,f58,f60,f169,f170,f47,f48";
+		std::string resp;
+		if (!HttpGet(url, resp))
+			continue;
+		yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
+		if (!doc) continue;
+		yyjson_val* root = yyjson_doc_get_root(doc);
+		yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
+		if (data && !yyjson_is_null(data))
+		{
+			MC::GoldQuote q;
+			q.secid = fg.secid;
+			q.code = fg.secid;
+			size_t dot = q.code.find(L'.');
+			if (dot != std::wstring::npos)
+				q.code = q.code.substr(dot + 1);
+			q.name = fg.name;
+			q.region = fg.region;
+			q.hasQuote = !JsonIsDash(data, "f43");
+			q.hasAmount = !JsonIsDash(data, "f48");   // stock/get 成交额是 f48（f6 非成交额）
+			double prevClose = JsonNum(data, "f60");
+			q.price = q.hasQuote ? JsonNum(data, "f43") : prevClose;
+			q.chg = q.hasQuote ? JsonNum(data, "f169") : 0.0;
+			// f170 涨跌幅与昨收换算取其一（个别市场 f170 缺失）
+			if (q.hasQuote && !JsonIsDash(data, "f170"))
+				q.pct = JsonNum(data, "f170");
+			else if (prevClose > 0)
+				q.pct = (q.price - prevClose) / prevClose * 100.0;
+			q.amount = q.hasAmount ? JsonNum(data, "f48") : 0.0;
+			out.push_back(std::move(q));
+		}
+		yyjson_doc_free(doc);
+	}
+
+	if (out.empty())
+		return false;
+
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_golds = std::move(out);
+	m_gold_time = time(nullptr);
+	MarkSuccess(DS_GOLD);
 	return true;
 }
 

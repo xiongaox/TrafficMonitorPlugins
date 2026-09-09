@@ -541,8 +541,11 @@ void CStockFetchThread::Run()
 				switch (chartType)
 				{
 				case CHART_TIMELINE:
-					FetchTimeline(stockId);
-					break;
+						FetchTimeline(stockId);
+						// secid 形态代码（上金所/港股/美股等焦点品种）无共享内存/腾讯实时行情，随分时节奏刷快照
+						if (stockId.find(L'.') != std::wstring::npos && stockId[0] >= L'0' && stockId[0] <= L'9')
+							FetchSgeSnapshot(stockId);
+						break;
 				case CHART_MIN5_KLINE:
 					FetchMin5KLine(stockId, 250);
 					break;
@@ -841,6 +844,22 @@ void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 	if (g_http_fetcher.FetchInnerOuterHtml(innerOuterCodes, !onlyNonAG, ioResp))
 		g_data.ApplyInnerOuterData(ioResp);
 
+	// 黄金指数（118.*/101.* 等 secid 形态预置指数）：腾讯/新浪无行情，
+	// 逐个走东财 stock/get 快照（与焦点品种 FetchSgeSnapshot 同通道）。
+	// 独立节流 15 秒：实时主循环盘中每 2 秒跑一轮，黄金价不需要这个频率
+	static time_t s_gold_last_fetch = 0;
+	time_t goldNow = time(nullptr);
+	if (goldNow - s_gold_last_fetch >= 15)
+	{
+		s_gold_last_fetch = goldNow;
+		for (const auto& p : presets)
+		{
+			if (p.code.find(L'.') == std::wstring::npos)
+				continue;
+			FetchSgeSnapshot(p.code);
+		}
+	}
+
 	// 通知浮动窗口盘口数据更新
 	Stock::Instance().NotifyFloatingWndOrderBookUpdate();
 }
@@ -865,6 +884,13 @@ void CStockFetchThread::FetchTimeline(const std::wstring& code)
 	std::string resp;
 	bool ok = g_http_fetcher.FetchTimeline(code, resp);
 	g_data.ApplyTimeline(code, resp, ok);
+}
+
+void CStockFetchThread::FetchSgeSnapshot(const std::wstring& code)
+{
+	std::string resp;
+	if (g_http_fetcher.FetchSgeSnapshot(code, resp))
+		g_data.ApplySgeSnapshot(code, resp);
 }
 
 void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days)

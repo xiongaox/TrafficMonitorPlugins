@@ -3,6 +3,7 @@
 #include "Common.h"
 #include "Stock.h"
 #include "SignalAnalyzer.h"
+#include "utilities/yyjson/yyjson.h"
 #include <vector>
 
 #include <sstream>
@@ -233,6 +234,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 
 	// 持仓分组独立代码列表（与自选股相互隔离）
 	ini.GetStringList(L"config", L"position_codes", m_setting_data.m_position_codes, std::vector<std::wstring>{});
+
+	// 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)，缺省持仓与历史行为一致
+	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", 1);
+	if (m_setting_data.m_group_default_tab != 0 && m_setting_data.m_group_default_tab != 1)
+		m_setting_data.m_group_default_tab = 1;
 
 	// WebDAV 云端备份配置
 	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
@@ -666,6 +672,7 @@ void CDataManager::SaveConfig()
 			m_setting_data.m_custom_group_codes.clear();
 		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteInt(L"config", L"group_default_tab", m_setting_data.m_group_default_tab);
 		ini.WriteStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
 
@@ -919,6 +926,55 @@ void CDataManager::ApplyInnerOuterData(const std::string& resp)
 void CDataManager::ApplyCallAuctionData(const std::string& resp)
 {
 	stockMarket.LoadCallAuctionData(resp);
+}
+
+// secid 形态代码品种实时快照（东财 stock/get）：118.* 上金所 / 116.* 港股 / 101.* 107.* 美股等
+// f43现价/f44高/f45低/f46开/f47量(手)/f48额/f50量比/f58名称/f60昨收/f116总市值/f117流通市值/f168换手率/f169涨跌/f170涨跌幅
+void CDataManager::ApplySgeSnapshot(const std::wstring& code, const std::string& resp)
+{
+	yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
+	if (!doc) return;
+	yyjson_val* root = yyjson_doc_get_root(doc);
+	yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
+	if (!data || yyjson_is_null(data))
+	{
+		yyjson_doc_free(doc);
+		return;
+	}
+	auto num = [](yyjson_val* obj, const char* key) -> double {
+		yyjson_val* v = yyjson_obj_get(obj, key);
+		if (!v) return 0.0;
+		if (yyjson_is_real(v)) return yyjson_get_real(v);
+		if (yyjson_is_sint(v)) return static_cast<double>(yyjson_get_sint(v));
+		if (yyjson_is_uint(v)) return static_cast<double>(yyjson_get_uint(v));
+		if (yyjson_is_str(v)) { try { return std::stod(yyjson_get_str(v)); } catch (...) {} }
+		return 0.0;
+		};
+	yyjson_val* nameVal = yyjson_obj_get(data, "f58");
+
+	auto stockData = GetStockData(code);
+	if (stockData)
+	{
+		StockInfo& info = stockData->info;
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		info.code = code;
+		info.is_ok = true;
+		if (info.displayName.empty() && nameVal && yyjson_is_str(nameVal))
+			info.displayName = CCommon::StrToUnicode(yyjson_get_str(nameVal), true);
+		info.currentPrice = num(data, "f43");
+		info.highPrice = num(data, "f44");
+		info.lowPrice = num(data, "f45");
+		info.openPrice = num(data, "f46");
+		info.volume = static_cast<Volume>(num(data, "f47"));
+		info.turnover = num(data, "f48");
+		info.prevClosePrice = num(data, "f60");
+		info.totalMarketValue = num(data, "f116");
+		info.circulatingMarketValue = num(data, "f117");
+		info.volumeRatio = num(data, "f50");
+		info.turnoverRate = num(data, "f168");
+		info.UpdateDisplayFields();
+	}
+	yyjson_doc_free(doc);
 }
 
 void CDataManager::ApplyTimeline(const std::wstring& code, const std::string& resp, bool ok)

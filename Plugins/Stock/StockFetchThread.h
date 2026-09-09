@@ -64,6 +64,8 @@ public:
 	void FetchCallAuction();
 	// 分时图（新浪）
 	void FetchTimeline(const std::wstring& code);
+	// 上金所品种（118.*）实时快照（东财 stock/get）
+	void FetchSgeSnapshot(const std::wstring& code);
 	// 日K线（腾讯前复权）
 	void FetchDayKLine(const std::wstring& code, int days = 750);
 	// 周K线（腾讯前复权）

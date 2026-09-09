@@ -2,6 +2,8 @@
 
 #include "ChartContext.h"
 #include <StockDef.h>
+#include <vector>
+#include <utility>
 
 // 状态栏/标题栏/持仓信息面板绘制
 // 职责：绘制主标题栏、分时持仓信息栏、K线持仓信息栏、K线信息面板
@@ -17,5 +19,9 @@ public:
     // 绘制系统状态栏（底部两行三列指数）
     void DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int totalBarHeight);
 
+    // 点击命中：返回最近一次绘制时 x 坐标落在哪一列（-1 未命中）
+    int HitTestStatusBar(int x) const;
+
 private:
+    std::vector<std::pair<int, int>> m_last_cols;   // 各列 [x0, x1)，窗口坐标
 };
