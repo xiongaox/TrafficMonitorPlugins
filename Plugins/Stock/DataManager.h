@@ -118,6 +118,8 @@ public:
 	void ApplyCallAuctionData(const std::string& resp);
 	// 分时图：ok=true 解析并缓存，ok=false 清空旧数据（请求失败时）
 	void ApplyTimeline(const std::wstring& code, const std::string& resp, bool ok);
+	// 上金所品种（118.*）实时快照（东财 stock/get）：写入 StockInfo 头部行情字段
+	void ApplySgeSnapshot(const std::wstring& code, const std::string& resp);
 	// 日K线
 	void ApplyDayKLine(const std::wstring& code, const std::string& resp, bool ok);
 	// 周K线

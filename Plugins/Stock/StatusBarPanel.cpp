@@ -461,76 +461,121 @@ void CStatusBarPanel::DrawSystemStatusBar(CDC& memDC, int w, int bottomBarY, int
 	int textOffsetY = (totalBarHeight - sampleSize.cy) / 2;
 	if (textOffsetY < 0) textOffsetY = 0;
 
-	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-	for (int i = 0; i < COLS; i++)
+	// 动态均分：先量出每列内容宽度（名称+涨跌幅(+价格)），再按“内容宽”比例把
+	// 剩余空间分给各列。列宽 = 内容宽 + 按比例分配的余量，列间固定 2*GAP 空隙。
+	// 这样“上证指数 2923.10”与“中证2000 2430.5”列宽按需伸缩，视觉上均匀，
+	// 而不是等宽切分导致长名贴边、短名空一大片。
 	{
-		auto stockData = g_data.GetStockData(statusBarCodes[i]);
-		int colX = i * colWidth;
-		int cellW = (i == COLS - 1) ? (w - colX) : colWidth;
-		int textY = bottomBarY + textOffsetY;
-		int textX = colX + GAP;
-		CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
-		CString nameStr = GetIndexDisplayName(statusBarCodes[i], defaultName);
-
-		CRgn clipRgn;
-		clipRgn.CreateRectRgn(colX, bottomBarY, colX + cellW, bottomBarY + totalBarHeight);
-		memDC.SelectClipRgn(&clipRgn);
-
-		if (stockData && stockData->info.is_ok && (stockData->info.currentPrice > 0 || stockData->info.prevClosePrice > 0))
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		struct ColMeas { CString name; CString price; CString change; int need = 0; bool nodata = false; int sign = 1; };
+		std::vector<ColMeas> cols(static_cast<size_t>(COLS));
+		int totalNeed = 0;
+		for (int i = 0; i < COLS; i++)
 		{
-			const auto& info = stockData->info;
-			double displayPrice = info.currentPrice > 0 ? info.currentPrice : info.prevClosePrice;
-			double diff = displayPrice - info.prevClosePrice;
-			double diffPercent = info.prevClosePrice != 0 ? (diff / info.prevClosePrice) * 100 : 0;
-
-			CString priceStr;
-			priceStr.Format(_T("%.2f"), displayPrice);
-			CString changeStr;
-			if (diff >= 0)
-				changeStr.Format(_T("+%.2f%%"), diffPercent);
+			ColMeas& cm = cols[static_cast<size_t>(i)];
+			auto stockData = g_data.GetStockData(statusBarCodes[i]);
+			CString defaultName = (stockData && !stockData->info.displayName.empty()) ? stockData->info.GetStockListName() : CString(statusBarCodes[i].c_str());
+			cm.name = GetIndexDisplayName(statusBarCodes[i], defaultName);
+			if (stockData && stockData->info.is_ok && (stockData->info.currentPrice > 0 || stockData->info.prevClosePrice > 0))
+			{
+				const auto& info = stockData->info;
+				double displayPrice = info.currentPrice > 0 ? info.currentPrice : info.prevClosePrice;
+				double diff = displayPrice - info.prevClosePrice;
+				double diffPercent = info.prevClosePrice != 0 ? (diff / info.prevClosePrice) * 100 : 0;
+				cm.sign = diffPercent >= 0 ? 1 : -1;
+				cm.price.Format(_T("%.2f"), displayPrice);
+				if (diff >= 0)
+					cm.change.Format(_T("+%.2f%%"), diffPercent);
+				else
+					cm.change.Format(_T("%.2f%%"), diffPercent);
+				int dispMode = g_data.m_setting_data.m_index_display_mode;
+				int nameW = memDC.GetTextExtent(cm.name).cx;
+				int priceW = (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(cm.price).cx + GAP) : 0;
+				int changeW = (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(cm.change).cx + GAP) : 0;
+				cm.need = nameW + priceW + changeW;
+			}
 			else
-				changeStr.Format(_T("%.2f%%"), diffPercent);
-
-			int dispMode = g_data.m_setting_data.m_index_display_mode;
-
-			int nameW = memDC.GetTextExtent(nameStr).cx;
-			int priceW = (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(priceStr).cx + GAP) : 0;
-			int changeW = (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL) ? (memDC.GetTextExtent(changeStr).cx + GAP) : 0;
-			int totalItemW = nameW + priceW + changeW;
-
-			int textX = colX + (std::max)(GAP, (cellW - totalItemW) / 2);
-
-			memDC.SetTextColor(COLOR_TEXT_MUTED);
-			memDC.TextOut(textX, textY, nameStr);
-			textX += nameW + GAP;
-
-			if (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL)
 			{
-				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-				memDC.TextOut(textX, textY, priceStr);
-				textX += priceW;
+				cm.nodata = true;
+				cm.need = memDC.GetTextExtent(cm.name + _T(" --")).cx;
 			}
-
-			if (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL)
-			{
-				memDC.SetTextColor(diffPercent >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
-				memDC.TextOut(textX, textY, changeStr);
-			}
+			totalNeed += cm.need;
 		}
-		else
+		if (totalNeed <= 0)
+			totalNeed = 1;
+		int avail = w - (COLS - 1) * GAP * 2;
+		int remain = max(0, avail - totalNeed);
+		int x = 0;
+		m_last_cols.clear();
+		for (int i = 0; i < COLS; i++)
 		{
-			CString nodataStr = nameStr + _T(" --");
-			int totalItemW = memDC.GetTextExtent(nodataStr).cx;
-			int textX = colX + (std::max)(GAP, (cellW - totalItemW) / 2);
-			memDC.SetTextColor(COLOR_TEXT_DIM);
-			memDC.TextOut(textX, textY, nodataStr);
-		}
+			ColMeas& cm = cols[static_cast<size_t>(i)];
+			int extra = (remain > 0) ? static_cast<int>((static_cast<long long>(cm.need) * remain) / totalNeed) : 0;
+			int cellW = cm.need + extra;
+			int colX = x;
+			int cellWX = (i == COLS - 1) ? (w - colX) : cellW;
+			int textY = bottomBarY + textOffsetY;
 
-		memDC.SelectClipRgn(nullptr);
+			CRgn clipRgn;
+			clipRgn.CreateRectRgn(colX, bottomBarY, colX + cellWX, bottomBarY + totalBarHeight);
+			memDC.SelectClipRgn(&clipRgn);
+
+			if (!cm.nodata)
+			{
+				int dispMode = g_data.m_setting_data.m_index_display_mode;
+				int nameW = memDC.GetTextExtent(cm.name).cx;
+				bool showPrice = (dispMode == INDEX_DISP_PRICE || dispMode == INDEX_DISP_ALL);
+				bool showChange = (dispMode == INDEX_DISP_PERCENT || dispMode == INDEX_DISP_ALL);
+				int priceW = showPrice ? (memDC.GetTextExtent(cm.price).cx + GAP) : 0;
+				int changeW = showChange ? (memDC.GetTextExtent(cm.change).cx + GAP) : 0;
+				int totalItemW = nameW + priceW + changeW;
+
+				int textX = colX + (std::max)(GAP, (cellWX - totalItemW) / 2);
+
+				memDC.SetTextColor(COLOR_TEXT_MUTED);
+				memDC.TextOut(textX, textY, cm.name);
+				textX += nameW + GAP;
+
+				if (showPrice)
+				{
+					memDC.SetTextColor(cm.sign >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
+					memDC.TextOut(textX, textY, cm.price);
+					textX += priceW;
+				}
+
+				if (showChange)
+				{
+					memDC.SetTextColor(cm.sign >= 0 ? COLOR_RED_UP : COLOR_GREEN_DOWN);
+					memDC.TextOut(textX, textY, cm.change);
+				}
+			}
+			else
+			{
+				CString nodataStr = cm.name + _T(" --");
+				int totalItemW = memDC.GetTextExtent(nodataStr).cx;
+				int textX = colX + (std::max)(GAP, (cellWX - totalItemW) / 2);
+				memDC.SetTextColor(COLOR_TEXT_DIM);
+				memDC.TextOut(textX, textY, nodataStr);
+			}
+
+			memDC.SelectClipRgn(nullptr);
+			m_last_cols.push_back({ colX, colX + cellWX });
+			x += cellW + GAP * 2;
+		}
 	}
 
 	if (pOldFont)
 		memDC.SelectObject(pOldFont);
 	statusFont.DeleteObject();
+}
+
+int CStatusBarPanel::HitTestStatusBar(int x) const
+{
+	for (size_t i = 0; i < m_last_cols.size(); i++)
+	{
+		if (x >= m_last_cols[i].first && x < m_last_cols[i].second)
+			return static_cast<int>(i);
+	}
+	return -1;
 }
 

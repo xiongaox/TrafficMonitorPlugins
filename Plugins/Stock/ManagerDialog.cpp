@@ -2625,18 +2625,10 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	Gdiplus::Pen divPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 	g.DrawLine(&divPen, m_menu_width, 0, m_menu_width, clientRect.Height());
 
-	// 侧边栏顶部品牌标识
-	Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 37, 99, 235)); // Accent Blue
-	g.FillEllipse(&dotBrush, g_data.DPI(16), g_data.DPI(18), g_data.DPI(9), g_data.DPI(9));
-
-	Gdiplus::Font titleFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush titleBrush(Gdiplus::Color(255, 241, 245, 249));
-	g.DrawString(L"股票管理", -1, &titleFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(30)), static_cast<Gdiplus::REAL>(g_data.DPI(13))), &titleBrush);
-
 	const wchar_t* menuTitles[] = { L"基础设置", L"指数编辑", L"分组管理", L"均线日配置", L"指标栏配置", L"云端备份", L"接口检测", L"关于插件" };
 	int menuCount = 8;
 	int itemH = g_data.DPI(40);
-	int itemTop = g_data.DPI(54);
+	int itemTop = g_data.DPI(16);
 	int itemPadX = g_data.DPI(8);
 	int itemW = m_menu_width - (itemPadX * 2);
 

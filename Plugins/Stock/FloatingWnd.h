@@ -61,6 +61,7 @@ protected:
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
 	LRESULT OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam);   // 行情中心数据到达，重绘
+	LRESULT OnMcOpenChart(WPARAM wParam, LPARAM lParam);   // 黄金榜点击品种：退行情中心并打开该品种图表
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);

@@ -17,6 +17,8 @@ public:
 
 	// 数据到达消息（取数线程完成后 PostMessage 到通知窗口；悬浮窗处理它触发重绘）
 	static const UINT WM_MC_DATA_UPDATED = WM_APP + 140;
+	// 点击黄金榜品种行 → 悬浮窗退出行情中心并以该品种打开图表（wParam = 品种在 m_gold_row_code 中的索引）
+	static const UINT WM_MC_OPEN_CHART = WM_APP + 141;
 
 	// 绘制行情中心到指定矩形（x,y,w,h 为悬浮窗客户区坐标；顶部标题条由悬浮窗自留）
 	void Draw(CDC& memDC, int x, int y, int w, int h);
@@ -40,6 +42,9 @@ public:
 	// 当前面板内容矩形（悬浮窗客户区坐标），未绘制前为空
 	const CRect& ContentRect() const { return m_content_rect; }
 
+	// 黄金榜品种的完整 secid（形如 118.AUTD / 116.01818，供悬浮窗打开图表）；无效索引返回空
+	std::wstring GetGoldSecid(int goldIdx) const;
+
 private:
 	// ===== 页面枚举（与侧栏菜单一一对应）=====
 	enum McPage
@@ -49,7 +54,8 @@ private:
 		PAGE_MAINFLOW = 2,   // 主力资金
 		PAGE_TREND = 3,      // 涨跌趋势
 		PAGE_ETF_RANK = 4,   // ETF涨跌榜
-		PAGE_COUNT = 5
+		PAGE_GOLD = 5,       // 黄金榜（上金所）
+		PAGE_COUNT = 6
 	};
 
 	// ===== 统计卡通用单元 =====
@@ -107,10 +113,13 @@ private:
 	void DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc);
+	void DrawGoldRankPage(Gdiplus::Graphics& g, const CRect& rc);
 
 	void RebuildTreemapLayout(const CRect& chartRc);
 	void BuildThemeInflow();
 	std::vector<int> SortedRankList() const;
+	// 黄金榜排序后的品种索引列表（m_golds 下标；休市品种垫底）
+	std::vector<int> SortedGoldList() const;
 
 	void UpdateClock();
 	void RequestData();
@@ -192,6 +201,21 @@ private:
 	int m_hover_rank_header{ -1 };
 	int m_hover_rank_row{ -1 };
 	std::vector<int> m_rank_row_etf;
+
+	// ===== 黄金榜页 =====
+	std::vector<MC::GoldQuote> m_golds_snapshot;
+	time_t m_golds_snapshot_time{ 0 };
+	std::vector<StatCardRect> m_gold_stat_rects;
+	struct GoldCol { CRect rect; int key{ 0 }; bool sortedUp{ false }; };
+	std::vector<GoldCol> m_gold_cols;
+	CRect m_gold_table_rect;
+	int m_gold_scroll{ 0 };
+	int m_gold_scroll_max{ 0 };
+	int m_gold_sort_key{ 5 };        // 默认涨跌幅（0名称 1区域 2代码 3现价 4涨跌额 5涨跌幅 6成交额）
+	int m_gold_sort_dir{ -1 };
+	int m_hover_gold_header{ -1 };
+	int m_hover_gold_row{ -1 };
+	std::vector<int> m_gold_row_gold;   // 可见行 → m_golds_snapshot 下标
 
 	// hover
 	CPoint m_mouse_pos;

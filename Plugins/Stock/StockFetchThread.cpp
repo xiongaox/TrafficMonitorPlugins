@@ -541,8 +541,11 @@ void CStockFetchThread::Run()
 				switch (chartType)
 				{
 				case CHART_TIMELINE:
-					FetchTimeline(stockId);
-					break;
+						FetchTimeline(stockId);
+						// secid 形态代码（上金所/港股/美股等焦点品种）无共享内存/腾讯实时行情，随分时节奏刷快照
+						if (stockId.find(L'.') != std::wstring::npos && stockId[0] >= L'0' && stockId[0] <= L'9')
+							FetchSgeSnapshot(stockId);
+						break;
 				case CHART_MIN5_KLINE:
 					FetchMin5KLine(stockId, 250);
 					break;
@@ -865,6 +868,13 @@ void CStockFetchThread::FetchTimeline(const std::wstring& code)
 	std::string resp;
 	bool ok = g_http_fetcher.FetchTimeline(code, resp);
 	g_data.ApplyTimeline(code, resp, ok);
+}
+
+void CStockFetchThread::FetchSgeSnapshot(const std::wstring& code)
+{
+	std::string resp;
+	if (g_http_fetcher.FetchSgeSnapshot(code, resp))
+		g_data.ApplySgeSnapshot(code, resp);
 }
 
 void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days)

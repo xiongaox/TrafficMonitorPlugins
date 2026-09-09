@@ -125,6 +125,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_DRAWITEM()
 	ON_MESSAGE((WM_USER + 100), OnUpdateStatus)
 	ON_MESSAGE((CMarketCenterPanel::WM_MC_DATA_UPDATED), OnMarketCenterDataUpdated)
+	ON_MESSAGE((CMarketCenterPanel::WM_MC_OPEN_CHART), OnMcOpenChart)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
@@ -253,6 +254,21 @@ LRESULT CFloatingWnd::OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam)
 	// 行情中心数据到达：重绘（仅行情中心视图下有效，其他视图重绘无害）
 	if (m_marketCenterMode)
 		Invalidate(FALSE);
+	return 0;
+}
+
+LRESULT CFloatingWnd::OnMcOpenChart(WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+	// 黄金榜点击品种行：退出行情中心 → 切换到该品种（secid 形态代码直连东财） → 日K视图
+	std::wstring secid = m_marketCenterPanel.GetGoldSecid(static_cast<int>(wParam));
+	if (secid.empty())
+		return 0;
+	if (m_marketCenterMode)
+		ToggleMarketCenter();
+	SetStockId(secid);
+	SetDayKLineModeDefaults();
+	Invalidate();
 	return 0;
 }
 
@@ -439,6 +455,8 @@ void CFloatingWnd::OnPaint()
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
 	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_DAY_KLINE，自动覆盖）
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
+	// secid 形态代码（118.*上金所/116.*港股黄金/101.*COMEX/107.*美股ETF等）：无五档买卖盘与流通股本，盘口(PK)/筹码峰(CM)不适用
+	bool isEmSecidStock = !m_stock_id.empty() && m_stock_id[0] >= L'0' && m_stock_id[0] <= L'9' && m_stock_id.find(L'.') != std::wstring::npos;
 
 	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;  // 左侧股票列表面板宽度
 	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
@@ -451,7 +469,10 @@ void CFloatingWnd::OnPaint()
 	const int singleBarHeight = g_data.RDPI(20);  // 单行状态栏高度
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（单行4个）
-	const bool showPositionSummary = (CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1);
+	// 持仓盈亏汇总仅当当前展示的品种本身在持仓中才有意义；
+	// 从黄金榜等入口查看非持仓品种（118.AUTD/116.01818 等）时改走单品种指标分支
+	const bool isCurrentStockHolding = g_data.GetHoldingCount(m_stock_id) > 0;
+	const bool showPositionSummary = (CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1) && isCurrentStockHolding;
 	const int positionSummaryHeight = singleBarHeight;  // 所有分组统一保留单行高度，避免PK收起时的UI覆盖
 
 	// 统一现代双层布局：标题栏 + 主走势图(约62%) + 单一副图(约38%) + 时间标签 + 底部系统状态栏
@@ -555,7 +576,7 @@ void CFloatingWnd::OnPaint()
 			int obBtnW = g_data.RDPI(34);
 			int obBtnH = min(obTitleH, g_data.RDPI(16));
 			int obBtnTop = headerHeight + relatedBarHeight + (obTitleH - obBtnH) / 2;
-			bool showObBtns = !isIndexKLine;
+			bool showObBtns = !isIndexKLine && !isEmSecidStock;
 			bool isEtf = CCommon::IsFundCode(m_stock_id);
 			SafeSetWindowPos(m_btnChipPeak, w - obBtnW, obBtnTop, obBtnW, obBtnH);
 			SafeShowWindow(m_btnChipPeak, showObBtns);
@@ -587,7 +608,7 @@ void CFloatingWnd::OnPaint()
 			memDC.SetBkMode(TRANSPARENT);
 
 			const int obBtnW = g_data.RDPI(34);
-			const bool showObBtns = !isIndexKLine;
+			const bool showObBtns = !isIndexKLine && !isEmSecidStock;
 			const bool isEtf = CCommon::IsFundCode(m_stock_id);
 			const int rightBtnsW = showObBtns ? ((isEtf ? 3 : 2) * obBtnW) : 0;
 			const int summaryContentRight = min(chartWidth, showObBtns ? (w - rightBtnsW) : w);
@@ -685,7 +706,9 @@ void CFloatingWnd::OnPaint()
 					const int columnX = summaryX + i * columnWidth;
 					const int currentColumnWidth = (i == 3) ? (summaryContentW - i * columnWidth) : columnWidth;
 					const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
+					// 居中，但钳制在可用列内：末列贴近窗口右缘时不得溢出被截断
 					int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
+					drawX = min(drawX, columnX + max(0, currentColumnWidth - textWidth));
 
 					memDC.SetTextColor(COLOR_TEXT_MUTED);
 					memDC.TextOut(drawX, textY, labels[i]);
@@ -936,7 +959,9 @@ void CFloatingWnd::OnPaint()
 						const int columnX = summaryX + i * columnWidth;
 						const int currentColumnWidth = (i == metricCount - 1) ? (summaryContentW - i * columnWidth) : columnWidth;
 						const int textWidth = memDC.GetTextExtent(label + val).cx;
+						// 居中，但钳制在可用列内：末列贴近窗口右缘时不得溢出被截断
 						int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
+						drawX = min(drawX, columnX + max(0, currentColumnWidth - textWidth));
 
 						memDC.SetTextColor(COLOR_TEXT_MUTED);
 						memDC.TextOut(drawX, textY, label);
@@ -1837,7 +1862,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	// 底部系统状态栏指数点击切换（单行四个）
+	// 底部系统状态栏指数点击切换（动态均分列，命中按最近绘制列区间）
 	if (m_viewMode != UI_VIEW_OVERVIEW)
 	{
 		CRect clRect;
@@ -1854,8 +1879,7 @@ void CFloatingWnd::OnLButtonDown(UINT nFlags, CPoint point)
 			const int COLS = static_cast<int>(statusBarCodes.size());
 			if (COLS > 0)
 			{
-				const int colW = clRect.Width() / COLS;
-				int col = point.x / max(colW, 1);
+				int col = m_statusBarPanel.HitTestStatusBar(point.x);
 				if (col >= 0 && col < COLS)
 				{
 					const std::wstring& targetCode = statusBarCodes[col];
