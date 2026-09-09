@@ -601,9 +601,10 @@ void CFloatingWnd::OnPaint()
 			int textY = summaryY + max(0, (positionSummaryHeight - textH) / 2);
 			memDC.SetBkMode(TRANSPARENT);
 
+			const bool isEtf = CCommon::IsFundCode(m_stock_id);
+			// 背景/描边铺满整个图表区宽度；文本内容区为右上角按钮预留空间（无按钮则铺满）
 			const int obBtnW = g_data.RDPI(34);
 			const bool showObBtns = !isIndexKLine && !isEmSecidStock;
-			const bool isEtf = CCommon::IsFundCode(m_stock_id);
 			const int rightBtnsW = showObBtns ? ((isEtf ? 3 : 2) * obBtnW) : 0;
 			const int summaryContentRight = min(chartWidth, showObBtns ? (w - rightBtnsW) : w);
 			const int summaryContentW = max(0, summaryContentRight - summaryX);
@@ -700,9 +701,12 @@ void CFloatingWnd::OnPaint()
 					const int columnX = summaryX + i * columnWidth;
 					const int currentColumnWidth = (i == 3) ? (summaryContentW - i * columnWidth) : columnWidth;
 					const int textWidth = memDC.GetTextExtent(labels[i] + values[i]).cx;
-					// 居中，但钳制在可用列内：末列贴近窗口右缘时不得溢出被截断
-					int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
-					drawX = min(drawX, columnX + max(0, currentColumnWidth - textWidth));
+					// 各列在各自格子内居中；末列以"剩余宽度"为格，不溢出窗口
+					int cellW = currentColumnWidth;
+					if (i == 3 && columnX + cellW > summaryX + summaryContentW)
+						cellW = summaryX + summaryContentW - columnX;
+					int drawX = columnX + max(0, (cellW - textWidth) / 2);
+					drawX = min(drawX, summaryX + summaryContentW - textWidth);
 
 					memDC.SetTextColor(COLOR_TEXT_MUTED);
 					memDC.TextOut(drawX, textY, labels[i]);
@@ -953,9 +957,13 @@ void CFloatingWnd::OnPaint()
 						const int columnX = summaryX + i * columnWidth;
 						const int currentColumnWidth = (i == metricCount - 1) ? (summaryContentW - i * columnWidth) : columnWidth;
 						const int textWidth = memDC.GetTextExtent(label + val).cx;
-						// 居中，但钳制在可用列内：末列贴近窗口右缘时不得溢出被截断
-						int drawX = columnX + max(0, (currentColumnWidth - textWidth) / 2);
-						drawX = min(drawX, columnX + max(0, currentColumnWidth - textWidth));
+						// 各列在各自格子内居中；末列以"剩余宽度"为格（而非均分宽），
+						// 既不溢出窗口，也不在尾部留下大片空白
+						int cellW = currentColumnWidth;
+						if (i == metricCount - 1 && columnX + cellW > summaryX + summaryContentW)
+							cellW = summaryX + summaryContentW - columnX;
+						int drawX = columnX + max(0, (cellW - textWidth) / 2);
+						drawX = min(drawX, summaryX + summaryContentW - textWidth);
 
 						memDC.SetTextColor(COLOR_TEXT_MUTED);
 						memDC.TextOut(drawX, textY, label);

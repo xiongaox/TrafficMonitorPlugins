@@ -136,7 +136,7 @@ std::vector<FloatingGroupTab> CStockListPanel::LayoutGroupTabs(CDC& memDC, int w
 
 int CStockListPanel::GetRowHeight()
 {
-	return g_data.RDPI(48);
+	return g_data.RDPI(44);
 }
 
 int CStockListPanel::GetPanelWidth()
@@ -295,11 +295,11 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 	const int rowHeight = GetRowHeight();
 	const int nameHeight = g_data.RDPI(14);
 	const int codeHeight = g_data.RDPI(12);
-	const int lineGap = g_data.RDPI(4);
+	const int lineGap = g_data.RDPI(3);
 	const int cardPadX = g_data.RDPI(3);
-	const int cardPadY = g_data.RDPI(4);
+	const int cardPadY = 0;   // 卡片贴死：行与行 0 间距
 	const int innerPadX = g_data.RDPI(6);
-	const int innerPadY = g_data.RDPI(5);
+	const int innerPadY = g_data.RDPI(4);
 
 	int listTop = y + titleH;
 	int listAreaH = h - titleH;
