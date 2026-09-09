@@ -19,6 +19,8 @@ public:
 	static const UINT WM_MC_DATA_UPDATED = WM_APP + 140;
 	// 点击黄金榜品种行 → 悬浮窗退出行情中心并以该品种打开图表（wParam = 品种在 m_gold_row_code 中的索引）
 	static const UINT WM_MC_OPEN_CHART = WM_APP + 141;
+	// 点击某只 ETF（wParam = m_etfs_snapshot 下标）：悬浮窗跳转首页 K 线临时查看
+	static const UINT WM_MC_ETF_CLICKED = WM_APP + 142;
 
 	// 绘制行情中心到指定矩形（x,y,w,h 为悬浮窗客户区坐标；顶部标题条由悬浮窗自留）
 	void Draw(CDC& memDC, int x, int y, int w, int h);
@@ -41,6 +43,8 @@ public:
 
 	// 当前面板内容矩形（悬浮窗客户区坐标），未绘制前为空
 	const CRect& ContentRect() const { return m_content_rect; }
+	// 快照下标转 ETF 六位代码（越界返回空串；供悬浮窗处理 WM_MC_ETF_CLICKED）
+	std::wstring EtfCodeAt(int idx) const;
 
 	// 黄金榜品种的完整 secid（形如 118.AUTD / 116.01818，供悬浮窗打开图表）；无效索引返回空
 	std::wstring GetGoldSecid(int goldIdx) const;
@@ -91,7 +95,8 @@ private:
 	// ===== ETF净流入榜条目 =====
 	struct InflowBar
 	{
-		CRect rect;
+		CRect rect;      // 整行命中区（名称列 + 条形 + 数值）
+		CRect barRect;   // 条形本身（hover 高亮框）
 		int themeIdx{ -1 };
 	};
 
@@ -109,7 +114,6 @@ private:
 
 	void DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc);
-	void DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc);
 	void DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc);
@@ -117,6 +121,8 @@ private:
 
 	void RebuildTreemapLayout(const CRect& chartRc);
 	void BuildThemeInflow();
+	// 主题的代表 ETF 快照下标（主题内 |主力净流入| 最大者；无效返回 -1）
+	int ThemeRepresentEtf(int themeIdx) const;
 	std::vector<int> SortedRankList() const;
 	// 黄金榜排序后的品种索引列表（m_golds 下标；休市品种垫底）
 	std::vector<int> SortedGoldList() const;
@@ -170,15 +176,6 @@ private:
 	std::vector<StatCardRect> m_inflow_stat_rects;
 	int m_hover_inflow_bar{ -1 };
 	int m_hover_inflow_card{ -1 };
-
-	// ===== 主题ETF浮层 =====
-	bool m_theme_panel_open{ false };
-	CRect m_theme_panel_rect;
-	CRect m_theme_close_rect;
-	std::wstring m_theme_panel_title;
-	std::vector<int> m_theme_row_etfs;
-	int m_theme_panel_scroll{ 0 };
-	int m_theme_panel_scroll_max{ 0 };
 
 	// ===== 主力资金页 =====
 	std::vector<StatCardRect> m_mainflow_stat_rects;
