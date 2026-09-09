@@ -2897,6 +2897,29 @@ namespace
 		{
 			return L"HK · " + code.substr(2);
 		}
+		// 东财 secid 形态（118.AUTD / 101.GC00Y 等）：市场号映射可读前缀
+		{
+			size_t dot = code.find(L'.');
+			if (dot != std::wstring::npos && dot > 0)
+			{
+				bool allDigit = true;
+				for (size_t i = 0; i < dot; i++)
+				{
+					if (!iswdigit(code[i]))
+					{
+						allDigit = false;
+						break;
+					}
+				}
+				if (allDigit)
+				{
+					std::wstring mkt = code.substr(0, dot);
+					std::wstring label = (mkt == L"118") ? L"SGE" : (mkt == L"101") ? L"COMEX"
+						: (mkt == L"107") ? L"US" : (mkt == L"116" || mkt == L"123") ? L"HK" : mkt;
+					return label + L" · " + code.substr(dot + 1);
+				}
+			}
+		}
 		if (code.size() >= 2)
 		{
 			std::wstring prefix = code.substr(0, 2);
@@ -3117,6 +3140,84 @@ void CManagerDialog::DrawGroupPage(Gdiplus::Graphics& g, const CRect& contentRec
 			Gdiplus::SolidBrush txtBrush(i == m_hover_group_tab ? Gdiplus::Color(255, 241, 245, 249) : Gdiplus::Color(255, 148, 163, 184));
 			g.DrawString(tabs[i].text.c_str(), -1, &tabFont, rf, &sf, &txtBrush);
 		}
+	}
+
+	// ===== 右下角「优先展示」单选框（悬浮窗列表默认分组）：优先展示：○自选股 ○持仓 =====
+	m_group_pref_radio_rects.clear();
+
+	Gdiplus::Font radioFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	// 行居中 + 不裁剪：layout rect 宽度给足（GDI+ 按测量宽裁尾字），文字垂直居中与圆圈对齐
+	Gdiplus::StringFormat sfRadio;
+	sfRadio.SetAlignment(Gdiplus::StringAlignmentNear);
+	sfRadio.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfRadio.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+
+	Gdiplus::StringFormat sfMeasure(Gdiplus::StringFormat::GenericTypographic());
+	sfMeasure.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+	auto measureRadioText = [&g, &sfMeasure, &radioFont](const wchar_t* text) -> int {
+		Gdiplus::RectF bb;
+		g.MeasureString(text, -1, &radioFont, Gdiplus::PointF(0, 0), &sfMeasure, &bb);
+		return static_cast<int>(bb.Width);
+	};
+
+	const wchar_t* radioLabels[2] = { L"自选股", L"持仓" };
+	// 与左侧按钮行（删除股票/编辑/上移/下移）垂直居中：UpdateControlsLayout 里
+	// btnTop = rightBottom - DPI(34)、btnH = DPI(26)，行中心 = contentRect.bottom - DPI(21)
+	int radioCy = contentRect.bottom - g_data.DPI(21);
+	int radioHalf = g_data.DPI(14);                       // 项绘制/点击半高
+	int radioD = g_data.DPI(13);                          // 圆圈直径
+	int radioTextPad = g_data.DPI(6);                     // 圆圈与文字间距
+	int labelOptGap = g_data.DPI(10);                     // 「优先展示：」与第一项间距
+	int optGap = g_data.DPI(18);                          // 两选项间距
+
+	int labelW = measureRadioText(L"优先展示：");
+	int optTextW[2] = { measureRadioText(radioLabels[0]), measureRadioText(radioLabels[1]) };
+	int totalW = labelW + labelOptGap
+		+ (radioD + radioTextPad + optTextW[0]) + optGap
+		+ (radioD + radioTextPad + optTextW[1]);
+	int optX = contentRect.right - totalW;
+
+	// 标签「优先展示：」（+1px 抵消 GDI+ 行居中偏上）
+	Gdiplus::RectF labelRf(static_cast<Gdiplus::REAL>(optX), static_cast<Gdiplus::REAL>(radioCy - radioHalf + g_data.DPI(1)),
+		static_cast<Gdiplus::REAL>(labelW + g_data.DPI(10)), static_cast<Gdiplus::REAL>(radioHalf * 2));
+	Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 148, 163, 184));
+	g.DrawString(L"优先展示：", -1, &radioFont, labelRf, &sfRadio, &labelBrush);
+
+	// 选项从左到右：[0]=自选股 [1]=持仓（与 m_group_default_tab 取值对应）
+	optX += labelW + labelOptGap;
+	for (int k = 0; k < 2; ++k)
+	{
+		int itemW = radioD + radioTextPad + optTextW[k];
+		CRect itemRc(optX, radioCy - radioHalf, optX + itemW + g_data.DPI(6), radioCy + radioHalf);
+		m_group_pref_radio_rects.push_back(itemRc);
+
+		// 圆圈：选中蓝底内白点，未选中深底描边（与勾选框配色一致）
+		int cx = optX + radioD / 2;
+		Gdiplus::RectF circleRf(static_cast<Gdiplus::REAL>(cx - radioD / 2), static_cast<Gdiplus::REAL>(radioCy - radioD / 2),
+			static_cast<Gdiplus::REAL>(radioD), static_cast<Gdiplus::REAL>(radioD));
+		if (m_data.m_group_default_tab == k)
+		{
+			Gdiplus::SolidBrush selBg(Gdiplus::Color(255, 37, 99, 235));
+			g.FillEllipse(&selBg, circleRf);
+			int dotD = radioD / 3;
+			Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 255, 255, 255));
+			g.FillEllipse(&dotBrush, static_cast<Gdiplus::REAL>(cx - dotD / 2), static_cast<Gdiplus::REAL>(radioCy - dotD / 2),
+				static_cast<Gdiplus::REAL>(dotD), static_cast<Gdiplus::REAL>(dotD));
+		}
+		else
+		{
+			Gdiplus::SolidBrush unselBg(Gdiplus::Color(255, 13, 15, 21));
+			g.FillEllipse(&unselBg, circleRf);
+			Gdiplus::Pen circlePen(Gdiplus::Color(255, 71, 85, 105), 1.0f);
+			g.DrawEllipse(&circlePen, circleRf);
+		}
+
+		Gdiplus::RectF textRf(static_cast<Gdiplus::REAL>(optX + radioD + radioTextPad), static_cast<Gdiplus::REAL>(radioCy - radioHalf + g_data.DPI(1)),
+			static_cast<Gdiplus::REAL>(optTextW[k] + g_data.DPI(14)), static_cast<Gdiplus::REAL>(radioHalf * 2));
+		Gdiplus::SolidBrush txtBrush(m_data.m_group_default_tab == k ? Gdiplus::Color(255, 241, 245, 249) : Gdiplus::Color(255, 148, 163, 184));
+		g.DrawString(radioLabels[k], -1, &radioFont, textRf, &sfRadio, &txtBrush);
+
+		optX += itemW + optGap;
 	}
 }
 
@@ -4256,6 +4357,17 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 
 	if (m_current_page == PAGE_GROUPS)
 	{
+		// 右下角「优先展示」单选框：[0]=自选股 [1]=持仓分组；仅修改编辑副本 m_data，保存由「确定」承担
+		for (size_t i = 0; i < m_group_pref_radio_rects.size() && i < 2; ++i)
+		{
+			if (m_group_pref_radio_rects[i].PtInRect(point))
+			{
+				m_data.m_group_default_tab = static_cast<int>(i);
+				Invalidate();
+				return;
+			}
+		}
+
 		std::vector<GroupTabItem> tabs = BuildGroupTabItems(m_data.m_custom_groups, m_current_group_tab);
 		for (size_t i = 0; i < m_group_tab_rects.size() && i < tabs.size(); ++i)
 		{

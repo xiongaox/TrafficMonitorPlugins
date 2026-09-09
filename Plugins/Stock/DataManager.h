@@ -58,6 +58,7 @@ struct SettingData
 	std::vector<std::wstring> m_position_codes; // 持仓分组代码列表（独立于自选股）
 	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表(向后兼容)
 	std::vector<CustomGroup> m_custom_groups; // 多自定义分组列表
+	int m_group_default_tab{ 1 };       // 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)
 	std::vector<std::wstring> m_header_metrics{ L"总市值", L"成交额", L"成交量", L"量比" }; // 顶部指标栏指标列表（最多4个）
 
 	// WebDAV 云端备份配置

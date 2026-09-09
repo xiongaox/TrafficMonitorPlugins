@@ -235,6 +235,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	// 持仓分组独立代码列表（与自选股相互隔离）
 	ini.GetStringList(L"config", L"position_codes", m_setting_data.m_position_codes, std::vector<std::wstring>{});
 
+	// 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)，缺省持仓与历史行为一致
+	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", 1);
+	if (m_setting_data.m_group_default_tab != 0 && m_setting_data.m_group_default_tab != 1)
+		m_setting_data.m_group_default_tab = 1;
+
 	// WebDAV 云端备份配置
 	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
 	m_setting_data.m_webdav_username = ini.GetString(L"webdav", L"username", L"");
@@ -667,6 +672,7 @@ void CDataManager::SaveConfig()
 			m_setting_data.m_custom_group_codes.clear();
 		ini.WriteStringList(L"config", L"custom_group_codes", m_setting_data.m_custom_group_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteInt(L"config", L"group_default_tab", m_setting_data.m_group_default_tab);
 		ini.WriteStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
 
