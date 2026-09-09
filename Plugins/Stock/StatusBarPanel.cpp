@@ -432,6 +432,10 @@ static CString GetIndexDisplayName(const std::wstring& code, const CString& defa
 	if (code == L"rt_hkHSHBI") return _T("港股医药");
 	if (code == L"sh000985") return _T("中证全指");
 	if (code == L"sh000002") return _T("A股均价");
+	if (code == L"118.AUTD") return _T("黄金T+D");
+	if (code == L"118.SHAU") return _T("上海金");
+	if (code == L"118.AU9999") return _T("黄金9999");
+	if (code == L"101.GC00Y") return _T("COMEX黄金");
 	return defaultName;
 }
 

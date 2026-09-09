@@ -25,6 +25,10 @@ const std::vector<std::wstring> IndexPriority = {
 	L"rt_hkHSI",  // 恒生指数
 	L"rt_hkHSTECH", // 恒生科技
 	L"sh000016",  // 上证50
+	L"118.AUTD",  // 黄金T+D（上金所，东财 secid 形态）
+	L"118.SHAU",  // 上海金
+	L"118.AU9999", // 黄金9999
+	L"101.GC00Y", // COMEX黄金
 };
 
 int GetStockPriority(const std::wstring& code)
