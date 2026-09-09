@@ -99,6 +99,11 @@ public:
 		const std::string& tradeDate);
 	std::vector<STOCK::TimelinePoint> LoadLatestFundNavCache(const std::wstring& stockCode);
 
+	// 行情中心跨进程快照（一数据集一行 UTF-8 JSON，独立原子覆盖）
+	bool SaveMarketCenterCache(int dataSet, const std::string& payload, time_t fetchedAt, const std::string& tradeDate, int schemaVersion = 1);
+	bool LoadMarketCenterCache(int dataSet, std::string& payload, time_t& fetchedAt, std::string& tradeDate, int& schemaVersion);
+	bool DeleteMarketCenterCache(int dataSet);
+
 private:
 	sqlite3* m_db{ nullptr };
 	std::wstring m_db_path;

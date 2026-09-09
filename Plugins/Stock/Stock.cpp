@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Stock.h"
+#include "MarketCenterData.h"
 #include "DataManager.h"
 #include "OptionsDlg.h"
 #include "ManagerDialog.h"
@@ -103,6 +104,7 @@ Stock::Stock() : m_pFloatingWnd(NULL)
 Stock::~Stock()
 {
 	DestroyFloatingWnd();
+	CMarketCenterData::Instance().StopExecutor();
 	CStockFetchThread::Instance().Stop();
 }
 
@@ -203,14 +205,16 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 	{
 	case ITMPlugin::EI_CONFIG_DIR:
 		// 从配置文件读取配置
-		g_data.LoadConfig(std::wstring(data));
+			g_data.LoadConfig(std::wstring(data));
+			CMarketCenterData::Instance().LoadCachedSnapshots();
 		// 重置价格关注弹窗状态（配置重载后所有弹窗状态清零）
 		{
 			std::lock_guard<std::mutex> lock(m_instance.m_alert_mutex);
 			m_instance.m_last_alert_price.clear();
 		}
 		// 启动专用数据获取线程（与 UI 交互分离）
-		CStockFetchThread::Instance().Start();
+			CStockFetchThread::Instance().Start();
+			CMarketCenterData::Instance().StartExecutor();
 		// 全量预加载（日K/筹码/流通股本）已由 StockFetchThread::QueuePreloadTasks
 		// 拆成后台任务在图表线程空闲时执行，避免占用启动流程、阻塞内容加载。
 		// 启动时获取一次集合竞价数据（非竞价时段也获取，用于展示最新竞价结果）

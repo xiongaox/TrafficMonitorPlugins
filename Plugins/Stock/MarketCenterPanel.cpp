@@ -304,21 +304,21 @@ void CMarketCenterPanel::RequestData()
 	// 拖慢首页（气泡图只需 2 个请求）。切页时 SwitchPage 会再触发对应数据集拉取。
 	switch (m_page)
 	{
-	case PAGE_BUBBLE:
-		mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd);
+		case PAGE_BUBBLE:
+			mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
 	case PAGE_ETF_INFLOW:
-	case PAGE_ETF_RANK:
-		mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd);
+		case PAGE_ETF_RANK:
+			mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
-	case PAGE_MAINFLOW:
-		mc.RequestIfStale(CMarketCenterData::DS_MAINFLOW, 120, hWnd);
+		case PAGE_MAINFLOW:
+			mc.RequestIfStale(CMarketCenterData::DS_MAINFLOW, 120, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
-	case PAGE_TREND:
-		mc.RequestIfStale(CMarketCenterData::DS_TREND, 60, hWnd);
+		case PAGE_TREND:
+			mc.RequestIfStale(CMarketCenterData::DS_TREND, 60, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
-	case PAGE_GOLD:
-		mc.RequestIfStale(CMarketCenterData::DS_GOLD, 60, hWnd);
+		case PAGE_GOLD:
+			mc.RequestIfStale(CMarketCenterData::DS_GOLD, 60, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
 	default:
 		break;
@@ -400,8 +400,9 @@ void CMarketCenterPanel::RefreshSnapshots()
 	}
 	if (mc.m_etfs_time != m_etfs_snapshot_time)
 	{
-		m_etfs_snapshot = mc.m_etfs;
-		m_etfs_snapshot_time = mc.m_etfs_time;
+			m_etfs_snapshot = mc.m_etfs;
+			m_etf_total = mc.m_etf_total;
+			m_etfs_snapshot_time = mc.m_etfs_time;
 		BuildThemeInflow();
 	}
 	if (mc.m_gold_time != m_golds_snapshot_time)

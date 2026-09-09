@@ -3,6 +3,9 @@
 #include <vector>
 #include <map>
 #include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <deque>
 #include <ctime>
 
 // ===== 行情中心（CMarketCenterWnd）共享数据仓库 =====
@@ -168,10 +171,17 @@ public:
 	// 用户主动重试：清除退避并立即重新请求（UI 线程调用）
 	void Retry(DataSet ds, HWND notifyWnd);
 
-	// 取数调度（UI 线程调用）：数据过期且未在退避/在途时，投递后台任务抓取。
-	// 任务完成后清理在途标记并向 notifyWnd 投递 WM_APP+140 消息刷新界面。
-	// 返回是否真正投递了任务。
-	bool RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd);
+	// 行情中心独立执行器：与股票实时/K线线程隔离；当前页面任务优先于后台预热。
+	void StartExecutor();
+	void StopExecutor();
+	void WarmupStaleData(HWND notifyWnd);
+
+	// 从 SQLite 恢复行情中心最近成功快照；在数据库初始化后、启动取数线程前调用。
+	void LoadCachedSnapshots();
+
+	// 当前页面使用 Foreground，后台预热使用 Warmup。
+	enum class RequestPriority { Foreground, Warmup };
+	bool RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd, RequestPriority priority = RequestPriority::Foreground);
 
 	// 取数入口（在取数线程调用；每项成功后写入仓库并返回 true）
 	bool FetchSectors();        // 行业板块主力净流入（双向 Top60）
@@ -190,4 +200,26 @@ public:
 	// 分钟时间轴（09:30-11:29 + 13:00-15:00，共 241 点）
 	static const std::vector<std::wstring>& TimeAxis();
 	static int TimeIndex(const std::wstring& hhmm);   // 不在轴上返回 -1
+
+private:
+	struct PendingRequest
+	{
+		DataSet dataSet;
+		HWND notifyWnd{ nullptr };
+	};
+
+	void ExecutorLoop();
+	bool ExecuteRequest(DataSet ds);
+	void EnqueueRequest(DataSet ds, HWND notifyWnd, RequestPriority priority);
+	std::string SerializeSnapshot(DataSet ds) const;
+	bool ApplySnapshot(DataSet ds, const std::string& payload, time_t fetchedAt, const std::string& tradeDate, int schemaVersion);
+
+	std::mutex m_executor_mutex;
+	std::condition_variable m_executor_cv;
+	std::thread m_executor_thread;
+	std::deque<PendingRequest> m_foreground_requests;
+	std::deque<PendingRequest> m_warmup_requests;
+	bool m_executor_started{ false };
+	bool m_executor_stopping{ false };
+	unsigned int m_failure_count[DS_COUNT]{ 0, 0, 0, 0, 0 };
 };

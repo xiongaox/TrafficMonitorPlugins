@@ -1,4 +1,8 @@
 #include "pch.h"
+#include <afxinet.h>
+#include <sstream>
+#include <iomanip>
+#include <cmath>
 #include "MarketCenterData.h"
 #include "DataManager.h"
 #include "Common.h"
@@ -12,6 +16,87 @@ namespace
 {
 	constexpr auto MC_USERAGENT = _T("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0");
 	constexpr const wchar_t* MC_REFERER_HEADER = L"Referer: https://quote.eastmoney.com";
+
+	std::string JsonQuote(const std::wstring& value)
+	{
+		std::string utf8 = CCommon::UnicodeToStr(value, true);
+		std::string out = "\"";
+		for (unsigned char ch : utf8)
+		{
+			if (ch == '\\' || ch == '\"') out += '\\';
+			if (ch == '\n') out += "\\n";
+			else if (ch == '\r') out += "\\r";
+			else if (ch == '\t') out += "\\t";
+			else out += static_cast<char>(ch);
+		}
+		out += '"';
+		return out;
+	}
+
+	void JsonNum(std::string& out, double value)
+	{
+		if (!std::isfinite(value)) value = 0.0;
+		char buf[64];
+		sprintf_s(buf, "%.12g", value);
+		out += buf;
+	}
+
+	void JsonKey(std::string& out, const char* key)
+	{
+		out += JsonQuote(CCommon::StrToUnicode(key, false));
+		out += ':';
+	}
+
+	void JsonStringField(std::string& out, const char* key, const std::wstring& value)
+	{
+		JsonKey(out, key); out += JsonQuote(value);
+	}
+
+	void JsonDoubleField(std::string& out, const char* key, double value)
+	{
+		JsonKey(out, key); JsonNum(out, value);
+	}
+
+	void JsonBoolField(std::string& out, const char* key, bool value)
+	{
+		JsonKey(out, key); out += value ? "true" : "false";
+	}
+
+	std::string CurrentTradeDate()
+	{
+		time_t now = time(nullptr);
+		tm localTm{};
+		localtime_s(&localTm, &now);
+		char date[16];
+		sprintf_s(date, "%04d-%02d-%02d", localTm.tm_year + 1900, localTm.tm_mon + 1, localTm.tm_mday);
+		return date;
+	}
+
+	bool JsonFinite(yyjson_val* val)
+	{
+		return val && ((yyjson_is_real(val) && std::isfinite(yyjson_get_real(val))) || yyjson_is_sint(val) || yyjson_is_uint(val));
+	}
+
+	std::wstring JsonString(yyjson_val* obj, const char* key)
+	{
+		yyjson_val* val = yyjson_obj_get(obj, key);
+		return val && yyjson_is_str(val) ? CCommon::StrToUnicode(yyjson_get_str(val), true) : L"";
+	}
+
+	double JsonNumber(yyjson_val* obj, const char* key, double fallback = 0.0)
+	{
+		yyjson_val* val = yyjson_obj_get(obj, key);
+		if (!JsonFinite(val)) return fallback;
+		if (yyjson_is_real(val)) return yyjson_get_real(val);
+		if (yyjson_is_sint(val)) return static_cast<double>(yyjson_get_sint(val));
+		return static_cast<double>(yyjson_get_uint(val));
+	}
+
+	bool JsonBool(yyjson_val* obj, const char* key)
+	{
+		yyjson_val* val = yyjson_obj_get(obj, key);
+		return val && yyjson_is_bool(val) && yyjson_get_bool(val);
+	}
 
 	bool HttpGet(const std::wstring& url, std::string& resp)
 	{
@@ -141,36 +226,328 @@ bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
 }
 
 // ===== 取数调度：过期且未在途/未退避时投递后台任务，完成后 WM_APP+140 通知窗口 =====
-bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd)
+bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, time_t fetchedAt, const std::string& tradeDate, int schemaVersion)
 {
-	std::lock_guard<std::mutex> schedLock(m_sched_mutex);
-	if (m_inflight[ds] || IsInBackOff(ds) || !IsStale(ds, staleSec))
-		return false;
-	m_inflight[ds] = true;
-	// 行情中心保持按页懒加载，但不前插抢占焦点图表和首轮缓存补齐。
-	CStockFetchThread::Instance().PostBackgroundTask([this, ds, notifyWnd]() {
-		AFX_MANAGE_STATE(AfxGetStaticModuleState());   // 工作线程内使用 MFC(CInternetSession) 必需
-		bool ok = false;
+	if (schemaVersion != 1 || payload.empty() || fetchedAt <= 0 || tradeDate.empty()) return false;
+	yyjson_doc* doc = yyjson_read(payload.data(), payload.size(), 0);
+	if (!doc) return false;
+	yyjson_val* root = yyjson_doc_get_root(doc);
+	yyjson_val* version = root ? yyjson_obj_get(root, "version") : nullptr;
+	yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
+	bool ok = version && yyjson_is_uint(version) && yyjson_get_uint(version) == 1 && data;
+	if (!ok) { yyjson_doc_free(doc); return false; }
+
+	std::vector<MC::SectorFlow> sectors;
+	std::vector<MC::EtfQuote> etfs;
+	std::vector<MC::GoldQuote> golds;
+	long long etfTotal = 0;
+	MC::UpDownDist dist;
+	std::vector<MC::TrendSample> trendCurve;
+	std::vector<MC::FflowMinute> fflowSh, fflowSz;
+	std::vector<MC::IndexTrendPoint> indexTrend;
+	std::vector<MC::EtfFlowSample> etfFlow;
+	long long distTime = 0;
+	switch (ds)
+	{
+	case DS_SECTORS:
+		if (!yyjson_is_arr(data) || yyjson_arr_size(data) > 10000) ok = false;
+		if (ok) { size_t idx, max; yyjson_val* item; yyjson_arr_foreach(data, idx, max, item) {
+			if (!yyjson_is_obj(item)) { ok = false; break; }
+			MC::SectorFlow v; v.code=JsonString(item,"code"); v.name=JsonString(item,"name");
+			v.flow=JsonNumber(item,"flow"); v.pct=JsonNumber(item,"pct"); v.superBig=JsonNumber(item,"superBig"); v.big=JsonNumber(item,"big"); v.mid=JsonNumber(item,"mid"); v.smallOrder=JsonNumber(item,"smallOrder");
+			if (v.code.empty() || v.name.empty()) { ok=false; break; } sectors.push_back(std::move(v));
+		} }
+		break;
+	case DS_ETFS:
+		if (!yyjson_is_obj(data)) ok=false;
+		else { yyjson_val* items=yyjson_obj_get(data,"items"); yyjson_val* total=yyjson_obj_get(data,"total"); if(!yyjson_is_arr(items)||yyjson_arr_size(items)>5000||!JsonFinite(total)) ok=false; else { etfTotal=static_cast<long long>(JsonNumber(data,"total")); size_t idx,max; yyjson_val* item; yyjson_arr_foreach(items,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::EtfQuote v; v.code=JsonString(item,"code");v.name=JsonString(item,"name");v.theme=JsonString(item,"theme");v.price=JsonNumber(item,"price");v.pct=JsonNumber(item,"pct");v.amount=JsonNumber(item,"amount");v.inflow=JsonNumber(item,"inflow"); if(v.code.empty()||v.name.empty()){ok=false;break;} etfs.push_back(std::move(v)); } } }
+		break;
+	case DS_GOLD:
+		if (!yyjson_is_arr(data) || yyjson_arr_size(data)>1000) ok=false;
+		if (ok) { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(data,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::GoldQuote v;v.code=JsonString(item,"code");v.secid=JsonString(item,"secid");v.name=JsonString(item,"name");v.region=static_cast<int>(JsonNumber(item,"region"));v.hasQuote=JsonBool(item,"hasQuote");v.hasAmount=JsonBool(item,"hasAmount");v.price=JsonNumber(item,"price");v.chg=JsonNumber(item,"chg");v.pct=JsonNumber(item,"pct");v.amount=JsonNumber(item,"amount");if(v.code.empty()||v.secid.empty()||v.name.empty()){ok=false;break;}golds.push_back(std::move(v)); } }
+		break;
+	case DS_MAINFLOW:
+		if (!yyjson_is_obj(data)) { ok=false; break; }
+		{
+			auto parseFlow = [&ok](yyjson_val* arr, std::vector<MC::FflowMinute>& target) {
+				if (!yyjson_is_arr(arr) || yyjson_arr_size(arr) > 2000) { ok=false; return; }
+				size_t idx,max; yyjson_val* item; yyjson_arr_foreach(arr,idx,max,item) {
+					if (!yyjson_is_obj(item)) { ok=false; return; }
+					MC::FflowMinute v; v.time=JsonString(item,"time"); v.main=JsonNumber(item,"main"); v.superBig=JsonNumber(item,"superBig"); v.big=JsonNumber(item,"big"); v.mid=JsonNumber(item,"mid"); v.smallOrder=JsonNumber(item,"smallOrder");
+					if (v.time.empty()) { ok=false; return; } target.push_back(std::move(v));
+				}
+			};
+			parseFlow(yyjson_obj_get(data,"sh"), fflowSh); parseFlow(yyjson_obj_get(data,"sz"), fflowSz);
+			yyjson_val* arr=yyjson_obj_get(data,"index"); if(!yyjson_is_arr(arr)||yyjson_arr_size(arr)>2000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(arr,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::IndexTrendPoint v;v.time=JsonString(item,"time");v.price=JsonNumber(item,"a");if(v.time.empty()){ok=false;break;}indexTrend.push_back(std::move(v)); } }
+			arr=yyjson_obj_get(data,"etfFlow"); if(!yyjson_is_arr(arr)||yyjson_arr_size(arr)>1000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(arr,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::EtfFlowSample v;v.time=JsonString(item,"time");v.inflow=JsonNumber(item,"a");if(v.time.empty()){ok=false;break;}etfFlow.push_back(std::move(v)); } }
+		}
+		break;
+	case DS_TREND:
+		if (!yyjson_is_obj(data)) { ok=false; break; }
+		{
+			dist.time=static_cast<time_t>(JsonNumber(data,"time")); dist.zt=static_cast<long long>(JsonNumber(data,"zt")); dist.dt=static_cast<long long>(JsonNumber(data,"dt"));
+			yyjson_val* buckets=yyjson_obj_get(data,"buckets"); if(!yyjson_is_obj(buckets)||yyjson_obj_size(buckets)>100) ok=false; else { size_t idx,max; yyjson_val *key,*val; yyjson_obj_foreach(buckets,idx,max,key,val){ if(!key||!JsonFinite(val)) {ok=false;break;} dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(JsonNumber(nullptr,"",0)); if(yyjson_is_real(val)) dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_real(val)); else if(yyjson_is_sint(val)) dist.buckets[atoi(yyjson_get_str(key))]=yyjson_get_sint(val); else dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_uint(val)); } }
+			double today=JsonNumber(data,"today",0), yesterday=JsonNumber(data,"yesterday",0); m_turnover_today=today; m_turnover_yesterday=yesterday;
+			yyjson_val* curve=yyjson_obj_get(data,"curve"); if(!yyjson_is_arr(curve)||yyjson_arr_size(curve)>1000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(curve,idx,max,item){if(!yyjson_is_obj(item)){ok=false;break;}MC::TrendSample v;v.time=JsonString(item,"time");v.up=static_cast<long long>(JsonNumber(item,"up"));v.down=static_cast<long long>(JsonNumber(item,"down"));if(v.time.empty()){ok=false;break;}trendCurve.push_back(std::move(v));}}
+		}
+		break;
+	}
+	if (ok)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
 		switch (ds)
 		{
-		case DS_SECTORS: ok = FetchSectors(); break;
-		case DS_ETFS: ok = FetchEtfs(); break;
-		case DS_MAINFLOW: ok = FetchMainFlow(); break;
-		case DS_TREND: ok = FetchTrendDist(); break;
-		case DS_GOLD: ok = FetchGold(); break;
+		case DS_SECTORS: m_sectors=std::move(sectors); m_sectors_time=fetchedAt; break;
+		case DS_ETFS: m_etfs=std::move(etfs); m_etf_total=etfTotal; m_etfs_time=fetchedAt; break;
+		case DS_MAINFLOW: m_fflow_sh=std::move(fflowSh); m_fflow_sz=std::move(fflowSz); m_index_trend=std::move(indexTrend); m_etf_flow_curve=std::move(etfFlow); m_fflow_time=fetchedAt; break;
+		case DS_TREND: m_dist=std::move(dist); m_trend_curve=std::move(trendCurve); m_dist_time=fetchedAt; m_turnover_time=fetchedAt; break;
+		case DS_GOLD: m_golds=std::move(golds); m_gold_time=fetchedAt; break;
 		default: break;
 		}
-		if (!ok)
-			MarkFailure(ds);
+	}
+	yyjson_doc_free(doc);
+	return ok;
+}
+
+void CMarketCenterData::LoadCachedSnapshots()
+{
+	const DataSet dataSets[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND, DS_GOLD };
+	for (DataSet ds : dataSets)
+	{
+		std::string payload, tradeDate; time_t fetchedAt=0; int version=0;
+		if (!g_data.GetDbManager().LoadMarketCenterCache(static_cast<int>(ds), payload, fetchedAt, tradeDate, version)) continue;
+		if (!ApplySnapshot(ds, payload, fetchedAt, tradeDate, version))
+			g_data.GetDbManager().DeleteMarketCenterCache(static_cast<int>(ds));
+	}
+}
+
+std::string CMarketCenterData::SerializeSnapshot(DataSet ds) const
+{
+	std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_mutex);
+	std::string out = "{\"version\":1,\"data\":";
+	auto writePoint = [&out](const std::wstring& time, double a, double b = 0.0) {
+		out += "{"; JsonStringField(out, "time", time); out += ","; JsonDoubleField(out, "a", a); out += ","; JsonDoubleField(out, "b", b); out += "}";
+	};
+	switch (ds)
+	{
+	case DS_SECTORS:
+		out += "[";
+		for (size_t i = 0; i < m_sectors.size(); ++i) { if (i) out += ","; const auto& v = m_sectors[i]; out += "{"; JsonStringField(out,"code",v.code); out+=","; JsonStringField(out,"name",v.name); out+=","; JsonDoubleField(out,"flow",v.flow); out+=","; JsonDoubleField(out,"pct",v.pct); out+=","; JsonDoubleField(out,"superBig",v.superBig); out+=","; JsonDoubleField(out,"big",v.big); out+=","; JsonDoubleField(out,"mid",v.mid); out+=","; JsonDoubleField(out,"smallOrder",v.smallOrder); out += "}"; }
+		out += "]"; break;
+	case DS_ETFS:
+		out += "{\"total\":" + std::to_string(m_etf_total) + ",\"items\":[";
+		for (size_t i = 0; i < m_etfs.size(); ++i) { if (i) out += ","; const auto& v = m_etfs[i]; out += "{"; JsonStringField(out,"code",v.code); out+=","; JsonStringField(out,"name",v.name); out+=","; JsonStringField(out,"theme",v.theme); out+=","; JsonDoubleField(out,"price",v.price); out+=","; JsonDoubleField(out,"pct",v.pct); out+=","; JsonDoubleField(out,"amount",v.amount); out+=","; JsonDoubleField(out,"inflow",v.inflow); out += "}"; }
+		out += "]}"; break;
+	case DS_MAINFLOW:
+		out += "{\"sh\":[";
+		for (size_t i=0;i<m_fflow_sh.size();++i) { if(i)out+=","; const auto& v=m_fflow_sh[i]; out+="{"; JsonStringField(out,"time",v.time); out+=","; JsonDoubleField(out,"main",v.main); out+=","; JsonDoubleField(out,"superBig",v.superBig); out+=","; JsonDoubleField(out,"big",v.big); out+=","; JsonDoubleField(out,"mid",v.mid); out+=","; JsonDoubleField(out,"smallOrder",v.smallOrder); out+="}"; }
+		out += "],\"sz\":[";
+		for (size_t i=0;i<m_fflow_sz.size();++i) { if(i)out+=","; const auto& v=m_fflow_sz[i]; out+="{"; JsonStringField(out,"time",v.time); out+=","; JsonDoubleField(out,"main",v.main); out+=","; JsonDoubleField(out,"superBig",v.superBig); out+=","; JsonDoubleField(out,"big",v.big); out+=","; JsonDoubleField(out,"mid",v.mid); out+=","; JsonDoubleField(out,"smallOrder",v.smallOrder); out+="}"; }
+		out += "],\"index\":[";
+		for (size_t i=0;i<m_index_trend.size();++i) { if(i)out+=","; const auto& v=m_index_trend[i]; writePoint(v.time,v.price); }
+		out += "],\"etfFlow\":[";
+		for (size_t i=0;i<m_etf_flow_curve.size();++i) { if(i)out+=","; const auto& v=m_etf_flow_curve[i]; writePoint(v.time,v.inflow); }
+		out += "]}"; break;
+	case DS_TREND:
+		out += "{\"time\":" + std::to_string(static_cast<long long>(m_dist.time)) + ",\"zt\":" + std::to_string(m_dist.zt) + ",\"dt\":" + std::to_string(m_dist.dt) + ",\"buckets\":{";
+		{ bool first=true; for (const auto& p:m_dist.buckets) { if(!first)out+=","; first=false; JsonKey(out,std::to_string(p.first).c_str()); out+=std::to_string(p.second); } }
+		out += "},\"today\":"; JsonNum(out,m_turnover_today); out += ",\"yesterday\":"; JsonNum(out,m_turnover_yesterday); out += ",\"curve\":[";
+		for (size_t i=0;i<m_trend_curve.size();++i) { if(i)out+=","; const auto& v=m_trend_curve[i]; out+="{"; JsonStringField(out,"time",v.time); out+=","; JsonDoubleField(out,"up",static_cast<double>(v.up)); out+=","; JsonDoubleField(out,"down",static_cast<double>(v.down)); out+="}"; }
+		out += "]}"; break;
+	case DS_GOLD:
+		out += "[";
+		for (size_t i=0;i<m_golds.size();++i) { if(i)out+=","; const auto& v=m_golds[i]; out+="{"; JsonStringField(out,"code",v.code); out+=","; JsonStringField(out,"secid",v.secid); out+=","; JsonStringField(out,"name",v.name); out+=","; out+="\"region\":"+std::to_string(v.region)+","; JsonBoolField(out,"hasQuote",v.hasQuote); out+=","; JsonBoolField(out,"hasAmount",v.hasAmount); out+=","; JsonDoubleField(out,"price",v.price); out+=","; JsonDoubleField(out,"chg",v.chg); out+=","; JsonDoubleField(out,"pct",v.pct); out+=","; JsonDoubleField(out,"amount",v.amount); out+="}"; }
+		out += "]"; break;
+	}
+	out += "}";
+	return out;
+}
+
+bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd, RequestPriority priority)
+{
+	{
+		std::lock_guard<std::mutex> schedLock(m_sched_mutex);
+		if (m_inflight[ds] || IsInBackOff(ds))
+			return false;
+	}
+	{
+		std::lock_guard<std::mutex> dataLock(m_mutex);
+		if (!IsStale(ds, staleSec))
+			return false;
+	}
+
+	{
+		std::lock_guard<std::mutex> schedLock(m_sched_mutex);
+		if (m_inflight[ds] || IsInBackOff(ds))
+			return false;
+		m_inflight[ds] = true;
+	}
+	EnqueueRequest(ds, notifyWnd, priority);
+	return true;
+}
+
+void CMarketCenterData::StartExecutor()
+{
+	std::lock_guard<std::mutex> lock(m_executor_mutex);
+	if (m_executor_started)
+		return;
+	m_executor_stopping = false;
+	m_executor_started = true;
+	m_executor_thread = std::thread(&CMarketCenterData::ExecutorLoop, this);
+}
+
+void CMarketCenterData::StopExecutor()
+{
+	{
+		std::lock_guard<std::mutex> lock(m_executor_mutex);
+		if (!m_executor_started)
+			return;
+		m_executor_stopping = true;
+		m_foreground_requests.clear();
+		m_warmup_requests.clear();
+	}
+	m_executor_cv.notify_all();
+	if (m_executor_thread.joinable())
+		m_executor_thread.join();
+	std::lock_guard<std::mutex> lock(m_executor_mutex);
+	m_executor_started = false;
+	m_executor_stopping = false;
+}
+
+void CMarketCenterData::WarmupStaleData(HWND notifyWnd)
+{
+	const struct { DataSet dataSet; int staleSec; } requests[] = {
+		{ DS_SECTORS, 120 }, { DS_ETFS, 300 }, { DS_MAINFLOW, 120 }, { DS_TREND, 60 }, { DS_GOLD, 60 }
+	};
+	for (const auto& request : requests)
+		RequestIfStale(request.dataSet, request.staleSec, notifyWnd, RequestPriority::Warmup);
+}
+
+void CMarketCenterData::EnqueueRequest(DataSet ds, HWND notifyWnd, RequestPriority priority)
+{
+	std::lock_guard<std::mutex> lock(m_executor_mutex);
+	if (!m_executor_started || m_executor_stopping)
+	{
+		std::lock_guard<std::mutex> schedLock(m_sched_mutex);
+		m_inflight[ds] = false;
+		return;
+	}
+
+	auto upgradeOrUpdate = [ds, notifyWnd](std::deque<PendingRequest>& queue) {
+		for (auto& request : queue)
+		{
+			if (request.dataSet == ds)
+			{
+				if (notifyWnd)
+					request.notifyWnd = notifyWnd;
+				return true;
+			}
+		}
+		return false;
+	};
+
+	if (priority == RequestPriority::Foreground)
+	{
+		if (!upgradeOrUpdate(m_foreground_requests))
+		{
+			if (!upgradeOrUpdate(m_warmup_requests))
+				m_foreground_requests.push_back({ ds, notifyWnd });
+			else
+			{
+				for (auto it = m_warmup_requests.begin(); it != m_warmup_requests.end(); ++it)
+				{
+					if (it->dataSet == ds)
+					{
+						m_foreground_requests.push_back(*it);
+						m_warmup_requests.erase(it);
+						break;
+					}
+				}
+			}
+		}
+	}
+	else if (!upgradeOrUpdate(m_foreground_requests) && !upgradeOrUpdate(m_warmup_requests))
+	{
+		m_warmup_requests.push_back({ ds, notifyWnd });
+	}
+	m_executor_cv.notify_one();
+}
+
+bool CMarketCenterData::ExecuteRequest(DataSet ds)
+{
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	switch (ds)
+	{
+	case DS_SECTORS: return FetchSectors();
+	case DS_ETFS: return FetchEtfs();
+	case DS_MAINFLOW: return FetchMainFlow();
+	case DS_TREND: return FetchTrendDist();
+	case DS_GOLD: return FetchGold();
+	default: return false;
+	}
+}
+
+void CMarketCenterData::ExecutorLoop()
+{
+	while (true)
+	{
+		PendingRequest request;
+		{
+			std::unique_lock<std::mutex> lock(m_executor_mutex);
+			m_executor_cv.wait(lock, [this]() {
+				return m_executor_stopping || !m_foreground_requests.empty() || !m_warmup_requests.empty();
+			});
+			if (m_executor_stopping)
+				return;
+			if (!m_foreground_requests.empty())
+			{
+				request = m_foreground_requests.front();
+				m_foreground_requests.pop_front();
+			}
+			else
+			{
+				request = m_warmup_requests.front();
+				m_warmup_requests.pop_front();
+			}
+		}
+
+		bool ok = false;
+		try { ok = ExecuteRequest(request.dataSet); }
+		catch (CInternetException* e) { e->Delete(); }
+		catch (...) {}
+
+		if (ok)
+		{
+			const std::string payload = SerializeSnapshot(request.dataSet);
+			if (!payload.empty())
+			{
+				const time_t fetchedAt = time(nullptr);
+				if (!g_data.GetDbManager().SaveMarketCenterCache(static_cast<int>(request.dataSet), payload, fetchedAt, CurrentTradeDate()))
+					CCommon::WriteLog("[MarketCenter] snapshot save failed", g_data.m_log_path.c_str());
+			}
+		}
+
 		{
 			std::lock_guard<std::mutex> schedLock(m_sched_mutex);
-			m_inflight[ds] = false;
+			m_inflight[request.dataSet] = false;
+			if (ok)
+			{
+				m_failure_count[request.dataSet] = 0;
+				m_fail_until[request.dataSet] = 0;
+				m_last_failed[request.dataSet] = false;
+			}
+			else
+			{
+				unsigned int failures = min(++m_failure_count[request.dataSet], 8u);
+				time_t delay = min<time_t>(2 * (1 << (failures - 1)), 300);
+				m_fail_until[request.dataSet] = time(nullptr) + delay;
+				m_last_failed[request.dataSet] = true;
+			}
 		}
-		Sleep(300);   // 任务间最小间隔，降低突发请求密度
-		if (notifyWnd && ::IsWindow(notifyWnd))
-			::PostMessage(notifyWnd, WM_APP + 140, (WPARAM)ds, ok ? 1 : 0);
-	});
-	return true;
+		if (request.notifyWnd && ::IsWindow(request.notifyWnd))
+			::PostMessage(request.notifyWnd, WM_APP + 140, static_cast<WPARAM>(request.dataSet), ok ? 1 : 0);
+		Sleep(300);
+	}
 }
 
 std::wstring CMarketCenterData::DeriveTheme(const std::wstring& name)

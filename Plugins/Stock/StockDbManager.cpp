@@ -347,6 +347,18 @@ bool CStockDbManager::Init(const std::wstring& config_path)
 	rc = sqlite3_exec(m_db, transactionSql, nullptr, nullptr, &errMsg);
 	if (rc != SQLITE_OK) sqlite3_free(errMsg);
 
+	const char* marketCenterSql = "CREATE TABLE IF NOT EXISTS market_center_cache ("
+		"dataset INTEGER PRIMARY KEY,"
+		"payload TEXT NOT NULL,"
+		"fetched_at INTEGER NOT NULL,"
+		"trade_date TEXT NOT NULL,"
+		"schema_version INTEGER NOT NULL DEFAULT 1,"
+		"payload_size INTEGER NOT NULL DEFAULT 0"
+		");";
+	errMsg = nullptr;
+	rc = sqlite3_exec(m_db, marketCenterSql, nullptr, nullptr, &errMsg);
+	if (rc != SQLITE_OK) sqlite3_free(errMsg);
+
 	return true;
 }
 
@@ -433,6 +445,86 @@ void CStockDbManager::CleanExpiredData()
 		sqlite3_step(stmt);
 		sqlite3_finalize(stmt);
 	}
+
+	const char* cleanMarketCenterSql = "DELETE FROM market_center_cache WHERE fetched_at < ?;";
+	stmt = nullptr;
+	if (sqlite3_prepare_v2(m_db, cleanMarketCenterSql, -1, &stmt, nullptr) == SQLITE_OK)
+	{
+		sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(cutoffTime7d));
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+}
+
+bool CStockDbManager::SaveMarketCenterCache(int dataSet, const std::string& payload, time_t fetchedAt, const std::string& tradeDate, int schemaVersion)
+{
+	if (m_db == nullptr || payload.empty() || dataSet < 0 || dataSet >= 5)
+		return false;
+	if (sqlite3_exec(m_db, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		return false;
+
+	const char* sql = "INSERT INTO market_center_cache(dataset,payload,fetched_at,trade_date,schema_version,payload_size) "
+		"VALUES(?,?,?,?,?,?) ON CONFLICT(dataset) DO UPDATE SET payload=excluded.payload,"
+		"fetched_at=excluded.fetched_at,trade_date=excluded.trade_date,schema_version=excluded.schema_version,"
+		"payload_size=excluded.payload_size;";
+	sqlite3_stmt* stmt = nullptr;
+	bool ok = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) == SQLITE_OK;
+	if (ok)
+	{
+		sqlite3_bind_int(stmt, 1, dataSet);
+		sqlite3_bind_text(stmt, 2, payload.data(), static_cast<int>(payload.size()), SQLITE_TRANSIENT);
+		sqlite3_bind_int64(stmt, 3, static_cast<sqlite3_int64>(fetchedAt));
+		sqlite3_bind_text(stmt, 4, tradeDate.c_str(), -1, SQLITE_TRANSIENT);
+		sqlite3_bind_int(stmt, 5, schemaVersion);
+		sqlite3_bind_int(stmt, 6, static_cast<int>(payload.size()));
+		ok = sqlite3_step(stmt) == SQLITE_DONE;
+	}
+	if (stmt) sqlite3_finalize(stmt);
+	if (sqlite3_exec(m_db, ok ? "COMMIT;" : "ROLLBACK;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		ok = false;
+	return ok;
+}
+
+bool CStockDbManager::LoadMarketCenterCache(int dataSet, std::string& payload, time_t& fetchedAt, std::string& tradeDate, int& schemaVersion)
+{
+	if (m_db == nullptr || dataSet < 0 || dataSet >= 5)
+		return false;
+	const char* sql = "SELECT payload,fetched_at,trade_date,schema_version,payload_size FROM market_center_cache WHERE dataset=?;";
+	sqlite3_stmt* stmt = nullptr;
+	if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+		return false;
+	sqlite3_bind_int(stmt, 1, dataSet);
+	bool ok = false;
+	if (sqlite3_step(stmt) == SQLITE_ROW)
+	{
+		const unsigned char* text = sqlite3_column_text(stmt, 0);
+		const unsigned char* date = sqlite3_column_text(stmt, 2);
+		int size = sqlite3_column_int(stmt, 4);
+		if (text && date && size > 0 && size <= 16 * 1024 * 1024 && sqlite3_column_bytes(stmt, 0) == size)
+		{
+			payload.assign(reinterpret_cast<const char*>(text), static_cast<size_t>(size));
+			fetchedAt = static_cast<time_t>(sqlite3_column_int64(stmt, 1));
+			tradeDate.assign(reinterpret_cast<const char*>(date));
+			schemaVersion = sqlite3_column_int(stmt, 3);
+			ok = fetchedAt > 0 && !tradeDate.empty();
+		}
+	}
+	sqlite3_finalize(stmt);
+	return ok;
+}
+
+bool CStockDbManager::DeleteMarketCenterCache(int dataSet)
+{
+	if (m_db == nullptr || dataSet < 0 || dataSet >= 5)
+		return false;
+	const char* sql = "DELETE FROM market_center_cache WHERE dataset=?;";
+	sqlite3_stmt* stmt = nullptr;
+	if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+		return false;
+	sqlite3_bind_int(stmt, 1, dataSet);
+	bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+	sqlite3_finalize(stmt);
+	return ok;
 }
 
 bool CStockDbManager::SaveTradeRecord(const std::wstring& stockCode, const std::wstring& stockName, int tradeType, const std::wstring& time, double price, double amount, double totalAmount, double fee, double total)

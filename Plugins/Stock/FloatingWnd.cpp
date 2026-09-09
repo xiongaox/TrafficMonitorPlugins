@@ -2244,8 +2244,9 @@ void CFloatingWnd::ToggleMarketCenter()
 		// 进入：隐藏所有图表视图按钮（模式标签/指标/盘口/筹码/ETF持仓/展开/列表开关），只留关闭
 		HideChartButtons(true);
 		// 设置数据到达通知窗口并立即拉取当前页数据
-		m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
-		m_marketCenterPanel.OnTimerTick();
+			m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
+			m_marketCenterPanel.OnTimerTick();
+			CMarketCenterData::Instance().WarmupStaleData(GetSafeHwnd());
 	}
 	else
 	{
@@ -3910,6 +3911,7 @@ LRESULT CFloatingWnd::OnShowTradeDialog(WPARAM wParam, LPARAM lParam)
 void CFloatingWnd::OnDestroy()
 {
 	KillTimer(IDC_REFRESH_TIMER);
+	m_marketCenterPanel.SetNotifyWnd(nullptr);
 
 	CWnd::OnDestroy();
 
