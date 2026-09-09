@@ -1294,7 +1294,7 @@ void CMarketCenterPanel::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 	CRect blockRc(rc.left + g_data.DPI(16), rc.top + g_data.DPI(16), rc.right - g_data.DPI(16), rc.top + g_data.DPI(16) + g_data.DPI(58));
 	FillCard(g, blockRc);
 	m_trend_stat_rects.clear();
-	// 当日进度 → 预测全天
+	// 交易中按当日进度外推；收盘后显示最终全天成交额，避免把最终值伪装成预测。
 	const auto& axis = CMarketCenterData::TimeAxis();
 	time_t now = time(nullptr);
 	struct tm localTm{};
@@ -1309,6 +1309,7 @@ void CMarketCenterPanel::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 		forecast = turnoverToday / ((nowIdx + 1.0) / axis.size());
 		forecastOk = true;
 	}
+	const bool finalTurnover = turnoverToday > 0 && m_clock_status != 0;
 	double delta = turnoverToday - turnoverYday;
 
 	struct TrendCell { const wchar_t* label; std::wstring value; COLORREF color; };
@@ -1328,7 +1329,9 @@ void CMarketCenterPanel::DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc)
 		{ L"当日成交额", todayStr, MC_TEXT },
 		{ L"昨日成交", ydayStr, MC_TEXT },
 		{ L"较昨日全天", deltaStr, UpDownColor(delta) },
-		{ L"预测全天", forecastOk ? (swprintf_s(numBuf, L"%.0f亿", forecast / 1e8), numBuf) : std::wstring(L"--"), MC_TEXT },
+		{ finalTurnover ? L"全天成交" : L"预测全天",
+			forecastOk ? (swprintf_s(numBuf, L"%.0f亿", forecast / 1e8), numBuf) : (finalTurnover ? todayStr : std::wstring(L"--")),
+			finalTurnover ? COLOR_GOLDEN : MC_TEXT },
 	};
 	// 列宽按内容加权：大数列（成交额类）多占，避免右侧大数挤压左侧涨跌家数格
 	int colW9[9];
