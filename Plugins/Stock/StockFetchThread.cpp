@@ -397,6 +397,12 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 			CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
 			if (CCommon::IsFundCode(stockId))
 				CStockFetchThread::Instance().FetchFundIOPV(stockId);
+			// 立即拉一次该股实时快照，顶栏名称/现价不用等下一个实时轮询周期（收盘后长达60秒）
+			std::vector<std::wstring> rtCodes{ stockId };
+			std::vector<std::wstring> rtOut;
+			std::string rtResp;
+			if (g_http_fetcher.FetchRealtimeHtml(rtCodes, false, rtOut, rtResp))
+				g_data.ApplyRealtimeData(rtOut, rtResp);
 			});
 	}
 }
@@ -820,14 +826,21 @@ void CStockFetchThread::FetchRealtimeByHttp(bool onlyNonAG)
 			codes.push_back(code);
 	}
 
+	// 当前焦点股票（如行情中心点击跳转的 ETF）不在任何配置列表中，
+	// 不纳入的话跳转后顶栏名称/现价一直为空
+	std::wstring focusId = GetFocusStockId();
+	if (!focusId.empty() && std::find(codes.begin(), codes.end(), focusId) == codes.end())
+		codes.push_back(focusId);
+
 	// 实时行情（新浪）
 	std::vector<std::wstring> realtimeCodes = codes;
 	if (onlyNonAG)
 	{
-		// 与 FetchRealtimeHtml 内置过滤等价，但豁免自定义分组代码
+		// 与 FetchRealtimeHtml 内置过滤等价，但豁免自定义分组代码和焦点股票
 		realtimeCodes.erase(std::remove_if(realtimeCodes.begin(), realtimeCodes.end(),
-			[&groupCodes](const std::wstring& code) {
+			[&groupCodes, &focusId](const std::wstring& code) {
 				return CCommon::IsAGStockCode(code) && GetStockPriority(code) >= 200 &&
+					code != focusId &&
 					std::find(groupCodes.begin(), groupCodes.end(), code) == groupCodes.end();
 			}), realtimeCodes.end());
 	}
