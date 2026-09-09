@@ -164,7 +164,18 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_log_path += L".log";
 
 	utilities::CIniHelper ini(m_config_path);
+	const bool isNewConfig = ini.IsEmpty();
 	ini.GetStringList(L"config", L"stock_code", m_setting_data.m_stock_codes, std::vector<std::wstring>{});
+	if (isNewConfig)
+	{
+		m_setting_data.m_stock_codes = {
+			L"sz300750", // 宁德时代
+			L"sz300308", // 中际旭创
+			L"sz300502", // 新易盛
+			L"sz300394", // 天孚通信
+			L"sh688825", // 长鑫科技
+		};
+	}
 	m_setting_data.m_full_day = ini.GetBool(L"config", L"full_day", true);
 	m_setting_data.m_show_stock_name = ini.GetBool(L"config", L"show_stock_name", true);
 	m_setting_data.m_show_fluctuation = ini.GetBool(L"config", L"show_fluctuation", true);
@@ -235,8 +246,8 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	// 持仓分组独立代码列表（与自选股相互隔离）
 	ini.GetStringList(L"config", L"position_codes", m_setting_data.m_position_codes, std::vector<std::wstring>{});
 
-	// 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)，缺省持仓与历史行为一致
-	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", 1);
+	// 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)。首次启动默认自选，避免落在空持仓分组。
+	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", isNewConfig ? 0 : 1);
 	if (m_setting_data.m_group_default_tab != 0 && m_setting_data.m_group_default_tab != 1)
 		m_setting_data.m_group_default_tab = 1;
 
@@ -322,6 +333,7 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 		// 立即把迁移结果持久化
 		ini.WriteStringList(L"config", L"stock_code", m_setting_data.m_stock_codes);
 		ini.WriteStringList(L"config", L"position_codes", m_setting_data.m_position_codes);
+		ini.WriteInt(L"config", L"group_default_tab", m_setting_data.m_group_default_tab);
 		ini.WriteBool(L"config", L"migrated_group_v3", true);
 		ini.Save();
 	}
