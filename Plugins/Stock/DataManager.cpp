@@ -423,7 +423,7 @@ bool CDataManager::HasKLineCache(const std::wstring& stockCode, STOCK::Period pe
 void CDataManager::LoadTimelineCache()
 {
 	if (!m_db_mgr.IsOpen()) return;
-	for (const auto& code : m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllKnownStockCodes())
 	{
 		auto stockData = GetStockData(code);
 		if (!stockData) continue;
@@ -449,17 +449,13 @@ void CDataManager::LoadTimelineCache()
 void CDataManager::LoadKLineCache(STOCK::Period period)
 {
 	if (!m_db_mgr.IsOpen()) return;
-	// 预加载必须覆盖全部数据代码（自选+持仓+关联股票）：持仓股往往不在自选股列表，
-	// 若只加载自选股，点开持仓股悬浮窗时内存无日K，网络拉取偶发失败/变慢时图表持续空白
-	std::vector<std::wstring> allCodes = m_setting_data.m_stock_codes;
-	auto addUnique = [&allCodes](const std::wstring& code) {
-		if (!code.empty() && std::find(allCodes.begin(), allCodes.end(), code) == allCodes.end())
+	// 启动时先恢复全部已知股票的本地缓存，网络慢/失败时也能直接画出上次数据。
+	std::vector<std::wstring> allCodes = GetAllKnownStockCodes();
+	for (const auto& code : GetRegisteredStockCodes())
+	{
+		if (std::find(allCodes.begin(), allCodes.end(), code) == allCodes.end())
 			allCodes.push_back(code);
-	};
-	for (const auto& code : m_setting_data.m_position_codes)
-		addUnique(code);
-	for (const auto& item : m_stock_related)
-		addUnique(item.first);
+	}
 	for (const auto& code : allCodes)
 	{
 		auto stockData = GetStockData(code);
@@ -520,7 +516,7 @@ void CDataManager::LoadKLineCache(STOCK::Period period)
 void CDataManager::LoadFundNavCache()
 {
 	if (!m_db_mgr.IsOpen()) return;
-	for (const auto& code : m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllKnownStockCodes())
 	{
 		// 仅对基金代码加载净值缓存
 		if (!CCommon::IsFundCode(code)) continue;
@@ -559,7 +555,7 @@ bool CDataManager::SaveStockBasicData(const std::wstring& stockCode, STOCK::Volu
 void CDataManager::LoadStockBasicData()
 {
 	if (!m_db_mgr.IsOpen()) return;
-	for (const auto& code : m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllKnownStockCodes())
 	{
 		STOCK::Volume circulatingAShares = 0;
 		if (m_db_mgr.LoadStockBasicData(code, circulatingAShares) && circulatingAShares > 0)
@@ -588,7 +584,7 @@ void CDataManager::LoadChipDistributions()
 {
 	if (!m_db_mgr.IsOpen()) return;
 
-	for (const auto& code : m_setting_data.m_stock_codes)
+	for (const auto& code : GetAllKnownStockCodes())
 	{
 		STOCK::ChipDistribution chipData;
 		if (LoadLatestChipDistribution(code, chipData))

@@ -94,32 +94,35 @@ bool CMarketCenterData::IsInBackOff(DataSet ds) const
 
 void CMarketCenterData::MarkSuccess(DataSet ds)
 {
+	std::lock_guard<std::mutex> lock(m_sched_mutex);
 	m_fail_until[ds] = 0;
 	m_last_failed[ds] = false;
 }
 
 void CMarketCenterData::MarkFailure(DataSet ds)
 {
+	std::lock_guard<std::mutex> lock(m_sched_mutex);
 	m_fail_until[ds] = time(nullptr) + FAIL_BACKOFF_SEC;
 	m_last_failed[ds] = true;
 }
 
 bool CMarketCenterData::HasFailed(DataSet ds) const
 {
+	std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_sched_mutex);
 	return m_last_failed[ds];
 }
 
 bool CMarketCenterData::IsPremarketNoData(DataSet ds) const
 {
+	std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_mutex);
 	return m_premarket_no_data[ds];
 }
 
 void CMarketCenterData::Retry(DataSet ds, HWND notifyWnd)
 {
-	// 用户主动重试：清除退避，强制重新请求
+	// 用户重试只取消退避；保留在途标记，避免旧请求尚未结束时重复并发。
 	std::lock_guard<std::mutex> lock(m_sched_mutex);
 	m_fail_until[ds] = 0;
-	m_inflight[ds] = false;
 }
 
 bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
@@ -144,9 +147,8 @@ bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd)
 	if (m_inflight[ds] || IsInBackOff(ds) || !IsStale(ds, staleSec))
 		return false;
 	m_inflight[ds] = true;
-	// 高优先级后台任务：插队到后台队列最前，优先于 K线/筹码等预加载任务执行，
-	// 避免用户切到行情中心后数据在后台队列里长时间排队
-	CStockFetchThread::Instance().PostHighPriorityBackgroundTask([this, ds, notifyWnd]() {
+	// 行情中心保持按页懒加载，但不前插抢占焦点图表和首轮缓存补齐。
+	CStockFetchThread::Instance().PostBackgroundTask([this, ds, notifyWnd]() {
 		AFX_MANAGE_STATE(AfxGetStaticModuleState());   // 工作线程内使用 MFC(CInternetSession) 必需
 		bool ok = false;
 		switch (ds)
@@ -160,7 +162,10 @@ bool CMarketCenterData::RequestIfStale(DataSet ds, int staleSec, HWND notifyWnd)
 		}
 		if (!ok)
 			MarkFailure(ds);
-		m_inflight[ds] = false;
+		{
+			std::lock_guard<std::mutex> schedLock(m_sched_mutex);
+			m_inflight[ds] = false;
+		}
 		Sleep(300);   // 任务间最小间隔，降低突发请求密度
 		if (notifyWnd && ::IsWindow(notifyWnd))
 			::PostMessage(notifyWnd, WM_APP + 140, (WPARAM)ds, ok ? 1 : 0);

@@ -84,11 +84,8 @@ public:
 	void FetchStockBasic(const std::wstring& code);
 	// 筹码分布（含DB缓存检查+K线获取+计算入库）
 	void FetchChipDistribution(const std::wstring& code);
-	// 将全量预加载拆成"每个代码一个后台任务"入队，避免启动时占用图表线程、
-	// 阻塞关注股票的K线/盘口任务（后台任务优先级最低，可被常规/图表任务插队）
+	// 将全量预加载拆成“代码 + 数据类型”后台任务，避免启动时单个长任务阻塞焦点数据。
 	void QueuePreloadTasks();
-	// 单个股票的预加载（日/周/月/5分/30分K线 + 基金IOPV + 流通股本 + 筹码分布）
-	void PreloadOneStock(const std::wstring& code);
 
 private:
 	CStockFetchThread();

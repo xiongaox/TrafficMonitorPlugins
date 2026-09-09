@@ -392,18 +392,20 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 		// K线数据每天只变化一次，切换股票时获取一次即可，无需定时轮询
 		// 通过 PostTask 投递到工作线程执行，避免在主线程做网络请求
 		PostTask([stockId]() {
-			CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
-			CStockFetchThread::Instance().FetchWeekKLine(stockId, 750);
-			CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
-			if (CCommon::IsFundCode(stockId))
-				CStockFetchThread::Instance().FetchFundIOPV(stockId);
-			// 立即拉一次该股实时快照，顶栏名称/现价不用等下一个实时轮询周期（收盘后长达60秒）
+			// 首屏先补当前价与名称，不能被日/周/月 K 的多源回退和超时拖住。
 			std::vector<std::wstring> rtCodes{ stockId };
 			std::vector<std::wstring> rtOut;
 			std::string rtResp;
 			if (g_http_fetcher.FetchRealtimeHtml(rtCodes, false, rtOut, rtResp))
 				g_data.ApplyRealtimeData(rtOut, rtResp);
-			});
+
+			// K线不属于首帧必需数据；缓存已在启动时回填，以下请求仅做增量刷新。
+			CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
+			CStockFetchThread::Instance().FetchWeekKLine(stockId, 750);
+			CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
+			if (CCommon::IsFundCode(stockId))
+				CStockFetchThread::Instance().FetchFundIOPV(stockId);
+		});
 	}
 }
 
@@ -602,6 +604,8 @@ void CStockFetchThread::Run()
 				try
 				{
 					bgTask();
+					// 后台缓存补齐保持低速，避免启动时连续命中同一数据源触发限流。
+					Sleep(180);
 				}
 				catch (CInternetException* e)
 				{
@@ -1030,32 +1034,54 @@ void CStockFetchThread::QueuePreloadTasks()
 	if (codes.empty())
 		return;
 
-	// 拆成"每个代码一个后台任务"入队。后台任务优先级最低，
-	// 打开悬浮窗时 SetFocusStockId 投递的关注股票K线任务可在其间随时插队执行。
+	// 分阶段预加载：每个网络数据类型独立排队，焦点请求可在任意两个后台请求之间插队。
+	// 第一阶段先补全部股票的日K与流通股本，扩展图表和筹码放到后面渐进缓存。
 	for (const auto& code : codes)
 	{
 		PostBackgroundTask([this, code]() {
-			PreloadOneStock(code);
+			if (!g_data.HasKLineCache(code, STOCK::Period::DAY))
+				FetchDayKLine(code, 750);
 		});
 	}
-}
-
-void CStockFetchThread::PreloadOneStock(const std::wstring& code)
-{
-	if (m_stopping.load())
-		return;
-	if (!g_data.HasKLineCache(code, STOCK::Period::DAY))
-		FetchDayKLine(code, 750);
-	if (!g_data.HasKLineCache(code, STOCK::Period::WEEK))
-		FetchWeekKLine(code, 750);
-	if (!g_data.HasKLineCache(code, STOCK::Period::MONTH))
-		FetchMonthKLine(code, 750);
-	if (!g_data.HasKLineCache(code, STOCK::Period::MIN5))
-		FetchMin5KLine(code, 250);
-	if (!g_data.HasKLineCache(code, STOCK::Period::MIN30))
-		FetchMin30KLine(code, 250);
-	if (CCommon::IsFundCode(code))
-		FetchFundIOPV(code);
-	FetchStockBasic(code);
-	FetchChipDistribution(code);
+	for (const auto& code : codes)
+	{
+		PostBackgroundTask([this, code]() {
+			if (g_data.GetCirculatingAShares(code) <= 0)
+				FetchStockBasic(code);
+		});
+	}
+	for (const auto& code : codes)
+	{
+		PostBackgroundTask([this, code]() {
+			if (!g_data.HasKLineCache(code, STOCK::Period::WEEK))
+				FetchWeekKLine(code, 750);
+		});
+	}
+	for (const auto& code : codes)
+	{
+		PostBackgroundTask([this, code]() {
+			if (!g_data.HasKLineCache(code, STOCK::Period::MONTH))
+				FetchMonthKLine(code, 750);
+		});
+	}
+	for (const auto& code : codes)
+	{
+		PostBackgroundTask([this, code]() {
+			if (!g_data.HasKLineCache(code, STOCK::Period::MIN5))
+				FetchMin5KLine(code, 250);
+		});
+	}
+	for (const auto& code : codes)
+	{
+		PostBackgroundTask([this, code]() {
+			if (!g_data.HasKLineCache(code, STOCK::Period::MIN30))
+				FetchMin30KLine(code, 250);
+		});
+	}
+	for (const auto& code : codes)
+	{
+		if (CCommon::IsFundCode(code))
+			PostBackgroundTask([this, code]() { FetchFundIOPV(code); });
+		PostBackgroundTask([this, code]() { FetchChipDistribution(code); });
+	}
 }
