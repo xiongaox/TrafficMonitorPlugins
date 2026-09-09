@@ -440,11 +440,11 @@ void CMarketCenterPanel::DrawAll(Gdiplus::Graphics& g, const CRect& client)
 
 void CMarketCenterPanel::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
 {
-	// 顶部标题条已固定显示“行情中心”，侧栏不再画品牌行，菜单直接置顶
+	// 菜单第一项直接贴住顶部标题条（无上边距）
 	// 菜单项
 	const wchar_t* titles[PAGE_COUNT] = { L"板块资金流", L"ETF申购净流入", L"主力资金", L"涨跌趋势", L"ETF涨跌榜", L"黄金榜" };
 	int itemH = g_data.DPI(34);
-	int top = rc.top + g_data.DPI(10);
+	int top = rc.top;
 	for (int i = 0; i < PAGE_COUNT; i++)
 	{
 		CRect item(rc.left, top, rc.right, top + itemH);

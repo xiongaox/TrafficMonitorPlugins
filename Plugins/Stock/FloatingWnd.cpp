@@ -155,6 +155,9 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (CWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
 
+	// 应用「分组设置」里的默认分组偏好（0:自选股优先, 1:持仓优先），ClampGroupTab 兜底（如无持仓时回落自选股）
+	m_activeGroupTab = CStockListPanel::ClampGroupTab(g_data.m_setting_data.m_group_default_tab);
+
 	const int btnWidth = g_data.RDPI(40);
 	const int btnHeight = g_data.RDPI(22);
 	const int btnGap = 0;  // 按钮之间不留缝隙
@@ -426,22 +429,13 @@ void CFloatingWnd::OnPaint()
 
 		memDC.SetBkMode(TRANSPARENT);
 
-	// 行情中心视图：顶部标题条（“行情中心”标题取代股票名，真实按钮子控件仍可交互）+ 面板绘制其下方
+	// 行情中心视图：顶部标题条不再显示“行情中心”标题（仅保留时钟与右上角按钮），面板绘制其下方
 	if (m_marketCenterMode)
 	{
 		const int mcHeaderH = g_data.RDPI(26);
 		const int mcW = rect.Width(), mcH = rect.Height();
 		memDC.FillSolidRect(0, 0, mcW, mcHeaderH, COLOR_BG_HEADER);
 		memDC.FillSolidRect(0, mcHeaderH, mcW, 1, COLOR_DARK_GRAY_BORDER);
-		// 标题：粗体“行情中心”（沿用悬浮窗字体族，与整体字号体系一致）
-		{
-			CFont titleFont;
-			CreateStockFont(titleFont, memDC, g_data.RDPI(12), FW_BOLD);
-			CFont* pOld = memDC.SelectObject(&titleFont);
-			memDC.SetTextColor(COLOR_TEXT_PRIMARY);
-			memDC.TextOut(g_data.RDPI(10), max(0, (mcHeaderH - memDC.GetTextExtent(L"行情中心").cy) / 2), CString(L"行情中心"));
-			memDC.SelectObject(pOld);
-		}
 		// 标题条中央：开市/休市状态时钟（面板状态，随秒级定时器刷新）
 		m_marketCenterPanel.DrawHeaderClock(memDC, CRect(0, 0, mcW, mcHeaderH));
 		m_marketCenterPanel.Draw(memDC, 0, mcHeaderH, mcW, mcH - mcHeaderH);
