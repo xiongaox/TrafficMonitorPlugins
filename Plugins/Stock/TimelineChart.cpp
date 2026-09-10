@@ -8,6 +8,7 @@
 #include "KLineChart.h"
 #include "IndicatorChart.h"
 #include "StatusBarPanel.h"
+#include "StockFont.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -91,31 +92,41 @@ void CTimelineChart::DrawTimelineHeader(CDC& memDC, const TimelineDrawContext& c
 
 	CString cacheStatus = (ctx.klineData && !ctx.klineData->empty()) || (ctx.timelinePoint && !ctx.timelinePoint->empty())
 		? _T("正在使用本地数据") : _T("正在获取数据");
-	CSize cacheSize = memDC.GetTextExtent(cacheStatus);
 	const int buttonReserve = g_data.RDPI(64);
-	int reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
-	if (reservedRightWidth > ctx.windowWidth * 2 / 5)
-	{
-		cacheStatus = _T("本地缓存");
-		cacheSize = memDC.GetTextExtent(cacheStatus);
-		reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
-	}
-	if (reservedRightWidth > ctx.windowWidth * 2 / 5)
-	{
-		cacheStatus = _T("缓存");
-		cacheSize = memDC.GetTextExtent(cacheStatus);
-		reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
-	}
+	const int cacheRight = ctx.windowWidth - buttonReserve;
+
+	// 标题始终保持全窗口居中；缓存状态只使用标题右边界到按钮区之间的真实空白。
+	CFont headerFont;
+	CreateStockFont(headerFont, memDC, g_data.RDPI(13), FW_BOLD);
+	CFont* pOldFont = memDC.SelectObject(&headerFont);
+	CString prefix = ctx.realtimeData.displayName.empty() ? _T("股票行情 ") : CString(ctx.realtimeData.displayName.c_str()) + _T(" ");
+	CString current = ctx.realtimeData.IsETF() ? CCommon::FormatETFPrice(ctx.realtimeData.currentPrice) : CCommon::FormatFloat(ctx.realtimeData.currentPrice);
+	CString diff;
+	double diffPct = ctx.realtimeData.GetChangePercent();
+	if (ctx.realtimeData.GetChangeAmount() >= 0) diff.Format(_T(" +%.2f%%"), diffPct);
+	else diff.Format(_T(" %.2f%%"), diffPct);
+	CString macd = macdSignal.IsEmpty() ? CString() : CString(_T(" [")) + macdSignal + _T("]");
+	const int titleWidth = memDC.GetTextExtent(prefix).cx + memDC.GetTextExtent(current).cx + memDC.GetTextExtent(diff).cx + memDC.GetTextExtent(macd).cx;
+	const int titleRight = max(g_data.RDPI(4), (ctx.windowWidth - titleWidth) / 2) + titleWidth;
+	memDC.SelectObject(pOldFont);
+	headerFont.DeleteObject();
 
 	CStatusBarPanel statusBarPanel;
-	statusBarPanel.DrawHeader(memDC, ctx.realtimeData, ctx.windowWidth, g_data.RDPI(26), macdSignal, reservedRightWidth);
+	statusBarPanel.DrawHeader(memDC, ctx.realtimeData, ctx.windowWidth, g_data.RDPI(26), macdSignal);
 
-	// 主标题栏右侧：缓存状态与标题共用 reservedRightWidth，避开关闭/展开/列表按钮。
-	const int cacheRight = ctx.windowWidth - buttonReserve;
-	const int cacheLeft = max(g_data.RDPI(4), cacheRight - cacheSize.cx);
-	memDC.SetBkMode(TRANSPARENT);
-	memDC.SetTextColor(RGB(180, 185, 195));  // 50% white composited on the dark title background.
-	memDC.TextOut(cacheLeft, max(0, (g_data.RDPI(26) - cacheSize.cy) / 2), cacheStatus);
+	const CString cacheChoices[] = { cacheStatus, _T("本地缓存"), _T("缓存") };
+	for (const auto& candidate : cacheChoices)
+	{
+		CSize cacheSize = memDC.GetTextExtent(candidate);
+		const int cacheLeft = cacheRight - cacheSize.cx;
+		if (cacheLeft >= titleRight + g_data.RDPI(8))
+		{
+			memDC.SetBkMode(TRANSPARENT);
+			memDC.SetTextColor(RGB(180, 185, 195));  // 50% white composited on the dark title background.
+			memDC.TextOut(cacheLeft, max(0, (g_data.RDPI(26) - cacheSize.cy) / 2), candidate);
+			break;
+		}
+	}
 	memDC.SetViewportOrg(origOrg);
 }
 

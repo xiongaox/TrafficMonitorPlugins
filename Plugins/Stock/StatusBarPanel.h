@@ -10,9 +10,9 @@
 class CStatusBarPanel
 {
 public:
-    // 绘制主标题栏（股票名称+现价+涨跌幅+MACD信号）；reservedRightWidth 为右侧状态/按钮预留宽度。
+    // 绘制主标题栏（股票名称+现价+涨跌幅+MACD信号）
     void DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeData, int windowWidth, int headerHeight,
-        const CString& macdTrendSignal = CString(), int reservedRightWidth = 0);
+        const CString& macdTrendSignal = CString());
 
     // 绘制管理股票栏（关联股票状态栏，位于标题栏下方）
     void DrawRelatedStockBar(CDC& memDC, int w, int topBarY, int singleBarHeight, const std::wstring& stockId, int viewMode);
