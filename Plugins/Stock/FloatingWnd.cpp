@@ -14,6 +14,7 @@
 #include "StockFetchThread.h"
 #include "SmartSignalTestDlg.h"
 #include "ChartColors.h"
+#include "Icons/Icons.h"
 #include "StockListPanel.h"
 #include "StockFont.h"
 #include "CallAuctionChart.h"
@@ -180,17 +181,17 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	const int closeBtnHeight = g_data.RDPI(20);
 	const int cx = lpCreateStruct->cx;
 	CRect closeBtnRect(cx - closeBtnWidth, g_data.RDPI(2), cx, g_data.RDPI(2) + closeBtnHeight);
-	m_btnClose.Create(_T("✕"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, closeBtnRect, this, IDC_CLOSE_BTN);
+	m_btnClose.Create(_T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, closeBtnRect, this, IDC_CLOSE_BTN);
 
 	const int expandBtnWidth = closeBtnWidth;
 	const int expandBtnHeight = closeBtnHeight;
 	CRect expandBtnRect(closeBtnRect.left - expandBtnWidth, g_data.RDPI(2), closeBtnRect.left, g_data.RDPI(2) + expandBtnHeight);
-	m_btnExpand.Create(_T("□"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, expandBtnRect, this, IDC_EXPAND_BTN);
+	m_btnExpand.Create(_T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, expandBtnRect, this, IDC_EXPAND_BTN);
 
 	const int toggleStockListBtnWidth = closeBtnWidth;
 	const int toggleStockListBtnHeight = closeBtnHeight;
 	CRect toggleStockListBtnRect(expandBtnRect.left - toggleStockListBtnWidth, g_data.RDPI(2), expandBtnRect.left, g_data.RDPI(2) + toggleStockListBtnHeight);
-	m_btnToggleStockList.Create(_T("<|"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, toggleStockListBtnRect, this, IDC_TOGGLE_STOCK_LIST_BTN);
+	m_btnToggleStockList.Create(_T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, toggleStockListBtnRect, this, IDC_TOGGLE_STOCK_LIST_BTN);
 
 	const int rightBtnWidth = g_data.RDPI(32);
 
@@ -1620,6 +1621,17 @@ void CFloatingWnd::OnPaint()
 		}
 		else
 		{
+			// 即使图表数据尚未到达，也先画主标题栏的缓存/加载状态，避免临时焦点只有空白进度页。
+			TimelineDrawContext loadingCtx{};
+			loadingCtx.windowWidth = w;
+			loadingCtx.realtimeData = realtimeData;
+			loadingCtx.timelinePoint = &timelinePoint;
+			loadingCtx.klineData = &klineData;
+			CTimelineChart::HoverState loadingHover;
+			loadingHover.viewMode = m_viewMode;
+			loadingHover.stockId = m_stock_id;
+			m_timelineChart.DrawTimelineHeader(memDC, loadingCtx, loadingHover);
+
 			// 数据未就绪：显示实时拉取进度（正在哪个源拉取、失败后切换到哪个源），替代原先的空白
 			// 每条状态渲染为两行（第一行"阶段 源"，第二行"状态说明"），说明过宽时按像素折行
 			std::vector<STOCK::FetchStatusEntry> entries = g_data.GetFetchStatusEntries(m_stock_id);
@@ -2820,6 +2832,7 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 	if (m_stock_id == stockId)
 		return;
 	m_stock_id = stockId;
+	g_data.LoadFocusStockCache(m_stock_id);
 	m_mc_return_stock_id.clear();   // 主动切换股票即结束临时 K 线查看
 	EnsureStockListVisible();
 	// 通知获取线程切换关注股票，线程自动重置计时器并立即获取新股数据
@@ -2892,10 +2905,8 @@ void CFloatingWnd::UpdateModeButtons()
 		if (m_btnOrderBook.GetSafeHwnd()) m_btnOrderBook.Invalidate();
 		if (m_btnEtfHoldings.GetSafeHwnd()) m_btnEtfHoldings.Invalidate();
 
-		m_btnExpand.SetWindowText(m_expandedMode ? _T("△") : _T("□"));
 		if (m_btnExpand.GetSafeHwnd()) m_btnExpand.Invalidate();
 
-		m_btnToggleStockList.SetWindowText(m_showStockList ? _T("|>") : _T("<|"));
 		if (m_btnToggleStockList.GetSafeHwnd()) m_btnToggleStockList.Invalidate();
 		SafeShowWindow(m_btnToggleStockList, m_viewMode != UI_VIEW_OVERVIEW);
 
@@ -3483,64 +3494,20 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	}
 
 
-	// ===== 顶栏三个图标按钮：参考 Fluent 图标库矢量绘制（收起分组 / 折叠副图 / 关闭） =====
-	// 不使用字体字符，避免字体回退导致字形缺失；用 GDI+ 抗锯齿渲染保证小尺寸下平滑。
+	// 顶栏操作图标由统一 Lucide 模块渲染，避免在窗口内维护自定义几何。
 	if (isCloseBtn || nID == IDC_EXPAND_BTN || nID == IDC_TOGGLE_STOCK_LIST_BTN)
 	{
 		Gdiplus::Graphics graphics(dc.GetSafeHdc());
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-		Gdiplus::Color iconColor(255, GetRValue(textColor), GetGValue(textColor), GetBValue(textColor));
-		float penW = max(1.4f, g_data.GetDpi() * 1.4f / 96.0f);
-		Gdiplus::Pen iconPen(iconColor, penW);
-		iconPen.SetStartCap(Gdiplus::LineCapRound);
-		iconPen.SetEndCap(Gdiplus::LineCapRound);
-		iconPen.SetLineJoin(Gdiplus::LineJoinRound);
-		auto P = [](float x, float y) { return Gdiplus::PointF(x, y); };
-		float fx = (float)rect.left, fy = (float)rect.top;
-		float fw = (float)rect.Width(), fh = (float)rect.Height();
-		float cx = fx + fw / 2.0f, cy = fy + fh / 2.0f;
-
-		if (isCloseBtn)
-		{
-			// Fluent "Dismiss"：圆头对角线 ✕，边距取短边的28%
-			float m = min(fw, fh) * 0.28f;
-			graphics.DrawLine(&iconPen, P(fx + m, fy + m), P(fx + fw - m, fy + fh - m));
-			graphics.DrawLine(&iconPen, P(fx + fw - m, fy + m), P(fx + m, fy + fh - m));
-		}
-		else if (nID == IDC_EXPAND_BTN)
-		{
-			// Fluent "ChevronDown/Up"：双 V 箭头。展开状态显示朝上（点击收起副图），
-			// 收起状态显示朝下（点击展开副图）
-			float hw = g_data.RDPI(3) + 0.5f;
-			float vh = g_data.RDPI(2) + 0.5f;
-			float dir = m_expandedMode ? -1.0f : 1.0f; // -1=尖头朝上，1=尖头朝下
-			Gdiplus::PointF pts[3];
-			for (int k = -1; k <= 1; k += 2)
-			{
-				float vy = cy + k * vh / 2.0f + dir * vh / 2.0f;
-				pts[0] = P(cx - hw, vy - dir * vh / 2.0f);
-				pts[1] = P(cx, vy + dir * vh / 2.0f);
-				pts[2] = P(cx + hw, vy - dir * vh / 2.0f);
-				graphics.DrawLines(&iconPen, pts, 3);
-			}
-		}
-		else
-		{
-			// Fluent "PanelLeft"：左侧面板边线 + 方向箭头。
-			// 列表已显示→箭头朝右（收起分组），已隐藏→箭头朝左（展开分组）
-			float barX = fx + g_data.RDPI(6);
-			float top = fy + g_data.RDPI(6);
-			float bottom = fy + fh - g_data.RDPI(6);
-			graphics.DrawLine(&iconPen, P(barX, top), P(barX, bottom));
-			float hw = g_data.RDPI(2) + 0.5f;
-			float vh = g_data.RDPI(2) + 0.5f;
-			float ax = cx + g_data.RDPI(2);
-			float dir = m_showStockList ? 1.0f : -1.0f; // 1=朝右，-1=朝左
-			Gdiplus::PointF pts[3] = {
-				P(ax - dir * hw, cy - vh), P(ax + dir * hw, cy), P(ax - dir * hw, cy + vh)
-			};
-			graphics.DrawLines(&iconPen, pts, 3);
-		}
+		const float inset = static_cast<float>(g_data.RDPI(3));
+		const Gdiplus::RectF iconBounds(static_cast<Gdiplus::REAL>(rect.left) + inset,
+			static_cast<Gdiplus::REAL>(rect.top) + inset,
+			static_cast<Gdiplus::REAL>(rect.Width()) - inset * 2.0f,
+			static_cast<Gdiplus::REAL>(rect.Height()) - inset * 2.0f);
+		const Icons::Id icon = isCloseBtn ? Icons::Id::X :
+			(nID == IDC_EXPAND_BTN ? (m_expandedMode ? Icons::Id::ChevronsUp : Icons::Id::ChevronsDown) :
+				(m_showStockList ? Icons::Id::PanelLeftClose : Icons::Id::PanelLeftOpen));
+		Icons::Draw(graphics, icon, iconBounds, textColor);
 
 		dc.Detach();
 		return;

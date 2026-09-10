@@ -446,6 +446,42 @@ void CDataManager::LoadTimelineCache()
 	}
 }
 
+void CDataManager::LoadFocusStockCache(const std::wstring& stockCode)
+{
+	if (!m_db_mgr.IsOpen() || stockCode.empty()) return;
+	auto stockData = GetStockData(stockCode);
+	if (!stockData) return;
+	for (STOCK::Period period : { STOCK::Period::DAY, STOCK::Period::WEEK, STOCK::Period::MONTH })
+	{
+		auto points = FilterKLineCachePoints(m_db_mgr.LoadKLineCache(stockCode, period), period);
+		if (points.empty()) continue;
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		if (period == STOCK::Period::DAY)
+		{
+			stockData->clearKLineData();
+			for (const auto& point : points) stockData->addKLinePoint(point);
+		}
+		else if (period == STOCK::Period::WEEK)
+		{
+			stockData->clearWeekKLineData();
+			for (const auto& point : points) stockData->addWeekKLinePoint(point);
+		}
+		else
+		{
+			stockData->clearMonthKLineData();
+			for (const auto& point : points) stockData->addMonthKLinePoint(point);
+		}
+	}
+
+	auto timeline = m_db_mgr.LoadLatestTimelineCache(stockCode);
+	if (!timeline.empty())
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		stockData->clearTimelinePoint();
+		for (const auto& point : timeline) stockData->addTimelinePoint(point);
+	}
+}
+
 void CDataManager::LoadKLineCache(STOCK::Period period)
 {
 	if (!m_db_mgr.IsOpen()) return;

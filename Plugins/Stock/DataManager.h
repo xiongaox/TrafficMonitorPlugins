@@ -145,6 +145,8 @@ public:
 	static bool CalculateChipDistributionForKLines(const std::wstring& code, const std::vector<STOCK::KLinePoint>& klines, int endIndex, STOCK::Volume totalShares, STOCK::ChipDistribution& outChip);
 
 	bool HasKLineCache(const std::wstring& stockCode, STOCK::Period period);
+	// 临时焦点（黄金榜等）按需恢复本地缓存，不修改用户自选/持仓分组。
+	void LoadFocusStockCache(const std::wstring& stockCode);
 	STOCK::Volume GetCirculatingAShares(const std::wstring& code);
 
 	// 拉取进度状态（取数线程写入、UI线程读取，内部互斥；每只股票保留最近4条）

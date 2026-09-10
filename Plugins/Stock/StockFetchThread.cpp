@@ -392,12 +392,24 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 		// K线数据每天只变化一次，切换股票时获取一次即可，无需定时轮询
 		// 通过 PostTask 投递到工作线程执行，避免在主线程做网络请求
 		PostTask([stockId]() {
-			// 首屏先补当前价与名称，不能被日/周/月 K 的多源回退和超时拖住。
-			std::vector<std::wstring> rtCodes{ stockId };
-			std::vector<std::wstring> rtOut;
-			std::string rtResp;
-			if (g_http_fetcher.FetchRealtimeHtml(rtCodes, false, rtOut, rtResp))
-				g_data.ApplyRealtimeData(rtOut, rtResp);
+				// 东财 secid（118.* / 116.* / 101.* 等）不在腾讯/新浪实时接口中，
+				// 必须首屏直接走 stock/get，否则 K线已到而标题/现价长期为空。
+				const size_t dot = stockId.find(L'.');
+				bool isEmSecid = dot != std::wstring::npos && dot > 0 && dot + 1 < stockId.size();
+				for (size_t i = 0; isEmSecid && i < dot; ++i)
+					isEmSecid = iswdigit(stockId[i]) != 0;
+				if (isEmSecid)
+				{
+					CStockFetchThread::Instance().FetchSgeSnapshot(stockId);
+				}
+				else
+				{
+					std::vector<std::wstring> rtCodes{ stockId };
+					std::vector<std::wstring> rtOut;
+					std::string rtResp;
+					if (g_http_fetcher.FetchRealtimeHtml(rtCodes, false, rtOut, rtResp))
+						g_data.ApplyRealtimeData(rtOut, rtResp);
+				}
 
 			// K线不属于首帧必需数据；缓存已在启动时回填，以下请求仅做增量刷新。
 			CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
