@@ -240,13 +240,20 @@ bool CStockHttpFetcher::FetchSgeKLine(const std::wstring& code, int klt, int lmt
 		return false;
 	}
 	CString strHeaders = _T("Referer: https://quote.eastmoney.com");
-	if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength())
-		&& !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
+	if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength()) && !outResp.empty())
 	{
-		NotifyStatus(code, stage, L"东方财富源", L"拉取成功");
-		return true;
+		const char* periodName = klt == 101 ? "day" : (klt == 102 ? "week" : "month");
+		if (!STOCK::ParseKLinePointsFromJson(outResp, code, periodName).empty())
+		{
+			NotifyStatus(code, stage, L"东方财富源", L"拉取成功");
+			return true;
+		}
+		NotifyStatus(code, stage, L"东方财富源", L"响应无有效K线数据");
 	}
-	NotifyStatus(code, stage, L"东方财富源", L"拉取失败");
+	else
+	{
+		NotifyStatus(code, stage, L"东方财富源", L"拉取失败");
+	}
 	m_eastmoney_fail_until = time(nullptr) + 600;
 	return false;
 }

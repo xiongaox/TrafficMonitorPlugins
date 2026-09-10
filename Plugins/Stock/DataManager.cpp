@@ -47,20 +47,15 @@ static long KlineWeekIndex(const std::string& d)
 }
 
 // 清理 K 线缓存中的历史脏数据，返回过滤后的数据：
-// 1) 日K：丢弃 volume<=0 的行（历史异常接口写入的无量数据，会污染成交量图）；
-// 2) 周/月K：同一自然周/月可能出现多行（新老版本写入的 day 键不同），只保留 day 最大（最新）的一行。
+// 周/月K：同一自然周/月可能出现多行（新老版本写入的 day 键不同），只保留 day 最大（最新）的一行。
+// 日K不再按成交量过滤：贵金属等跨市场品种可有有效价格但成交量为0。
 static std::vector<STOCK::KLinePoint> FilterKLineCachePoints(const std::vector<STOCK::KLinePoint>& points, STOCK::Period period)
 {
 	std::vector<STOCK::KLinePoint> filtered;
 	filtered.reserve(points.size());
 	for (const auto& pt : points)
 	{
-		if (period == STOCK::Period::DAY)
-		{
-			if (pt.volume <= 0)
-				continue;
-		}
-		else if (period == STOCK::Period::WEEK || period == STOCK::Period::MONTH)
+		if (period == STOCK::Period::WEEK || period == STOCK::Period::MONTH)
 		{
 			if (!filtered.empty())
 			{
