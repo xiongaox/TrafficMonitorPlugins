@@ -205,7 +205,7 @@ CMarketCenterData::DataSetState CMarketCenterData::GetDataSetState(DataSet ds, i
 
 bool CMarketCenterData::IsInBackOff(DataSet ds) const
 {
-	std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_sched_mutex);
+	// 仅由已持有 m_sched_mutex 的调度路径调用，不能在此重复加锁。
 	return m_fail_until[ds] > 0 && time(nullptr) < m_fail_until[ds];
 }
 
