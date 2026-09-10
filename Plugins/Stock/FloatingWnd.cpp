@@ -2246,7 +2246,6 @@ void CFloatingWnd::ToggleMarketCenter()
 		// 设置数据到达通知窗口并立即拉取当前页数据
 			m_marketCenterPanel.SetNotifyWnd(GetSafeHwnd());
 			m_marketCenterPanel.OnTimerTick();
-			CMarketCenterData::Instance().WarmupStaleData(GetSafeHwnd());
 	}
 	else
 	{

@@ -254,8 +254,19 @@ void CMarketCenterPanel::DrawHeaderClock(CDC& memDC, const CRect& rc)
 		if (!fTime || Gdiplus::Ok != fTime->GetLastStatus())
 			fTime = MkFont(13, true);
 	}
-	CSize szStatus = MeasureStr(g, fStatus.get(), status);
-	CSize szTime = MeasureStr(g, fTime.get(), m_clock_time);
+		CSize szStatus = MeasureStr(g, fStatus.get(), status);
+		CSize szTime = MeasureStr(g, fTime.get(), m_clock_time);
+		std::wstring cacheStatus;
+		const auto state = CMarketCenterData::Instance().GetDataSetState(CurrentDataSet(),
+			CurrentDataSet() == CMarketCenterData::DS_ETFS ? 300 : (CurrentDataSet() == CMarketCenterData::DS_SECTORS || CurrentDataSet() == CMarketCenterData::DS_MAINFLOW ? 120 : 60));
+		if (state.failed) cacheStatus = L"更新失败";
+		else if (state.inflight || state.queued) cacheStatus = state.hasData ? L"后台数据缓存中" : L"正在获取数据";
+		else if (state.hasData) cacheStatus = L"正在使用本地数据";
+		else cacheStatus = L"暂无缓存";
+		CSize szCache = MeasureStr(g, fStatus.get(), cacheStatus);
+		int cacheRight = rc.right - g_data.DPI(22) - g_data.DPI(4);
+		int cacheLeft = max(rc.left + g_data.DPI(4), cacheRight - szCache.cx);
+		DrawStrSingle(g, cacheStatus, fStatus.get(), CRect(cacheLeft, rc.top, cacheRight, rc.bottom), RGB(255, 255, 255), 128, Gdiplus::StringAlignmentFar);
 	int dotD = g_data.DPI(8);
 	int gap = g_data.DPI(7);
 	int totalW = dotD + gap + szStatus.cx + gap + szTime.cx;

@@ -176,7 +176,19 @@ public:
 	void StopExecutor();
 	void WarmupStaleData(HWND notifyWnd);
 
-	// 从 SQLite 恢复行情中心最近成功快照；在数据库初始化后、启动取数线程前调用。
+	struct DataSetState
+	{
+		bool hasData{ false };
+		bool stale{ true };
+		bool queued{ false };
+		bool inflight{ false };
+		bool failed{ false };
+		time_t fetchedAt{ 0 };
+		time_t backoffUntil{ 0 };
+		bool premarketNoData{ false };
+	};
+
+	DataSetState GetDataSetState(DataSet ds, int staleSec) const;
 	void LoadCachedSnapshots();
 
 	// 当前页面使用 Foreground，后台预热使用 Warmup。

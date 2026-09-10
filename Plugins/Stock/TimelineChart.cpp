@@ -1676,6 +1676,11 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize premVs = memDC.GetTextExtent(premVal);
 
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - iopvLs.cx - iopvVs.cx - premLs.cx - premVs.cx;
+			CString cacheLabel = timelinePoint.empty() ? _T("正在获取数据") : _T("本地缓存");
+			CSize cacheSize = memDC.GetTextExtent(cacheLabel);
+			int cacheX = max(g_data.RDPI(4), rightX - g_data.RDPI(8) - cacheSize.cx);
+			memDC.SetTextColor(RGB(180, 185, 195));
+			memDC.TextOut(cacheX, centerY - cacheSize.cy / 2, cacheLabel);
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - iopvLs.cy / 2, iopvLabel);
 			rightX += iopvLs.cx;
@@ -1696,6 +1701,11 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize avgLs = memDC.GetTextExtent(avgLabel);
 			CSize avgVs = memDC.GetTextExtent(avgVal);
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - avgLs.cx - avgVs.cx;
+			CString cacheLabel = timelinePoint.empty() ? _T("正在获取数据") : _T("本地缓存");
+			CSize cacheSize = memDC.GetTextExtent(cacheLabel);
+			int cacheX = max(g_data.RDPI(4), rightX - g_data.RDPI(8) - cacheSize.cx);
+			memDC.SetTextColor(RGB(180, 185, 195));
+			memDC.TextOut(cacheX, centerY - cacheSize.cy / 2, cacheLabel);
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - avgLs.cy / 2, avgLabel);
 			rightX += avgLs.cx;

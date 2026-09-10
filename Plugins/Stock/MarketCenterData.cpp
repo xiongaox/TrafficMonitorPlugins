@@ -172,8 +172,40 @@ CMarketCenterData& CMarketCenterData::Instance()
 	return inst;
 }
 
+CMarketCenterData::DataSetState CMarketCenterData::GetDataSetState(DataSet ds, int staleSec) const
+{
+	DataSetState state;
+	{
+		std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_mutex);
+		switch (ds)
+		{
+		case DS_SECTORS: state.hasData = !m_sectors.empty(); state.fetchedAt = m_sectors_time; break;
+		case DS_ETFS: state.hasData = !m_etfs.empty(); state.fetchedAt = m_etfs_time; break;
+		case DS_MAINFLOW: state.hasData = !m_fflow_sh.empty() || !m_fflow_sz.empty() || !m_index_trend.empty(); state.fetchedAt = m_fflow_time; break;
+		case DS_TREND: state.hasData = !m_dist.buckets.empty(); state.fetchedAt = m_dist_time; break;
+		case DS_GOLD: state.hasData = !m_golds.empty(); state.fetchedAt = m_gold_time; break;
+		default: break;
+		}
+		state.stale = state.fetchedAt == 0 || time(nullptr) - state.fetchedAt > staleSec;
+		state.premarketNoData = m_premarket_no_data[ds];
+	}
+	{
+		std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_sched_mutex);
+		state.inflight = m_inflight[ds];
+		state.failed = m_last_failed[ds];
+		state.backoffUntil = m_fail_until[ds];
+	}
+	{
+		std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_executor_mutex);
+		for (const auto& request : m_foreground_requests) if (request.dataSet == ds) state.queued = true;
+		for (const auto& request : m_warmup_requests) if (request.dataSet == ds) state.queued = true;
+	}
+	return state;
+}
+
 bool CMarketCenterData::IsInBackOff(DataSet ds) const
 {
+	std::lock_guard<std::mutex> lock(const_cast<CMarketCenterData*>(this)->m_sched_mutex);
 	return m_fail_until[ds] > 0 && time(nullptr) < m_fail_until[ds];
 }
 
@@ -287,8 +319,14 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 		{
 			dist.time=static_cast<time_t>(JsonNumber(data,"time")); dist.zt=static_cast<long long>(JsonNumber(data,"zt")); dist.dt=static_cast<long long>(JsonNumber(data,"dt"));
 			yyjson_val* buckets=yyjson_obj_get(data,"buckets"); if(!yyjson_is_obj(buckets)||yyjson_obj_size(buckets)>100) ok=false; else { size_t idx,max; yyjson_val *key,*val; yyjson_obj_foreach(buckets,idx,max,key,val){ if(!key||!JsonFinite(val)) {ok=false;break;} dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(JsonNumber(nullptr,"",0)); if(yyjson_is_real(val)) dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_real(val)); else if(yyjson_is_sint(val)) dist.buckets[atoi(yyjson_get_str(key))]=yyjson_get_sint(val); else dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_uint(val)); } }
-			double today=JsonNumber(data,"today",0), yesterday=JsonNumber(data,"yesterday",0); m_turnover_today=today; m_turnover_yesterday=yesterday;
+			double today=JsonNumber(data,"today",0), yesterday=JsonNumber(data,"yesterday",0);
 			yyjson_val* curve=yyjson_obj_get(data,"curve"); if(!yyjson_is_arr(curve)||yyjson_arr_size(curve)>1000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(curve,idx,max,item){if(!yyjson_is_obj(item)){ok=false;break;}MC::TrendSample v;v.time=JsonString(item,"time");v.up=static_cast<long long>(JsonNumber(item,"up"));v.down=static_cast<long long>(JsonNumber(item,"down"));if(v.time.empty()){ok=false;break;}trendCurve.push_back(std::move(v));}}
+			if (ok)
+			{
+				std::lock_guard<std::mutex> lock(m_mutex);
+				m_turnover_today = today;
+				m_turnover_yesterday = yesterday;
+			}
 		}
 		break;
 	}
@@ -403,8 +441,17 @@ void CMarketCenterData::StopExecutor()
 		if (!m_executor_started)
 			return;
 		m_executor_stopping = true;
+		for (const auto& request : m_foreground_requests)
+			m_inflight[request.dataSet] = false;
+		for (const auto& request : m_warmup_requests)
+			m_inflight[request.dataSet] = false;
 		m_foreground_requests.clear();
 		m_warmup_requests.clear();
+	}
+	{
+		std::lock_guard<std::mutex> schedLock(m_sched_mutex);
+		for (int i = 0; i < DS_COUNT; ++i)
+			m_inflight[i] = false;
 	}
 	m_executor_cv.notify_all();
 	if (m_executor_thread.joinable())
@@ -546,6 +593,15 @@ void CMarketCenterData::ExecutorLoop()
 		}
 		if (request.notifyWnd && ::IsWindow(request.notifyWnd))
 			::PostMessage(request.notifyWnd, WM_APP + 140, static_cast<WPARAM>(request.dataSet), ok ? 1 : 0);
+		if (ok)
+		{
+			const DataSet warmupOrder[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND, DS_GOLD };
+			for (DataSet next : warmupOrder)
+			{
+				if (next != request.dataSet && RequestIfStale(next, next == DS_ETFS ? 300 : (next == DS_SECTORS || next == DS_MAINFLOW ? 120 : 60), request.notifyWnd, RequestPriority::Warmup))
+					break;
+			}
+		}
 		Sleep(300);
 	}
 }
