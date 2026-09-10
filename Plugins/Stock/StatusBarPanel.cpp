@@ -10,7 +10,8 @@
 #include <ctime>
 #include <limits>
 
-void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeData, int windowWidth, int headerHeight, const CString& macdTrendSignal)
+void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeData, int windowWidth, int headerHeight,
+    const CString& macdTrendSignal, int reservedRightWidth)
 {
 	double diff = realtimeData.GetChangeAmount();
 	double diffPercent = realtimeData.GetChangePercent();
@@ -46,7 +47,9 @@ void CStatusBarPanel::DrawHeader(CDC& memDC, const STOCK::StockInfo& realtimeDat
 	CSize macdSize = memDC.GetTextExtent(macdTxt);
 	int totalWidth = prefixSize.cx + currentSize.cx + diffSize.cx + macdSize.cx;
 
-	int startX = (windowWidth - totalWidth) / 2;
+	// 标题/指标只在缓存状态和窗口按钮左侧的可用区域居中，避免覆盖右侧状态。
+	int contentRight = max(g_data.RDPI(4), windowWidth - max(0, reservedRightWidth));
+	int startX = max(g_data.RDPI(4), (contentRight - totalWidth) / 2);
 	int centerY = headerHeight / 2;
 
 	memDC.SetTextColor(COLOR_BLACK);

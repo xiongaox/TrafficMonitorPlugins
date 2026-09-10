@@ -267,8 +267,20 @@ LRESULT CFloatingWnd::OnMcOpenChart(WPARAM wParam, LPARAM lParam)
 	UNREFERENCED_PARAMETER(lParam);
 	// 黄金榜点击品种行：退出行情中心 → 切换到该品种（secid 形态代码直连东财） → 日K视图
 	std::wstring secid = m_marketCenterPanel.GetGoldSecid(static_cast<int>(wParam));
+	std::wstring displayName = m_marketCenterPanel.GetGoldName(static_cast<int>(wParam));
 	if (secid.empty())
 		return 0;
+	// 榜单已有名称可立即展示；东财实时快照到达后再补全价格/成交额/市值。
+	if (!displayName.empty())
+	{
+		auto stockData = g_data.GetStockData(secid);
+		if (stockData)
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			stockData->info.code = secid;
+			stockData->info.displayName = displayName;
+		}
+	}
 	if (m_marketCenterMode)
 		ToggleMarketCenter();
 	SetStockId(secid);

@@ -917,9 +917,17 @@ void CStockFetchThread::FetchTimeline(const std::wstring& code)
 
 void CStockFetchThread::FetchSgeSnapshot(const std::wstring& code)
 {
+	g_data.PushFetchStatus(code, L"实时行情", L"东方财富", L"正在获取实时快照…");
 	std::string resp;
 	if (g_http_fetcher.FetchSgeSnapshot(code, resp))
+	{
 		g_data.ApplySgeSnapshot(code, resp);
+		g_data.PushFetchStatus(code, L"实时行情", L"东方财富", L"实时快照已更新");
+	}
+	else
+	{
+		g_data.PushFetchStatus(code, L"实时行情", L"东方财富", L"实时快照获取失败");
+	}
 }
 
 void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days)

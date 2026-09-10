@@ -2,6 +2,7 @@
 #include "MarketCenterPanel.h"
 #include "DataManager.h"
 #include "ChartColors.h"
+#include "Icons/Icons.h"
 #include "Common.h"
 #include <algorithm>
 #include <cmath>
@@ -199,6 +200,13 @@ std::wstring CMarketCenterPanel::GetGoldSecid(int goldIdx) const
 {
 	if (goldIdx >= 0 && goldIdx < static_cast<int>(m_golds_snapshot.size()))
 		return m_golds_snapshot[static_cast<size_t>(goldIdx)].secid;
+	return L"";
+}
+
+std::wstring CMarketCenterPanel::GetGoldName(int goldIdx) const
+{
+	if (goldIdx >= 0 && goldIdx < static_cast<int>(m_golds_snapshot.size()))
+		return m_golds_snapshot[static_cast<size_t>(goldIdx)].name;
 	return L"";
 }
 
@@ -1582,11 +1590,20 @@ void CMarketCenterPanel::DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc)
 		// 表头背景 + hover
 		if (m_hover_rank_header == i)
 			FillRounded(g, colRc, MC_TEXT, 0, 12);
-		CRect lblRc = colRc;
-		std::wstring label = headers[i];
-		if (rc2.key >= 0 && m_rank_sort_key == rc2.key)
-			label += (m_rank_sort_dir > 0 ? L" ▲" : L" ▼");
-		DrawStr(g, label, f11.get(), lblRc, (rc2.key >= 0 && m_rank_sort_key == rc2.key) ? MC_ACCENT : MC_TEXT_DIM, 255, i == 0 ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter);
+			CRect lblRc = colRc;
+			const bool isSorted = rc2.key >= 0 && m_rank_sort_key == rc2.key;
+			if (isSorted)
+				lblRc.right -= g_data.DPI(12);
+			const COLORREF headerColor = isSorted ? MC_ACCENT : MC_TEXT_DIM;
+			DrawStr(g, headers[i], f11.get(), lblRc, headerColor, 255, i == 0 ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter);
+			if (isSorted)
+			{
+				const int iconSize = g_data.DPI(12);
+				Icons::Draw(g, m_rank_sort_dir > 0 ? Icons::Id::ChevronUp : Icons::Id::ChevronDown,
+					Gdiplus::RectF(static_cast<Gdiplus::REAL>(colRc.right - iconSize - g_data.DPI(3)),
+						static_cast<Gdiplus::REAL>(colRc.top + (colRc.Height() - iconSize) / 2),
+						static_cast<Gdiplus::REAL>(iconSize), static_cast<Gdiplus::REAL>(iconSize)), headerColor);
+			}
 	}
 	Gdiplus::Pen headPen(Gdi(MC_BORDER), 1.0f);
 	g.DrawLine(&headPen, Gdiplus::REAL(tableRc.left), Gdiplus::REAL(headerRc.bottom - 1), Gdiplus::REAL(tableRc.right), Gdiplus::REAL(headerRc.bottom - 1));
@@ -1793,10 +1810,20 @@ void CMarketCenterPanel::DrawGoldRankPage(Gdiplus::Graphics& g, const CRect& rc)
 		m_gold_cols.push_back(gc2);
 		if (m_hover_gold_header == i)
 			FillRounded(g, colRc, MC_TEXT, 0, 12);
-		std::wstring label = headers[i];
-		if (m_gold_sort_key == gc2.key)
-			label += (m_gold_sort_dir > 0 ? L" ▲" : L" ▼");
-		DrawStr(g, label, f11.get(), colRc, (m_gold_sort_key == gc2.key) ? MC_ACCENT : MC_TEXT_DIM, 255, i == 0 ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter);
+			const bool isSorted = m_gold_sort_key == gc2.key;
+			CRect lblRc = colRc;
+			if (isSorted)
+				lblRc.right -= g_data.DPI(12);
+			const COLORREF headerColor = isSorted ? MC_ACCENT : MC_TEXT_DIM;
+			DrawStr(g, headers[i], f11.get(), lblRc, headerColor, 255, i == 0 ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter);
+			if (isSorted)
+			{
+				const int iconSize = g_data.DPI(12);
+				Icons::Draw(g, m_gold_sort_dir > 0 ? Icons::Id::ChevronUp : Icons::Id::ChevronDown,
+					Gdiplus::RectF(static_cast<Gdiplus::REAL>(colRc.right - iconSize - g_data.DPI(3)),
+						static_cast<Gdiplus::REAL>(colRc.top + (colRc.Height() - iconSize) / 2),
+						static_cast<Gdiplus::REAL>(iconSize), static_cast<Gdiplus::REAL>(iconSize)), headerColor);
+			}
 	}
 	Gdiplus::Pen headPen(Gdi(MC_BORDER), 1.0f);
 	g.DrawLine(&headPen, Gdiplus::REAL(tableRc.left), Gdiplus::REAL(headerRc.bottom - 1), Gdiplus::REAL(tableRc.right), Gdiplus::REAL(headerRc.bottom - 1));

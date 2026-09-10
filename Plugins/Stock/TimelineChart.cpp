@@ -89,14 +89,29 @@ void CTimelineChart::DrawTimelineHeader(CDC& memDC, const TimelineDrawContext& c
 	if (stockData && stockData->info.is_ok)
 		macdSignal = stockData->macdTrendSignal;
 
-	CStatusBarPanel statusBarPanel;
-	statusBarPanel.DrawHeader(memDC, ctx.realtimeData, ctx.windowWidth, g_data.RDPI(26), macdSignal);
-
-	// 主标题栏右侧：避开关闭/展开/列表三个按钮，所有图表视图共用此缓存状态提示。
 	CString cacheStatus = (ctx.klineData && !ctx.klineData->empty()) || (ctx.timelinePoint && !ctx.timelinePoint->empty())
 		? _T("正在使用本地数据") : _T("正在获取数据");
 	CSize cacheSize = memDC.GetTextExtent(cacheStatus);
-	const int cacheRight = ctx.windowWidth - g_data.RDPI(64);
+	const int buttonReserve = g_data.RDPI(64);
+	int reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
+	if (reservedRightWidth > ctx.windowWidth * 2 / 5)
+	{
+		cacheStatus = _T("本地缓存");
+		cacheSize = memDC.GetTextExtent(cacheStatus);
+		reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
+	}
+	if (reservedRightWidth > ctx.windowWidth * 2 / 5)
+	{
+		cacheStatus = _T("缓存");
+		cacheSize = memDC.GetTextExtent(cacheStatus);
+		reservedRightWidth = buttonReserve + cacheSize.cx + g_data.RDPI(8);
+	}
+
+	CStatusBarPanel statusBarPanel;
+	statusBarPanel.DrawHeader(memDC, ctx.realtimeData, ctx.windowWidth, g_data.RDPI(26), macdSignal, reservedRightWidth);
+
+	// 主标题栏右侧：缓存状态与标题共用 reservedRightWidth，避开关闭/展开/列表按钮。
+	const int cacheRight = ctx.windowWidth - buttonReserve;
 	const int cacheLeft = max(g_data.RDPI(4), cacheRight - cacheSize.cx);
 	memDC.SetBkMode(TRANSPARENT);
 	memDC.SetTextColor(RGB(180, 185, 195));  // 50% white composited on the dark title background.

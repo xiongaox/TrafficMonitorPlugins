@@ -48,6 +48,8 @@ public:
 
 	// 黄金榜品种的完整 secid（形如 118.AUTD / 116.01818，供悬浮窗打开图表）；无效索引返回空
 	std::wstring GetGoldSecid(int goldIdx) const;
+	// 黄金榜品种名称，供临时焦点在实时快照到达前立即显示。
+	std::wstring GetGoldName(int goldIdx) const;
 
 private:
 	// ===== 页面枚举（与侧栏菜单一一对应）=====
