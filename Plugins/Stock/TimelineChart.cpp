@@ -91,6 +91,16 @@ void CTimelineChart::DrawTimelineHeader(CDC& memDC, const TimelineDrawContext& c
 
 	CStatusBarPanel statusBarPanel;
 	statusBarPanel.DrawHeader(memDC, ctx.realtimeData, ctx.windowWidth, g_data.RDPI(26), macdSignal);
+
+	// 主标题栏右侧：避开关闭/展开/列表三个按钮，所有图表视图共用此缓存状态提示。
+	CString cacheStatus = (ctx.klineData && !ctx.klineData->empty()) || (ctx.timelinePoint && !ctx.timelinePoint->empty())
+		? _T("正在使用本地数据") : _T("正在获取数据");
+	CSize cacheSize = memDC.GetTextExtent(cacheStatus);
+	const int cacheRight = ctx.windowWidth - g_data.RDPI(64);
+	const int cacheLeft = max(g_data.RDPI(4), cacheRight - cacheSize.cx);
+	memDC.SetBkMode(TRANSPARENT);
+	memDC.SetTextColor(RGB(180, 185, 195));  // 50% white composited on the dark title background.
+	memDC.TextOut(cacheLeft, max(0, (g_data.RDPI(26) - cacheSize.cy) / 2), cacheStatus);
 	memDC.SetViewportOrg(origOrg);
 }
 
@@ -1676,11 +1686,6 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize premVs = memDC.GetTextExtent(premVal);
 
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - iopvLs.cx - iopvVs.cx - premLs.cx - premVs.cx;
-			CString cacheLabel = timelinePoint.empty() ? _T("正在获取数据") : _T("本地缓存");
-			CSize cacheSize = memDC.GetTextExtent(cacheLabel);
-			int cacheX = max(g_data.RDPI(4), rightX - g_data.RDPI(8) - cacheSize.cx);
-			memDC.SetTextColor(RGB(180, 185, 195));
-			memDC.TextOut(cacheX, centerY - cacheSize.cy / 2, cacheLabel);
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - iopvLs.cy / 2, iopvLabel);
 			rightX += iopvLs.cx;
@@ -1701,11 +1706,6 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 			CSize avgLs = memDC.GetTextExtent(avgLabel);
 			CSize avgVs = memDC.GetTextExtent(avgVal);
 			int rightX = ctx.chartWidth - g_data.RDPI(4) - avgLs.cx - avgVs.cx;
-			CString cacheLabel = timelinePoint.empty() ? _T("正在获取数据") : _T("本地缓存");
-			CSize cacheSize = memDC.GetTextExtent(cacheLabel);
-			int cacheX = max(g_data.RDPI(4), rightX - g_data.RDPI(8) - cacheSize.cx);
-			memDC.SetTextColor(RGB(180, 185, 195));
-			memDC.TextOut(cacheX, centerY - cacheSize.cy / 2, cacheLabel);
 			memDC.SetTextColor(COLOR_TEXT_MUTED);
 			memDC.TextOut(rightX, centerY - avgLs.cy / 2, avgLabel);
 			rightX += avgLs.cx;
