@@ -68,18 +68,21 @@ if ($lockingProcs) {
     Write-Warning "如遇编译报错，请先关闭测试器。"
 }
 
-# 4. 编译 utilities (如 utilities.lib 不存在时先编译)
+# 4. 准备 SolutionDir 参数（路径含空格时末尾反斜杠需转义，防止吞掉后续参数）
+$solDirArg = "/p:SolutionDir=`"$($WorktreePath.TrimEnd('\'))\\`""
+
+# 5. 编译 utilities (如 utilities.lib 不存在时先编译)
 $utilLib = Join-Path $WorktreePath 'lib\x64\Release\utilities.lib'
 if (-not (Test-Path $utilLib)) {
     Write-Host "[*] 编译基础依赖库 utilities.vcxproj ..." -ForegroundColor Cyan
-    & $msbuild $utilitiesProj /nologo /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="$solDir" /m /v:m
+    & $msbuild $utilitiesProj /nologo /p:Configuration=Release /p:Platform=x64 $solDirArg /m /v:m
     if ($LASTEXITCODE -ne 0) { throw "编译 utilities.vcxproj 失败！" }
 }
 
-# 5. 编译 Stock.vcxproj
+# 6. 编译 Stock.vcxproj
 Write-Host "[*] 正在编译 Stock.vcxproj (Release|x64) ..." -ForegroundColor Cyan
 $buildStartTime = Get-Date
-& $msbuild $stockProj /nologo /p:Configuration=Release /p:Platform=x64 /p:SolutionDir="$solDir" /m /v:m
+& $msbuild $stockProj /nologo /p:Configuration=Release /p:Platform=x64 $solDirArg /m /v:m
 if ($LASTEXITCODE -ne 0) {
     throw "编译 Stock.vcxproj 失败！"
 }
