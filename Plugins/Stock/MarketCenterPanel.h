@@ -108,6 +108,7 @@ private:
 	void DrawPageTitle(Gdiplus::Graphics& g, const CRect& content, const std::wstring& title, const std::wstring& sub);
 
 	void DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc);
+	void DrawSectorTimelinePage(Gdiplus::Graphics& g, const CRect& chartRc);
 	void DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc);
 	void DrawMoneyFlowPage(Gdiplus::Graphics& g, const CRect& rc);
@@ -148,11 +149,13 @@ private:
 	// ===== 数据快照 =====
 	std::vector<MC::SectorFlow> m_sectors_snapshot;
 	time_t m_sectors_snapshot_time{ 0 };
+	std::vector<MC::SectorTimeline> m_sector_timelines_snapshot;
+	time_t m_sector_timelines_snapshot_time{ 0 };
 	std::vector<MC::EtfQuote> m_etfs_snapshot;
 	time_t m_etfs_snapshot_time{ 0 };
 	long long m_etf_total{ 0 };
 
-	// ===== 气泡图 =====
+	// ===== 气泡图 / 板块资金流 =====
 	std::vector<TreeCell> m_treemap_cells;
 	bool m_bubble_layout_dirty{ true };
 	CRect m_bubble_chart_rect;
@@ -162,6 +165,12 @@ private:
 	CRect m_bubble_stat_rects[2];   // 流入/流出合计卡片（点击切换树图单色视图）
 	int m_treemap_mode{ 0 };        // 0=全部红绿 1=仅流入 2=仅流出
 	int m_hover_bubble_stat{ -1 };
+	int m_sector_view_mode{ 0 };    // 0=资金树图, 1=时间走向图
+	CRect m_sector_tab_rects[2];    // 切换按钮 [资金树图] [时间走向]
+	int m_hover_sector_tab{ -1 };
+	CRect m_sector_timeline_inner_rect; // 时间走向图内部坐标系矩形
+	int m_hover_timeline_idx{ -1 };     // 悬停的分时分钟 (0~240)
+	int m_hover_timeline_sector{ -1 };  // 悬停/聚焦的代表板块下标
 
 	// ===== ETF净流入页 =====
 	std::vector<ThemeInflow> m_theme_inflow;

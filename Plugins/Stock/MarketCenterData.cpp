@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <algorithm>
 #include "MarketCenterData.h"
 #include "DataManager.h"
 #include "Common.h"
@@ -180,6 +181,7 @@ CMarketCenterData::DataSetState CMarketCenterData::GetDataSetState(DataSet ds, i
 		switch (ds)
 		{
 		case DS_SECTORS: state.hasData = !m_sectors.empty(); state.fetchedAt = m_sectors_time; break;
+		case DS_SECTOR_TIMELINES: state.hasData = !m_sector_timelines.empty(); state.fetchedAt = m_sector_timelines_time; break;
 		case DS_ETFS: state.hasData = !m_etfs.empty(); state.fetchedAt = m_etfs_time; break;
 		case DS_MAINFLOW: state.hasData = !m_fflow_sh.empty() || !m_fflow_sz.empty() || !m_index_trend.empty(); state.fetchedAt = m_fflow_time; break;
 		case DS_TREND: state.hasData = !m_dist.buckets.empty(); state.fetchedAt = m_dist_time; break;
@@ -247,6 +249,7 @@ bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
 	switch (ds)
 	{
 	case DS_SECTORS: t = m_sectors_time; break;
+	case DS_SECTOR_TIMELINES: t = m_sector_timelines_time; break;
 	case DS_ETFS: t = m_etfs_time; break;
 	case DS_MAINFLOW: t = m_fflow_time; break;
 	case DS_TREND: t = m_dist_time; break;
@@ -268,6 +271,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 	if (!ok) { yyjson_doc_free(doc); return false; }
 
 	std::vector<MC::SectorFlow> sectors;
+	std::vector<MC::SectorTimeline> sectorTimelines;
 	std::vector<MC::EtfQuote> etfs;
 	long long etfTotal = 0;
 	MC::UpDownDist dist;
@@ -287,6 +291,29 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 			v.flow=JsonNumber(item,"flow"); v.pct=JsonNumber(item,"pct"); v.superBig=JsonNumber(item,"superBig"); v.big=JsonNumber(item,"big"); v.mid=JsonNumber(item,"mid"); v.smallOrder=JsonNumber(item,"smallOrder");
 			if (v.code.empty() || v.name.empty()) { ok=false; break; } sectors.push_back(std::move(v));
 		} }
+		break;
+	case DS_SECTOR_TIMELINES:
+		if (!yyjson_is_arr(data) || yyjson_arr_size(data) > 50) ok = false;
+		if (ok) {
+			size_t idx, max; yyjson_val* item; yyjson_arr_foreach(data, idx, max, item) {
+				if (!yyjson_is_obj(item)) { ok = false; break; }
+				MC::SectorTimeline st;
+				st.code = JsonString(item, "code");
+				st.name = JsonString(item, "name");
+				st.finalFlow = JsonNumber(item, "final");
+				yyjson_val* pts = yyjson_obj_get(item, "pts");
+				if (pts && yyjson_is_arr(pts)) {
+					size_t pIdx, pMax; yyjson_val* ptVal; yyjson_arr_foreach(pts, pIdx, pMax, ptVal) {
+						if (JsonFinite(ptVal)) {
+							double pv = yyjson_is_real(ptVal) ? yyjson_get_real(ptVal) : (yyjson_is_sint(ptVal) ? static_cast<double>(yyjson_get_sint(ptVal)) : 0.0);
+							st.points.push_back(pv);
+						}
+					}
+				}
+				if (st.code.empty() || st.name.empty()) { ok = false; break; }
+				sectorTimelines.push_back(std::move(st));
+			}
+		}
 		break;
 	case DS_ETFS:
 		if (!yyjson_is_obj(data)) ok=false;
@@ -324,7 +351,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 		if (!yyjson_is_obj(data)) { ok=false; break; }
 		{
 			dist.time=static_cast<time_t>(JsonNumber(data,"time")); dist.zt=static_cast<long long>(JsonNumber(data,"zt")); dist.dt=static_cast<long long>(JsonNumber(data,"dt"));
-			yyjson_val* buckets=yyjson_obj_get(data,"buckets"); if(!yyjson_is_obj(buckets)||yyjson_obj_size(buckets)>100) ok=false; else { size_t idx,max; yyjson_val *key,*val; yyjson_obj_foreach(buckets,idx,max,key,val){ if(!key||!JsonFinite(val)) {ok=false;break;} dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(JsonNumber(nullptr,"",0)); if(yyjson_is_real(val)) dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_real(val)); else if(yyjson_is_sint(val)) dist.buckets[atoi(yyjson_get_str(key))]=yyjson_get_sint(val); else dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_uint(val)); } }
+			yyjson_val* buckets=yyjson_obj_get(data,"buckets"); if(!yyjson_is_obj(buckets)||yyjson_obj_size(buckets)>100) ok=false; else { size_t idx,max; yyjson_val *key,*val; yyjson_obj_foreach(buckets,idx,max,key,val){ if(!key||!JsonFinite(val)) {ok=false;break;} dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(JsonNumber(nullptr,"",0)); if(yyjson_is_real(val)) dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_real(val)); else if(yyjson_is_sint(val)) dist.buckets[atoi(yyjson_get_str(key))]=static_cast<long long>(yyjson_get_uint(val)); } }
 			double today=JsonNumber(data,"today",0), yesterday=JsonNumber(data,"yesterday",0);
 			yyjson_val* curve=yyjson_obj_get(data,"curve"); if(!yyjson_is_arr(curve)||yyjson_arr_size(curve)>1000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(curve,idx,max,item){if(!yyjson_is_obj(item)){ok=false;break;}MC::TrendSample v;v.time=JsonString(item,"time");v.up=static_cast<long long>(JsonNumber(item,"up"));v.down=static_cast<long long>(JsonNumber(item,"down"));if(v.time.empty()){ok=false;break;}trendCurve.push_back(std::move(v));}}
 			if (ok)
@@ -342,6 +369,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 		switch (ds)
 		{
 		case DS_SECTORS: m_sectors=std::move(sectors); m_sectors_time=fetchedAt; break;
+		case DS_SECTOR_TIMELINES: m_sector_timelines=std::move(sectorTimelines); m_sector_timelines_time=fetchedAt; break;
 		case DS_ETFS: m_etfs=std::move(etfs); m_etf_total=etfTotal; m_etfs_time=fetchedAt; break;
 		case DS_MAINFLOW:
 			m_fflow_sh=std::move(fflowSh);
@@ -362,7 +390,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 
 void CMarketCenterData::LoadCachedSnapshots()
 {
-	const DataSet dataSets[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND };
+	const DataSet dataSets[] = { DS_SECTORS, DS_SECTOR_TIMELINES, DS_ETFS, DS_MAINFLOW, DS_TREND };
 	for (DataSet ds : dataSets)
 	{
 		std::string payload, tradeDate; time_t fetchedAt=0; int version=0;
@@ -384,6 +412,22 @@ std::string CMarketCenterData::SerializeSnapshot(DataSet ds) const
 	case DS_SECTORS:
 		out += "[";
 		for (size_t i = 0; i < m_sectors.size(); ++i) { if (i) out += ","; const auto& v = m_sectors[i]; out += "{"; JsonStringField(out,"code",v.code); out+=","; JsonStringField(out,"name",v.name); out+=","; JsonDoubleField(out,"flow",v.flow); out+=","; JsonDoubleField(out,"pct",v.pct); out+=","; JsonDoubleField(out,"superBig",v.superBig); out+=","; JsonDoubleField(out,"big",v.big); out+=","; JsonDoubleField(out,"mid",v.mid); out+=","; JsonDoubleField(out,"smallOrder",v.smallOrder); out += "}"; }
+		out += "]"; break;
+	case DS_SECTOR_TIMELINES:
+		out += "[";
+		for (size_t i = 0; i < m_sector_timelines.size(); ++i) {
+			if (i) out += ",";
+			const auto& v = m_sector_timelines[i];
+			out += "{";
+			JsonStringField(out, "code", v.code); out += ",";
+			JsonStringField(out, "name", v.name); out += ",";
+			JsonDoubleField(out, "final", v.finalFlow); out += ",\"pts\":[";
+			for (size_t j = 0; j < v.points.size(); ++j) {
+				if (j) out += ",";
+				JsonNum(out, v.points[j]);
+			}
+			out += "]}";
+		}
 		out += "]"; break;
 	case DS_ETFS:
 		out += "{\"total\":" + std::to_string(m_etf_total) + ",\"items\":[";
@@ -544,6 +588,7 @@ bool CMarketCenterData::ExecuteRequest(DataSet ds)
 	switch (ds)
 	{
 	case DS_SECTORS: return FetchSectors();
+	case DS_SECTOR_TIMELINES: return FetchSectorTimelines();
 	case DS_ETFS: return FetchEtfs();
 	case DS_MAINFLOW: return FetchMainFlow();
 	case DS_TREND: return FetchTrendDist();
@@ -983,6 +1028,117 @@ bool CMarketCenterData::FetchMainFlow()
 		if (okMain) m_leader_main = std::move(leaderMain);
 		m_fflow_time = time(nullptr);
 		MarkSuccess(DS_MAINFLOW);
+	}
+	return true;
+}
+
+// ===== 15个代表板块主力资金时间走向 =====
+bool CMarketCenterData::FetchSectorTimelines()
+{
+	std::vector<MC::SectorFlow> sectors;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		sectors = m_sectors;
+	}
+	if (sectors.empty())
+	{
+		if (!FetchSectors())
+			return false;
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			sectors = m_sectors;
+		}
+	}
+	if (sectors.empty())
+		return false;
+
+	// 筛选最具代表性的板块：流入居前 15 个 + 流出居前 15 个（最多 30 个）
+	std::vector<MC::SectorFlow> inflows;
+	std::vector<MC::SectorFlow> outflows;
+	for (const auto& s : sectors)
+	{
+		if (s.flow >= 0) inflows.push_back(s);
+		else outflows.push_back(s);
+	}
+	std::sort(inflows.begin(), inflows.end(), [](const MC::SectorFlow& a, const MC::SectorFlow& b) {
+		return a.flow > b.flow; // 降序
+	});
+	std::sort(outflows.begin(), outflows.end(), [](const MC::SectorFlow& a, const MC::SectorFlow& b) {
+		return a.flow < b.flow; // 升序（负数绝对值大排在前）
+	});
+
+	std::vector<MC::SectorFlow> selected;
+	const size_t targetIn = min(static_cast<size_t>(15), inflows.size());
+	const size_t targetOut = min(static_cast<size_t>(15), outflows.size());
+	for (size_t i = 0; i < targetIn; ++i) selected.push_back(inflows[i]);
+	for (size_t i = 0; i < targetOut; ++i) selected.push_back(outflows[i]);
+
+	std::vector<MC::SectorTimeline> timelines;
+	timelines.reserve(selected.size());
+
+	for (const auto& sec : selected)
+	{
+		std::wstring secid = L"90." + sec.code;
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?secid="
+			+ secid + L"&klt=1&lmt=0&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56";
+		std::string resp;
+		if (!HttpGet(url, resp))
+			continue;
+
+		std::vector<MC::FflowMinute> fflow = ParseFflowKlines(resp);
+		if (fflow.empty())
+			continue;
+
+		MC::SectorTimeline st;
+		st.code = sec.code;
+		st.name = sec.name;
+		st.finalFlow = sec.flow / 1e8; // 转换为亿元
+
+		int maxIdx = -1;
+		std::vector<double> pointMap(241, 0.0);
+		std::vector<bool> pointSet(241, false);
+		for (const auto& fm : fflow)
+		{
+			int idx = TimeIndex(fm.time);
+			if (idx >= 0 && idx <= 240)
+			{
+				pointMap[idx] = fm.main / 1e8; // 亿元
+				pointSet[idx] = true;
+				if (idx > maxIdx) maxIdx = idx;
+			}
+		}
+
+		if (maxIdx >= 0)
+		{
+			st.points.resize(maxIdx + 1, 0.0);
+			double lastVal = 0.0;
+			for (int i = 0; i <= maxIdx; ++i)
+			{
+				if (pointSet[i])
+					lastVal = pointMap[i];
+				st.points[i] = lastVal;
+			}
+			st.finalFlow = lastVal;
+		}
+		else
+		{
+			for (const auto& fm : fflow)
+				st.points.push_back(fm.main / 1e8);
+			if (!st.points.empty())
+				st.finalFlow = st.points.back();
+		}
+		timelines.push_back(std::move(st));
+	}
+
+	if (timelines.empty())
+		return false;
+
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_sector_timelines = std::move(timelines);
+		m_sector_timelines_time = time(nullptr);
+		m_premarket_no_data[DS_SECTOR_TIMELINES] = false;
+		MarkSuccess(DS_SECTOR_TIMELINES);
 	}
 	return true;
 }

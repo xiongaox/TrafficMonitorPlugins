@@ -92,6 +92,15 @@ namespace MC
 		std::wstring name;
 		double flow{ 0.0 };     // 净额(元)
 	};
+
+	// 代表板块主力资金时间走向（15个代表板块分时曲线）
+	struct SectorTimeline
+	{
+		std::wstring code;          // 板块代码 BK0457
+		std::wstring name;          // 板块名称 通信设备
+		double finalFlow{ 0.0 };    // 最新/最终主力净流入(亿元)
+		std::vector<double> points; // 各分钟主力净流入(亿元)
+	};
 }
 
 class CMarketCenterData
@@ -106,6 +115,7 @@ public:
 
 	// ===== 各数据集内容 =====
 	std::vector<MC::SectorFlow> m_sectors;              // 行业板块资金流
+	std::vector<MC::SectorTimeline> m_sector_timelines; // 代表板块资金走向分时
 	std::vector<MC::EtfQuote> m_etfs;                   // ETF 全量（分页抓取合并）
 	long long m_etf_total{ 0 };                          // 服务端报告的 ETF 总数
 	std::vector<MC::FflowMinute> m_fflow_sh;            // 上证主力资金分时
@@ -121,27 +131,29 @@ public:
 
 	// ===== 各数据集最后成功更新时间（0=从未成功）=====
 	time_t m_sectors_time{ 0 };
+	time_t m_sector_timelines_time{ 0 };
 	time_t m_etfs_time{ 0 };
 	time_t m_fflow_time{ 0 };
 	time_t m_dist_time{ 0 };
 	time_t m_turnover_time{ 0 };
 
-	// ===== 失败退避：某数据集连续失败后的一段时间内不再重试 =====
-	time_t m_fail_until[4]{ 0, 0, 0, 0 };               // 对应 DataSet 枚举
-	bool m_inflight[4]{ false, false, false, false };    // 后台任务在途标记
-	bool m_last_failed[4]{ false, false, false, false }; // 最近一次请求是否失败（供 UI 显示错误态）
-	bool m_premarket_no_data[4]{ false, false, false, false }; // 接口可达但资金流字段全为"-"（盘前清库，非网络故障）
-	static const int FAIL_BACKOFF_SEC = 15;
-
 	// 数据集枚举（取数任务调度与失败退避共用）
 	enum DataSet
 	{
-		DS_SECTORS = 0,   // 气泡图板块资金流
-		DS_ETFS = 1,      // ETF 全量列表
-		DS_MAINFLOW = 2,  // 主力资金分时（沪深 fflow + 指数 trends2）
-		DS_TREND = 3,     // 涨跌分布 + 涨停/跌停池 + 指数成交额
-		DS_COUNT = 4
+		DS_SECTORS = 0,          // 气泡图板块资金流
+		DS_ETFS = 1,             // ETF 全量列表
+		DS_MAINFLOW = 2,         // 主力资金分时（沪深 fflow + 指数 trends2）
+		DS_TREND = 3,            // 涨跌分布 + 涨停/跌停池 + 指数成交额
+		DS_SECTOR_TIMELINES = 4, // 15个代表板块资金走向分时
+		DS_COUNT = 5
 	};
+
+	// ===== 失败退避：某数据集连续失败后的一段时间内不再重试 =====
+	time_t m_fail_until[DS_COUNT]{ 0 };               // 对应 DataSet 枚举
+	bool m_inflight[DS_COUNT]{ false };               // 后台任务在途标记
+	bool m_last_failed[DS_COUNT]{ false };            // 最近一次请求是否失败（供 UI 显示错误态）
+	bool m_premarket_no_data[DS_COUNT]{ false };      // 接口可达但资金流字段全为"-"（盘前清库，非网络故障）
+	static const int FAIL_BACKOFF_SEC = 15;
 
 	bool IsInBackOff(DataSet ds) const;
 	void MarkSuccess(DataSet ds);
@@ -182,6 +194,7 @@ public:
 	bool FetchSectors();        // 行业板块主力净流入（双向 Top60）
 	bool FetchEtfs();           // ETF 全量分页抓取（pz=100 × N）
 	bool FetchMainFlow();       // 沪深 fflow 分时 + 上证指数 trends2 + ETF曲线采样
+	bool FetchSectorTimelines(); // 15个代表板块分时走向
 	bool FetchTrendDist();      // 涨跌分布 + 涨停/跌停池 + 沪深成交额
 
 	// 按开市时间推进自积累曲线（在 FetchTrendDist/FetchEtfs 成功后调用）
@@ -215,5 +228,5 @@ private:
 	std::deque<PendingRequest> m_warmup_requests;
 	bool m_executor_started{ false };
 	bool m_executor_stopping{ false };
-	unsigned int m_failure_count[DS_COUNT]{ 0, 0, 0, 0 };
+	unsigned int m_failure_count[DS_COUNT]{ 0 };
 };
