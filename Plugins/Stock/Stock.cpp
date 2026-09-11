@@ -89,6 +89,11 @@ static std::vector<std::wstring> GetAllDataCodes()
 	};
 	for (const auto& code : g_data.m_setting_data.m_position_codes)
 		addUnique(code);
+	for (const auto& group : g_data.m_setting_data.m_custom_groups)
+	{
+		for (const auto& code : group.codes)
+			addUnique(code);
+	}
 	for (const auto& code : g_data.GetRegisteredStockCodes())
 		addUnique(code);
 	for (const auto& code : g_data.m_setting_data.m_selected_indices)
