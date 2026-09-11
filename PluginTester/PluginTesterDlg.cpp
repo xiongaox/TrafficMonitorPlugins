@@ -259,6 +259,54 @@ BOOL CPluginTesterDlg::OnInitDialog()
     m_view->ShowWindow(SW_SHOW);
     m_view->SetSize(CalculatePreviewSize());
 
+    // 设置 Git ID / 分支标注
+    CString currentTitle;
+    GetWindowText(currentTitle);
+    utilities::CIniHelper ini(theApp.m_config_path);
+    std::wstring git_id = ini.GetString(L"config", L"git_id");
+    if (git_id.empty())
+    {
+        std::wstring git_id_file = utilities::CFilePathHelper(theApp.m_config_path).GetDir() + L"git_id.txt";
+        std::wifstream fin(git_id_file);
+        if (fin.is_open())
+        {
+            fin >> git_id;
+        }
+    }
+    if (git_id.empty())
+    {
+        utilities::CFilePathHelper pathHelper(theApp.m_config_path);
+        std::wstring p = pathHelper.GetDir();
+        for (int i = 0; i < 4 && !p.empty(); ++i)
+        {
+            std::wstring folder = utilities::CFilePathHelper(p).GetFolderName();
+            if (folder.find(L"main-") == 0)
+            {
+                git_id = folder;
+                break;
+            }
+            p = utilities::CFilePathHelper(p).GetParentDir();
+        }
+    }
+    if (!git_id.empty())
+    {
+        CString newTitle;
+        newTitle.Format(_T("%s [%s]"), currentTitle.GetString(), git_id.c_str());
+        SetWindowText(newTitle);
+
+        CWnd* pBrowse = GetDlgItem(IDC_BROWSE_BUTTON);
+        if (pBrowse != nullptr)
+        {
+            CRect rcBrowse;
+            pBrowse->GetWindowRect(rcBrowse);
+            ScreenToClient(rcBrowse);
+            CRect rcLabel(rcBrowse.left - 120, 6, rcBrowse.right, rcBrowse.top - 2);
+            if (rcLabel.top < 4) rcLabel.top = 4;
+            m_git_id_static.Create((CString(_T("[")) + git_id.c_str() + _T("]")).GetString(), WS_CHILD | WS_VISIBLE | SS_RIGHT, rcLabel, this, 3005);
+            m_git_id_static.SetFont(GetFont());
+        }
+    }
+
     SetTimer(TIMER_ID, 1000, nullptr);
 
     return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE

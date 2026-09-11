@@ -26,9 +26,13 @@ description: >-
    - 目标路径：`D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins\main-<git-id>`
    - 分支名称：`main-<git-id>`（其中 `<git-id>` 为当前 commit 的 8 位短 ID，例如 `main-02491967`）。
    - ⚠️ **严格禁止在分支名中使用斜杠 `/`**（如 `fix/xxx`、`worktree/xxx`）。本机 Git 存在已知缺陷，带斜杠分支操作会静默删除 `.git/refs/heads/` 下的子目录，导致分支丢失！
-3. **Release 环境完备性**：
-   每个 worktree 的 `bin\x64\Release` 必须具备 `PluginTester.exe`、`Stock.dll` 及运行配置文件，且 `lib\x64\Release` 必须包含 `utilities.lib`，确保既可直接调试又可立即增量编译。
-4. **交付阶段禁止自启动测试器**：
+3. **Release 环境与插件精简（仅限 Stock）**：
+   每个 worktree 的 `bin\x64\Release` 仅复制 `PluginTester.exe`、`Stock.dll`、相关 ini/db 配置以及 `lib\x64\Release\utilities.lib`。**严禁拷贝其他非 Stock 插件（如 Battery/DateTime/Weather 等）**，保证测试器下拉列表中仅呈现 Stock.dll，排查无干扰。
+4. **测试器 Git ID / 分支直观展示**：
+   测试器窗口标题及右上角将自动显示当前的 Git ID / 分支名（例如 `TrafficMonitor插件测试器 [main-44a964dd]`），防止开启多个测试器时混淆实例。
+5. **根目录直达快捷方式**：
+   在新建的 Worktree 根目录下自动生成 `启动测试器.lnk` 与 `PluginTester.lnk` 快捷方式，用户在根目录双击即可直接调试，无需逐层深入 `bin\x64\Release`。
+6. **交付阶段禁止自启动测试器**：
    需求完成时，仅调用 MSBuild 进行本地 Release x64 编译生成 `Stock.dll`。**严禁自动拉起 `PluginTester.exe`**，由用户根据需要手动启动测试器进行功能验证。
 
 ---
@@ -60,7 +64,9 @@ powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\create
 1. 取 HEAD 的 8 位短提交号（如 `02491967`），若存在同名分支/目录则生成唯一 8 位标识。
 2. 在 `D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins` 下创建 `main-<git-id>`。
 3. 创建并检出无斜杠的独立分支 `main-<git-id>`。
-4. 将主仓库已编译好的 `bin\x64\Release`（含 `PluginTester.exe`、`Stock.dll`、`Stock.ini` 等）与 `lib\x64\Release` 同步到新工作树，确保测试器环境即时可用。
+4. 将主仓库已编译好的 `bin\x64\Release` 中仅与 Stock 和测试器相关的产物（`PluginTester.exe`、`Stock.dll`、`Stock.ini`、db 等）以及 `lib\x64\Release\utilities.lib` 同步到新工作树，严禁带入其他无关插件。
+5. 自动写入 `git_id` 分支标识到测试器配置中，确保界面与标题栏显示具体分支名称。
+6. 在工作树根目录自动创建 `启动测试器.lnk` 与 `PluginTester.lnk` 快捷方式，方便在最外层一键运行测试。
 
 ---
 

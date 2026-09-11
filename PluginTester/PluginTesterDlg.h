@@ -45,6 +45,7 @@ protected:
     CDrawScrollView* m_view{};    //预览区视图类
     int m_proview_top_pos{};
     CMenu m_plugin_command_menu;
+    CStatic m_git_id_static;
 
     // 生成的消息映射函数
     virtual BOOL OnInitDialog();

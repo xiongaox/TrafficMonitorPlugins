@@ -6,7 +6,10 @@
     1. 检查主仓库是否有未提交的代码变更（如果脏则中止）。
     2. 生成规范的 8 位 git-id，并在 "D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins" 下创建 "main-<git-id>" 目录。
     3. 创建并检出无斜杠的分支 "main-<git-id>"（严格避免 Windows Git 缺陷）。
-    4. 复制 bin\x64\Release（含 PluginTester.exe、Stock.dll、ini等）与 lib\x64\Release 到新目录，确保调试与编译环境立即可用。
+    4. 仅复制 Stock.dll、PluginTester.exe 及相关配置到 bin\x64\Release（不引入其他插件）。
+    5. 在 Release 写入 git_id 标识供测试器界面与标题展示。
+    6. 同步 lib\x64\Release 到新目录以支持后续编译。
+    7. 在 Worktree 根目录下创建快捷方式，方便在外部一键启动测试器。
 #>
 
 [CmdletBinding()]
@@ -79,16 +82,41 @@ if ($LASTEXITCODE -ne 0) {
     throw "git worktree add 执行失败！"
 }
 
-# 6. 初始化工作区的 Release 产物环境 (PluginTester.exe, Stock.dll, 配置文件等)
+# 6. 初始化工作区的 Release 产物环境 (仅复制 PluginTester.exe 与 Stock.dll 相关文件，不引入其他无关插件)
 $srcRelease = Join-Path $repoRoot 'bin\x64\Release'
 $dstRelease = Join-Path $targetWorktreePath 'bin\x64\Release'
 if (Test-Path $srcRelease) {
-    Write-Host "[*] 正在同步 bin\x64\Release 运行环境..." -ForegroundColor Cyan
+    Write-Host "[*] 正在同步 bin\x64\Release 运行环境 (仅限 Stock 与测试器)..." -ForegroundColor Cyan
     if (-not (Test-Path $dstRelease)) {
         New-Item -ItemType Directory -Path $dstRelease -Force | Out-Null
     }
-    Copy-Item -Path "$srcRelease\*" -Destination $dstRelease -Recurse -Force
-    Write-Host "[+] 已同步 PluginTester.exe、Stock.dll 及测试器运行配置。" -ForegroundColor Green
+
+    # 仅复制与 Stock.dll 和 PluginTester.exe 相关的产物与配置
+    $stockPatterns = @('Stock.*', 'stock_trades.db*', 'PluginTester.*')
+    foreach ($pat in $stockPatterns) {
+        Get-ChildItem -Path $srcRelease -Filter $pat -File | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination $dstRelease -Force
+        }
+    }
+
+    # 写入 Git ID 标识到 git_id.txt 和 PluginTester.exe.ini，供测试器窗口展示
+    $gitIdFile = Join-Path $dstRelease 'git_id.txt'
+    [System.IO.File]::WriteAllText($gitIdFile, $branchName, [System.Text.Encoding]::UTF8)
+
+    $testerIni = Join-Path $dstRelease 'PluginTester.exe.ini'
+    if (Test-Path $testerIni) {
+        $iniContent = [System.IO.File]::ReadAllText($testerIni, [System.Text.Encoding]::Default)
+        if ($iniContent -match '\[config\]') {
+            if ($iniContent -notmatch 'git_id\s*=') {
+                $iniContent = $iniContent.Replace('[config]', "[config]`r`ngit_id = $branchName")
+            } else {
+                $iniContent = [regex]::Replace($iniContent, 'git_id\s*=.*', "git_id = $branchName")
+            }
+            [System.IO.File]::WriteAllText($testerIni, $iniContent, [System.Text.Encoding]::Default)
+        }
+    }
+
+    Write-Host "[+] 已同步 PluginTester.exe 与 Stock.dll，并注入分支标识 [$branchName]。" -ForegroundColor Green
 } else {
     Write-Warning "主仓库中未找到 bin\x64\Release 目录！"
 }
@@ -105,10 +133,37 @@ if (Test-Path $srcLib) {
     Write-Host "[+] 已同步 utilities.lib 依赖库。" -ForegroundColor Green
 }
 
+# 8. 在 Worktree 根目录下创建便捷启动快捷方式（在外面直接双击即可启动测试器）
+try {
+    $wsh = New-Object -ComObject WScript.Shell
+    $testerExe = Join-Path $dstRelease "PluginTester.exe"
+
+    $lnkPath1 = Join-Path $targetWorktreePath "启动测试器.lnk"
+    $shortcut1 = $wsh.CreateShortcut($lnkPath1)
+    $shortcut1.TargetPath = $testerExe
+    $shortcut1.WorkingDirectory = $dstRelease
+    $shortcut1.Description = "TrafficMonitor 插件测试器 [$branchName]"
+    $shortcut1.IconLocation = "$testerExe,0"
+    $shortcut1.Save()
+
+    $lnkPath2 = Join-Path $targetWorktreePath "PluginTester.lnk"
+    $shortcut2 = $wsh.CreateShortcut($lnkPath2)
+    $shortcut2.TargetPath = $testerExe
+    $shortcut2.WorkingDirectory = $dstRelease
+    $shortcut2.Description = "TrafficMonitor 插件测试器 [$branchName]"
+    $shortcut2.IconLocation = "$testerExe,0"
+    $shortcut2.Save()
+
+    Write-Host "[+] 已在工作树根目录创建快捷方式: 启动测试器.lnk & PluginTester.lnk" -ForegroundColor Green
+} catch {
+    Write-Warning "创建快捷方式失败: $($_.Exception.Message)"
+}
+
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host "[+] Worktree 创建并初始化成功！" -ForegroundColor Green
 Write-Host "    路径: $targetWorktreePath" -ForegroundColor Green
 Write-Host "    分支: $branchName" -ForegroundColor Green
+Write-Host "    快捷方式: $(Join-Path $targetWorktreePath '启动测试器.lnk')" -ForegroundColor Green
 Write-Host "    测试器: $(Join-Path $dstRelease 'PluginTester.exe')" -ForegroundColor Green
 Write-Host "    插件: $(Join-Path $dstRelease 'Stock.dll')" -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Green
