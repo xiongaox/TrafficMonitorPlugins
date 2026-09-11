@@ -705,6 +705,7 @@ void CFloatingWnd::OnPaint()
 				};
 				if (m_showPositionSummaryPercent)
 				{
+					marketText = _T("****");
 					floatingText = totalCost > 0 ? formatPercent(floatingProfitLossPercent) : _T("--");
 					todayText = totalPreviousCloseValue > 0 ? formatPercent(todayProfitLossPercent) : _T("--");
 					currentStockText = hasCurrentStockProfitLoss ? formatPercent(currentStockProfitLossPercent) : _T("--");

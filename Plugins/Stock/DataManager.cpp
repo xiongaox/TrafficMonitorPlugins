@@ -1022,13 +1022,22 @@ void CDataManager::ApplySgeSnapshot(const std::wstring& code, const std::string&
 		info.is_ok = true;
 		if (info.displayName.empty() && nameVal && yyjson_is_str(nameVal))
 			info.displayName = CCommon::StrToUnicode(yyjson_get_str(nameVal), true);
-		info.currentPrice = num(data, "f43");
-		info.highPrice = num(data, "f44");
-		info.lowPrice = num(data, "f45");
-		info.openPrice = num(data, "f46");
+		double curPrice = num(data, "f43");
+		double prevClose = num(data, "f60");
+		if (prevClose > 0)
+			info.prevClosePrice = prevClose;
+		if (curPrice > 0)
+			info.currentPrice = curPrice;
+		else if (info.currentPrice <= 0 && info.prevClosePrice > 0)
+			info.currentPrice = info.prevClosePrice;
+		double highP = num(data, "f44");
+		if (highP > 0) info.highPrice = highP;
+		double lowP = num(data, "f45");
+		if (lowP > 0) info.lowPrice = lowP;
+		double openP = num(data, "f46");
+		if (openP > 0) info.openPrice = openP;
 		info.volume = static_cast<Volume>(num(data, "f47"));
 		info.turnover = num(data, "f48");
-		info.prevClosePrice = num(data, "f60");
 		info.totalMarketValue = num(data, "f116");
 		info.circulatingMarketValue = num(data, "f117");
 		info.volumeRatio = num(data, "f50");

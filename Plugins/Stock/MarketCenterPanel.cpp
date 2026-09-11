@@ -153,21 +153,26 @@ namespace
 		g.FillPath(&b, &path);
 	}
 
-	// 漂亮的坐标轴刻度步长
-	double NiceStep(double range)
+	// 漂亮的坐标轴刻度步长（支持指定期望分段数 targetDivs）
+	double NiceStep(double range, double targetDivs = 3.0)
 	{
-		double raw = range / 3.0;
+		double raw = range / max(1.0, targetDivs);
 		if (raw <= 0) return 1.0;
 		double mag = pow(10.0, floor(log10(raw)));
 		double norm = raw / mag;
-		double step = norm < 1.5 ? 1 : (norm < 3.5 ? 2 : (norm < 7.5 ? 5 : 10));
+		double step;
+		if (norm < 1.4) step = 1;
+		else if (norm < 2.2) step = 2;
+		else if (norm < 3.8) step = 2.5;
+		else if (norm < 7.5) step = 5;
+		else step = 10;
 		return step * mag;
 	}
 
 	std::wstring FormatAxisNum(double v, double step)
 	{
 		wchar_t buf[32];
-		if (fabs(step) >= 1.0)
+		if (fabs(step - floor(step)) < 1e-5)
 			swprintf_s(buf, L"%.0f", v);
 		else
 			swprintf_s(buf, L"%.1f", v);
@@ -303,6 +308,8 @@ void CMarketCenterPanel::RequestData()
 	{
 		case PAGE_BUBBLE:
 			mc.RequestIfStale(CMarketCenterData::DS_SECTORS, 120, hWnd, CMarketCenterData::RequestPriority::Foreground);
+			if (m_sector_view_mode == 1)
+				mc.RequestIfStale(CMarketCenterData::DS_SECTOR_TIMELINES, 120, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
 	case PAGE_ETF_INFLOW:
 		case PAGE_ETF_RANK:
@@ -330,6 +337,9 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	m_hover_inflow_bar = -1;
 	m_treemap_mode = 0;   // 离开页面恢复红绿全部视图
 	m_hover_bubble_stat = -1;
+	m_hover_sector_tab = -1;
+	m_hover_timeline_idx = -1;
+	m_hover_timeline_sector = -1;
 	m_hover_moneyflow_card = -1;
 	m_hover_moneyflow_idx = -1;
 	m_theme_panel_open = false;
@@ -349,7 +359,7 @@ CMarketCenterData::DataSet CMarketCenterPanel::CurrentDataSet() const
 {
 	switch (m_page)
 	{
-	case PAGE_BUBBLE: return CMarketCenterData::DS_SECTORS;
+	case PAGE_BUBBLE: return (m_sector_view_mode == 1) ? CMarketCenterData::DS_SECTOR_TIMELINES : CMarketCenterData::DS_SECTORS;
 	case PAGE_ETF_INFLOW:
 	case PAGE_ETF_RANK: return CMarketCenterData::DS_ETFS;
 	case PAGE_MONEY_FLOW:
@@ -393,11 +403,16 @@ void CMarketCenterPanel::RefreshSnapshots()
 		if (m_selected_sector >= static_cast<int>(m_sectors_snapshot.size()))
 			m_selected_sector = -1;
 	}
+	if (mc.m_sector_timelines_time != m_sector_timelines_snapshot_time)
+	{
+		m_sector_timelines_snapshot = mc.m_sector_timelines;
+		m_sector_timelines_snapshot_time = mc.m_sector_timelines_time;
+	}
 	if (mc.m_etfs_time != m_etfs_snapshot_time)
 	{
-			m_etfs_snapshot = mc.m_etfs;
-			m_etf_total = mc.m_etf_total;
-			m_etfs_snapshot_time = mc.m_etfs_time;
+		m_etfs_snapshot = mc.m_etfs;
+		m_etf_total = mc.m_etf_total;
+		m_etfs_snapshot_time = mc.m_etfs_time;
 		BuildThemeInflow();
 	}
 }
@@ -760,83 +775,133 @@ void CMarketCenterPanel::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
 	m_bubble_detail_rect = CRect(bodyRc.right - detailW, bodyRc.top, bodyRc.right, bodyRc.bottom);
 	m_bubble_chart_rect = CRect(bodyRc.left, bodyRc.top, m_bubble_detail_rect.left - g_data.DPI(8), bodyRc.bottom);
 
-	// 树图布局（数据、尺寸或单色模式变化时重排）
-	if (m_bubble_layout_dirty)
-		RebuildTreemapLayout(m_bubble_chart_rect);
-
-	// 当前选中板块不在可见集合（切了单色视图/数据刷新）时，回落到可见最大格
+	if (m_sector_view_mode == 0)
 	{
-		bool selVisible = false;
-		for (const auto& c : m_treemap_cells)
-			if (c.sectorIdx == m_selected_sector) { selVisible = true; break; }
-		if (!selVisible && !m_treemap_cells.empty())
-			m_selected_sector = m_treemap_cells.front().sectorIdx;
-	}
+		// 树图布局（数据、尺寸或单色模式变化时重排）
+		if (m_bubble_layout_dirty)
+			RebuildTreemapLayout(m_bubble_chart_rect);
 
-	float maxMag = 1.0f;
-	for (const auto& s : m_sectors_snapshot)
-		maxMag = max(maxMag, static_cast<float>(fabs(s.flow)));
+		// 当前选中板块不在可见集合（切了单色视图/数据刷新）时，回落到可见最大格
+		{
+			bool selVisible = false;
+			for (const auto& c : m_treemap_cells)
+				if (c.sectorIdx == m_selected_sector) { selVisible = true; break; }
+			if (!selVisible && !m_treemap_cells.empty())
+				m_selected_sector = m_treemap_cells.front().sectorIdx;
+		}
 
-	for (const auto& cellNode : m_treemap_cells)
-	{
-		const auto& s = m_sectors_snapshot[static_cast<size_t>(cellNode.sectorIdx)];
-		bool selected = (cellNode.sectorIdx == m_selected_sector);
-		bool hovered = (cellNode.sectorIdx == m_hover_bubble);
-		// 按规模做颜色插值：小格暗、大格亮
-		float mag = min(1.0f, sqrtf(static_cast<float>(fabs(s.flow)) / maxMag));
-		float t = 0.38f + mag * 0.62f;
-		bool inGroup = (s.flow >= 0);
-		// 单色视图：仅流入/仅流出时全格统一用该组颜色
-		if (m_treemap_mode == 1) inGroup = true;
-		else if (m_treemap_mode == 2) inGroup = false;
-		float base[3], bright[3];
-		if (inGroup)
+		float maxMag = 1.0f;
+		for (const auto& s : m_sectors_snapshot)
+			maxMag = max(maxMag, static_cast<float>(fabs(s.flow)));
+
+		for (const auto& cellNode : m_treemap_cells)
 		{
-			base[0] = 163; base[1] = 57; base[2] = 52;
-			bright[0] = 255; bright[1] = 59; bright[2] = 48;
-		}
-		else
-		{
-			base[0] = 23; base[1] = 108; base[2] = 77;
-			bright[0] = 0; bright[1] = 209; bright[2] = 125;
-		}
-		BYTE r = static_cast<BYTE>(base[0] + (bright[0] - base[0]) * t);
-		BYTE gg = static_cast<BYTE>(base[1] + (bright[1] - base[1]) * t);
-		BYTE b = static_cast<BYTE>(base[2] + (bright[2] - base[2]) * t);
-		Gdiplus::SolidBrush fillBrush(Gdiplus::Color(selected || hovered ? BYTE(255) : BYTE(225), r, gg, b));
-		g.FillRectangle(&fillBrush, Gdiplus::REAL(cellNode.rect.left), Gdiplus::REAL(cellNode.rect.top),
-			Gdiplus::REAL(cellNode.rect.Width()), Gdiplus::REAL(cellNode.rect.Height()));
-		if (selected || hovered)
-		{
-			Gdiplus::Pen strokePen(Gdi(RGB(255, 255, 255)), selected ? 2.2f : 1.4f);
-			g.DrawRectangle(&strokePen, Gdiplus::REAL(cellNode.rect.left), Gdiplus::REAL(cellNode.rect.top),
+			const auto& s = m_sectors_snapshot[static_cast<size_t>(cellNode.sectorIdx)];
+			bool selected = (cellNode.sectorIdx == m_selected_sector);
+			bool hovered = (cellNode.sectorIdx == m_hover_bubble);
+			// 按规模做颜色插值：小格暗、大格亮
+			float mag = min(1.0f, sqrtf(static_cast<float>(fabs(s.flow)) / maxMag));
+			float t = 0.38f + mag * 0.62f;
+			bool inGroup = (s.flow >= 0);
+			// 单色视图：仅流入/仅流出时全格统一用该组颜色
+			if (m_treemap_mode == 1) inGroup = true;
+			else if (m_treemap_mode == 2) inGroup = false;
+			float base[3], bright[3];
+			if (inGroup)
+			{
+				base[0] = 163; base[1] = 57; base[2] = 52;
+				bright[0] = 255; bright[1] = 59; bright[2] = 48;
+			}
+			else
+			{
+				base[0] = 23; base[1] = 108; base[2] = 77;
+				bright[0] = 0; bright[1] = 209; bright[2] = 125;
+			}
+			BYTE r = static_cast<BYTE>(base[0] + (bright[0] - base[0]) * t);
+			BYTE gg = static_cast<BYTE>(base[1] + (bright[1] - base[1]) * t);
+			BYTE b = static_cast<BYTE>(base[2] + (bright[2] - base[2]) * t);
+			Gdiplus::SolidBrush fillBrush(Gdiplus::Color(selected || hovered ? BYTE(255) : BYTE(225), r, gg, b));
+			g.FillRectangle(&fillBrush, Gdiplus::REAL(cellNode.rect.left), Gdiplus::REAL(cellNode.rect.top),
 				Gdiplus::REAL(cellNode.rect.Width()), Gdiplus::REAL(cellNode.rect.Height()));
-		}
+			if (selected || hovered)
+			{
+				Gdiplus::Pen strokePen(Gdi(RGB(255, 255, 255)), selected ? 2.2f : 1.4f);
+				g.DrawRectangle(&strokePen, Gdiplus::REAL(cellNode.rect.left), Gdiplus::REAL(cellNode.rect.top),
+					Gdiplus::REAL(cellNode.rect.Width()), Gdiplus::REAL(cellNode.rect.Height()));
+			}
 
-		// 文字：格子足够大时两行（名称 + 净流入），够放名称时一行，太小不画
-		int minSide = min(cellNode.rect.Width(), cellNode.rect.Height());
-		int fontSize = static_cast<int>(clampf(minSide * 0.26f / (g_data.GetDpi() / 96.0f), 9.0f, 13.0f));
-		if (cellNode.rect.Width() >= g_data.DPI(34) && cellNode.rect.Height() >= g_data.DPI(30))
-		{
-			auto fTxt = MkFont(fontSize, true);
-			auto fVal = MkFont(max(9, fontSize - 2));
-			// 名称单行、溢出省略（完整名称在右侧详情卡展示）
-			DrawStrSingle(g, s.name, fTxt.get(), CRect(cellNode.rect.left, cellNode.rect.top, cellNode.rect.right, cellNode.rect.top + cellNode.rect.Height() / 2 + g_data.DPI(2)), RGB(255, 255, 255));
-			DrawStrMid(g, FormatYi(s.flow), fVal.get(), CRect(cellNode.rect.left, cellNode.rect.top + cellNode.rect.Height() / 2 - g_data.DPI(2), cellNode.rect.right, cellNode.rect.bottom), RGB(255, 255, 255));
-		}
-		else if (cellNode.rect.Width() >= g_data.DPI(26) && minSide >= g_data.DPI(15))
-		{
-			auto fTxt = MkFont(fontSize, true);
-			DrawStrSingle(g, s.name, fTxt.get(), cellNode.rect, RGB(255, 255, 255));
+			// 文字：格子足够大时两行（名称 + 净流入），够放名称时一行，太小不画
+			int minSide = min(cellNode.rect.Width(), cellNode.rect.Height());
+			int fontSize = static_cast<int>(clampf(minSide * 0.26f / (g_data.GetDpi() / 96.0f), 9.0f, 13.0f));
+			if (cellNode.rect.Width() >= g_data.DPI(34) && cellNode.rect.Height() >= g_data.DPI(30))
+			{
+				auto fTxt = MkFont(fontSize, true);
+				auto fVal = MkFont(max(9, fontSize - 2));
+				// 名称单行、溢出省略（完整名称在右侧详情卡展示）
+				DrawStrSingle(g, s.name, fTxt.get(), CRect(cellNode.rect.left, cellNode.rect.top, cellNode.rect.right, cellNode.rect.top + cellNode.rect.Height() / 2 + g_data.DPI(2)), RGB(255, 255, 255));
+				DrawStrMid(g, FormatYi(s.flow), fVal.get(), CRect(cellNode.rect.left, cellNode.rect.top + cellNode.rect.Height() / 2 - g_data.DPI(2), cellNode.rect.right, cellNode.rect.bottom), RGB(255, 255, 255));
+			}
+			else if (cellNode.rect.Width() >= g_data.DPI(26) && minSide >= g_data.DPI(15))
+			{
+				auto fTxt = MkFont(fontSize, true);
+				DrawStrSingle(g, s.name, fTxt.get(), cellNode.rect, RGB(255, 255, 255));
+			}
 		}
 	}
-
-	// 单色视图提示已删除（用户明确不需要）
+	else
+	{
+		DrawSectorTimelinePage(g, m_bubble_chart_rect);
+	}
 
 	// 右侧详情栏
 	FillCard(g, m_bubble_detail_rect);
 	const int P = g_data.DPI(9);
 	CRect dc1(m_bubble_detail_rect.left + P, m_bubble_detail_rect.top + P, m_bubble_detail_rect.right - P, m_bubble_detail_rect.bottom - P);
+
+	// 始终计算并绘制底部的切换 Tab 与 数据时间
+	CRect rcTime(dc1.left, dc1.bottom - g_data.DPI(16), dc1.right, dc1.bottom);
+	int tabH = g_data.DPI(24);
+	int tabBottom = rcTime.top - g_data.DPI(6);
+	int tabTop = tabBottom - tabH;
+	CRect tabRc(dc1.left, tabTop, dc1.right, tabBottom);
+	int halfW = tabRc.Width() / 2;
+	m_sector_tab_rects[0] = CRect(tabRc.left, tabRc.top, tabRc.left + halfW, tabRc.bottom);
+	m_sector_tab_rects[1] = CRect(tabRc.left + halfW, tabRc.top, tabRc.right, tabRc.bottom);
+
+	// 绘制 Tab 容器背景与边框
+	Gdiplus::SolidBrush tabBgBrush(Gdi(MC_TEXT, 12));
+	g.FillRectangle(&tabBgBrush, Gdiplus::REAL(tabRc.left), Gdiplus::REAL(tabRc.top),
+		Gdiplus::REAL(tabRc.Width()), Gdiplus::REAL(tabRc.Height()));
+	Gdiplus::Pen tabBorderPen(Gdi(MC_BORDER), 1.0f);
+	g.DrawRectangle(&tabBorderPen, Gdiplus::REAL(tabRc.left), Gdiplus::REAL(tabRc.top),
+		Gdiplus::REAL(tabRc.Width()), Gdiplus::REAL(tabRc.Height()));
+
+	const wchar_t* tabLabels[2] = { L"资金树图", L"时间走向" };
+	for (int i = 0; i < 2; i++)
+	{
+		CRect rTab = m_sector_tab_rects[i];
+		bool active = (m_sector_view_mode == i);
+		bool hov = (m_hover_sector_tab == i);
+		if (active)
+		{
+			Gdiplus::SolidBrush actBrush(Gdi(MC_ACCENT));
+			g.FillRectangle(&actBrush, Gdiplus::REAL(rTab.left), Gdiplus::REAL(rTab.top),
+				Gdiplus::REAL(rTab.Width()), Gdiplus::REAL(rTab.Height()));
+		}
+		else if (hov)
+		{
+			Gdiplus::SolidBrush hovBrush(Gdi(MC_TEXT, 25));
+			g.FillRectangle(&hovBrush, Gdiplus::REAL(rTab.left), Gdiplus::REAL(rTab.top),
+				Gdiplus::REAL(rTab.Width()), Gdiplus::REAL(rTab.Height()));
+		}
+		DrawStrMid(g, tabLabels[i], active ? f11b.get() : f11.get(), rTab,
+			active ? RGB(255, 255, 255) : (hov ? MC_TEXT : MC_TEXT_SUB));
+	}
+
+	// 绘制数据时间
+	DrawStrMid(g, std::wstring(L"数据时间 ") + (m_clock_time.empty() ? L"--" : m_clock_time.substr(0, 5)), f10.get(),
+		rcTime, MC_TEXT_DIM);
+
 	if (m_selected_sector >= 0 && m_selected_sector < static_cast<int>(m_sectors_snapshot.size()))
 	{
 		const auto& s = m_sectors_snapshot[static_cast<size_t>(m_selected_sector)];
@@ -885,9 +950,375 @@ void CMarketCenterPanel::DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc)
 			DrawStr(g, rows[i].label, f11.get(), CRect(rRow.left, rRow.top, rRow.CenterPoint().x, rRow.bottom), MC_TEXT_SUB);
 			DrawStr(g, rows[i].value, f11.get(), CRect(rRow.CenterPoint().x, rRow.top, rRow.right, rRow.bottom), rows[i].color, 255, Gdiplus::StringAlignmentFar);
 		}
-		// 数据时间：卡片底部居中
-		DrawStrMid(g, std::wstring(L"数据时间 ") + (m_clock_time.empty() ? L"--" : m_clock_time.substr(0, 5)), f10.get(),
-			CRect(dc1.left, dc1.bottom - g_data.DPI(16), dc1.right, dc1.bottom), MC_TEXT_DIM);
+	}
+	else
+	{
+		DrawStrMid(g, L"选择或悬停板块查看详情", f11.get(), CRect(dc1.left, dc1.top + g_data.DPI(60), dc1.right, tabTop - g_data.DPI(20)), MC_TEXT_DIM);
+	}
+}
+
+void CMarketCenterPanel::DrawSectorTimelinePage(Gdiplus::Graphics& g, const CRect& chartRc)
+{
+	FillCard(g, chartRc);
+
+	if (m_sector_timelines_snapshot.empty())
+	{
+		auto f12 = MkFont(12);
+		if (CMarketCenterData::Instance().IsPremarketNoData(CMarketCenterData::DS_SECTOR_TIMELINES))
+			DrawStatus(g, chartRc, CMarketCenterData::DS_SECTOR_TIMELINES, L"盘前/清算时段，暂无板块资金分时走向数据", f12.get());
+		else
+			DrawStatus(g, chartRc, CMarketCenterData::DS_SECTOR_TIMELINES, L"正在获取板块资金时间走向…", f12.get());
+		return;
+	}
+
+	auto f10 = MkFont(10);
+	auto f10b = MkFont(10, true);
+	auto f11 = MkFont(11);
+	auto f11b = MkFont(11, true);
+
+	// 15 种流入暖色系（红、橙、黄、粉、紫）
+	static const COLORREF s_inflowColors[15] = {
+		RGB(255, 59, 48),   // 0 鲜红
+		RGB(255, 99, 71),   // 1 番茄红
+		RGB(255, 140, 0),  // 2 深橙
+		RGB(255, 165, 0),  // 3 橙色
+		RGB(255, 193, 7),   // 4 琥珀黄
+		RGB(255, 214, 0),  // 5 明黄
+		RGB(255, 235, 59),  // 6 亮黄
+		RGB(255, 64, 129),  // 7 亮粉红
+		RGB(245, 0, 87),    // 8 艳粉
+		RGB(233, 30, 99),   // 9 玫瑰红
+		RGB(224, 64, 251),  // 10 荧光紫
+		RGB(171, 71, 188),  // 11 丁香紫
+		RGB(255, 112, 67),  // 12 珊瑚橙
+		RGB(216, 67, 21),   // 13 赭红
+		RGB(255, 138, 128)  // 14 浅鲑红
+	};
+
+	// 15 种流出偏绿冷色系（翠绿、亮绿、柠檬绿、绿松石、青蓝、天蓝等）
+	static const COLORREF s_outflowColors[15] = {
+		RGB(0, 209, 125),   // 0 翠绿
+		RGB(0, 230, 118),   // 1 亮绿
+		RGB(100, 221, 23),  // 2 柠檬绿
+		RGB(118, 255, 3),   // 3 荧光草绿
+		RGB(29, 233, 182),  // 4 绿松石
+		RGB(0, 191, 165),   // 5 深水绿
+		RGB(0, 229, 255),   // 6 青蓝
+		RGB(0, 184, 212),   // 7 深青
+		RGB(64, 196, 255),  // 8 浅天蓝
+		RGB(41, 121, 255),  // 9 湛蓝
+		RGB(76, 175, 80),   // 10 森林绿
+		RGB(139, 195, 74),  // 11 黄绿
+		RGB(38, 166, 154),  // 12 波斯绿
+		RGB(128, 222, 234), // 13 浅青
+		RGB(128, 216, 255)  // 14 天空蓝
+	};
+
+	// 分离流入与流出集合
+	std::vector<const MC::SectorTimeline*> allInflows;
+	std::vector<const MC::SectorTimeline*> allOutflows;
+	for (const auto& tl : m_sector_timelines_snapshot)
+	{
+		if (tl.finalFlow >= 0) allInflows.push_back(&tl);
+		else allOutflows.push_back(&tl);
+	}
+
+	// 筛选可见曲线（全部模式展示 15 个：8流入+7流出；单选流入/流出均各展示 Top 15）
+	struct TimelineItem {
+		size_t origIdx;
+		const MC::SectorTimeline* pTl;
+		COLORREF color;
+	};
+	std::vector<TimelineItem> visibleTimelines;
+
+	if (m_treemap_mode == 1)
+	{
+		// 仅流入：展示净流入前 15 个板块，全部采用暖红橙色系
+		size_t cnt = min(static_cast<size_t>(15), allInflows.size());
+		for (size_t i = 0; i < cnt; ++i)
+		{
+			visibleTimelines.push_back({ i, allInflows[i], s_inflowColors[i % 15] });
+		}
+	}
+	else if (m_treemap_mode == 2)
+	{
+		// 仅流出：展示净流出前 15 个板块，全部采用偏绿冷色系
+		size_t cnt = min(static_cast<size_t>(15), allOutflows.size());
+		for (size_t i = 0; i < cnt; ++i)
+		{
+			visibleTimelines.push_back({ i, allOutflows[i], s_outflowColors[i % 15] });
+		}
+	}
+	else
+	{
+		// 合计（全部）：流入 8 个 + 流出 7 个（共 15 个）
+		size_t inCnt = min(static_cast<size_t>(8), allInflows.size());
+		size_t outCnt = min(static_cast<size_t>(7), allOutflows.size());
+		if (inCnt + outCnt < 15)
+		{
+			while (inCnt < allInflows.size() && inCnt + outCnt < 15) inCnt++;
+			while (outCnt < allOutflows.size() && inCnt + outCnt < 15) outCnt++;
+		}
+		for (size_t i = 0; i < inCnt; ++i)
+		{
+			visibleTimelines.push_back({ i, allInflows[i], s_inflowColors[i % 15] });
+		}
+		for (size_t i = 0; i < outCnt; ++i)
+		{
+			visibleTimelines.push_back({ inCnt + i, allOutflows[i], s_outflowColors[i % 15] });
+		}
+	}
+
+	// 坐标区域：左侧刻度(50px)、右侧末端标签(84px)、顶部标题栏(28px)、底部时间轴(24px)
+	const int padL = g_data.DPI(50);
+	const int padR = g_data.DPI(84);
+	const int padT = g_data.DPI(28);
+	const int padB = g_data.DPI(24);
+	CRect plotRc(chartRc.left + padL, chartRc.top + padT, chartRc.right - padR, chartRc.bottom - padB);
+	m_sector_timeline_inner_rect = plotRc;
+	if (plotRc.Width() < g_data.DPI(100) || plotRc.Height() < g_data.DPI(60))
+		return;
+
+	// 计算全局 Y 轴范围并强制包含 0 轴
+	double flowLo = 0.0, flowHi = 0.0;
+	bool hasVal = false;
+	for (const auto& item : visibleTimelines)
+	{
+		for (double v : item.pTl->points)
+		{
+			if (isnan(v)) continue;
+			flowLo = min(flowLo, v);
+			flowHi = max(flowHi, v);
+			hasVal = true;
+		}
+	}
+	if (!hasVal) { flowLo = -10.0; flowHi = 10.0; }
+	flowLo = min(flowLo, 0.0);
+	flowHi = max(flowHi, 0.0);
+	double span = flowHi - flowLo;
+	if (span < 1.0) span = 1.0;
+	double flowPad = max(1.0, span * 0.10);
+	flowLo -= flowPad;
+	flowHi += flowPad;
+
+	auto fx = [&](int i) -> float {
+		return plotRc.left + static_cast<float>(i) * plotRc.Width() / 240.0f;
+	};
+	auto fy = [&](double v) -> float {
+		return static_cast<float>(plotRc.bottom - (v - flowLo) / (flowHi - flowLo) * plotRc.Height());
+	};
+
+	// 绘制横向网格与 Y 轴刻度（细化刻度步长，保证正负两侧均有清晰参考阶梯）
+	int targetDivs = max(6, plotRc.Height() / g_data.DPI(32));
+	double step = NiceStep(flowHi - flowLo, static_cast<double>(targetDivs));
+	for (double tv = ceil(flowLo / step) * step; tv <= flowHi; tv += step)
+	{
+		float y = fy(tv);
+		if (y < plotRc.top - 2 || y > plotRc.bottom + 2) continue;
+		bool isZero = fabs(tv) < 1e-6;
+		Gdiplus::Pen gridPen(Gdi(isZero ? RGB(90, 100, 120) : MC_GRID), isZero ? 1.5f : 1.0f);
+		g.DrawLine(&gridPen, Gdiplus::REAL(plotRc.left), y, Gdiplus::REAL(plotRc.right), y);
+
+		std::wstring lbl = (tv > 0 ? L"+" : L"") + FormatAxisNum(tv, step) + L"亿";
+		CRect lblRc(chartRc.left + g_data.DPI(2), static_cast<int>(y) - g_data.DPI(8), plotRc.left - g_data.DPI(4), static_cast<int>(y) + g_data.DPI(8));
+		DrawStr(g, lbl, f10.get(), lblRc, isZero ? RGB(255, 255, 255) : MC_TEXT_SUB, 255, Gdiplus::StringAlignmentFar);
+	}
+
+	// 绘制 X 轴时间刻度 09:30 10:30 11:30/13:00 14:00 15:00
+	const int timeMarks[5] = { 0, 60, 120, 180, 240 };
+	const wchar_t* timeLabels[5] = { L"09:30", L"10:30", L"11:30/13:00", L"14:00", L"15:00" };
+	for (int k = 0; k < 5; k++)
+	{
+		int mi = timeMarks[k];
+		float x = fx(mi);
+		CRect lblRc(static_cast<int>(x) - g_data.DPI(30), plotRc.bottom + g_data.DPI(4), static_cast<int>(x) + g_data.DPI(30), plotRc.bottom + g_data.DPI(20));
+		DrawStrMid(g, timeLabels[k], f10.get(), lblRc, MC_TEXT_SUB);
+	}
+
+	// 右边界竖向截断线 (15:00 时间轴终点基准线)
+	Gdiplus::Pen cutPen(Gdi(RGB(85, 95, 115)), 1.2f);
+	g.DrawLine(&cutPen, Gdiplus::REAL(plotRc.right), Gdiplus::REAL(plotRc.top),
+		Gdiplus::REAL(plotRc.right), Gdiplus::REAL(plotRc.bottom));
+
+	// 判断当前聚焦/悬停的曲线
+	int focusedTlIdx = -1;
+	float minDistY = static_cast<float>(g_data.DPI(18));
+	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
+	{
+		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+		{
+			const auto* pTl = visibleTimelines[static_cast<size_t>(i)].pTl;
+			if (m_hover_timeline_idx < static_cast<int>(pTl->points.size()))
+			{
+				float cy = fy(pTl->points[static_cast<size_t>(m_hover_timeline_idx)]);
+				float dist = fabs(cy - static_cast<float>(m_mouse_pos.y));
+				if (dist < minDistY)
+				{
+					minDistY = dist;
+					focusedTlIdx = i;
+				}
+			}
+		}
+	}
+	if (focusedTlIdx < 0 && m_selected_sector >= 0 && m_selected_sector < static_cast<int>(m_sectors_snapshot.size()))
+	{
+		const auto& selCode = m_sectors_snapshot[static_cast<size_t>(m_selected_sector)].code;
+		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+		{
+			if (visibleTimelines[static_cast<size_t>(i)].pTl->code == selCode)
+			{
+				focusedTlIdx = i;
+				break;
+			}
+		}
+	}
+
+	// 记录当前悬停/聚焦板块在 m_sectors_snapshot 中的下标
+	m_hover_timeline_sector = -1;
+	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
+	{
+		const std::wstring& fCode = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl->code;
+		for (int sIdx = 0; sIdx < static_cast<int>(m_sectors_snapshot.size()); ++sIdx)
+		{
+			if (m_sectors_snapshot[static_cast<size_t>(sIdx)].code == fCode)
+			{
+				m_hover_timeline_sector = sIdx;
+				break;
+			}
+		}
+	}
+
+	// 绘制平滑曲线（启用抗锯齿）
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+	{
+		const auto& item = visibleTimelines[static_cast<size_t>(i)];
+		const auto* pTl = item.pTl;
+		if (pTl->points.size() < 2) continue;
+		bool isFocused = (i == focusedTlIdx);
+		BYTE alpha = (focusedTlIdx >= 0) ? (isFocused ? 255 : 85) : 225;
+		float width = isFocused ? 2.5f : 1.6f;
+		COLORREF col = item.color;
+
+		std::vector<Gdiplus::PointF> pts;
+		pts.reserve(pTl->points.size());
+		for (size_t k = 0; k < pTl->points.size() && k <= 240; ++k)
+		{
+			pts.push_back(Gdiplus::PointF(fx(static_cast<int>(k)), fy(pTl->points[k])));
+		}
+		if (pts.size() >= 2)
+		{
+			Gdiplus::Pen pen(Gdi(col, alpha), width);
+			g.DrawLines(&pen, pts.data(), static_cast<INT>(pts.size()));
+		}
+	}
+
+	// 垂直虚线十字光标
+	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
+	{
+		float curX = fx(m_hover_timeline_idx);
+		Gdiplus::Pen crossPen(Gdi(RGB(180, 190, 210), 140), 1.0f);
+		crossPen.SetDashStyle(Gdiplus::DashStyleDash);
+		g.DrawLine(&crossPen, curX, static_cast<float>(plotRc.top), curX, static_cast<float>(plotRc.bottom));
+	}
+
+	// 顶部概要栏（当前/悬停时刻流入居首与流出居首）
+	int queryIdx = (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240) ? m_hover_timeline_idx : 240;
+	const MC::SectorTimeline* topInTl = nullptr;
+	const MC::SectorTimeline* topOutTl = nullptr;
+	double maxInVal = -1e9, minOutVal = 1e9;
+
+	for (const auto& item : visibleTimelines)
+	{
+		const auto* pTl = item.pTl;
+		if (pTl->points.empty()) continue;
+		int idx = min(queryIdx, static_cast<int>(pTl->points.size()) - 1);
+		double val = pTl->points[static_cast<size_t>(idx)];
+		if (val > 0 && val > maxInVal) { maxInVal = val; topInTl = pTl; }
+		if (val < 0 && val < minOutVal) { minOutVal = val; topOutTl = pTl; }
+	}
+
+	std::wstring headerStr;
+	const auto& axis = CMarketCenterData::TimeAxis();
+	std::wstring tStr = (queryIdx < static_cast<int>(axis.size())) ? axis[static_cast<size_t>(queryIdx)] : (m_clock_time.empty() ? L"--" : m_clock_time.substr(0, 5));
+	std::wstring modeTitle = (m_treemap_mode == 1 ? L"净流入 Top15" : (m_treemap_mode == 2 ? L"净流出 Top15" : L"代表板块"));
+	headerStr = tStr + L"  主力资金时间走向 (" + modeTitle + L")";
+	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
+	{
+		const auto* fTl = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl;
+		int idx = min(queryIdx, static_cast<int>(fTl->points.size()) - 1);
+		double val = (idx >= 0) ? fTl->points[static_cast<size_t>(idx)] : fTl->finalFlow;
+		headerStr += L"  |  聚焦: " + fTl->name + L" " + FormatYi(val * 1e8, 1);
+	}
+	else if (topInTl || topOutTl)
+	{
+		if (topInTl) headerStr += L"  |  流入首位: " + topInTl->name + L" " + FormatYi(maxInVal * 1e8, 1);
+		if (topOutTl) headerStr += L"  |  流出首位: " + topOutTl->name + L" " + FormatYi(minOutVal * 1e8, 1);
+	}
+	DrawStr(g, headerStr, f11.get(), CRect(plotRc.left, chartRc.top + g_data.DPI(5), plotRc.right + padR, plotRc.top - g_data.DPI(3)), MC_TEXT);
+
+	// 右侧末端标签（只显示板块名称，带防重叠避让算法）
+	struct LabelNode {
+		int tlIdx;
+		float targetY;
+		float y;
+		std::wstring text;
+		COLORREF color;
+	};
+	std::vector<LabelNode> nodes;
+	for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+	{
+		const auto& item = visibleTimelines[static_cast<size_t>(i)];
+		const auto* pTl = item.pTl;
+		double val = pTl->finalFlow;
+		if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx < static_cast<int>(pTl->points.size()))
+			val = pTl->points[static_cast<size_t>(m_hover_timeline_idx)];
+		float ty = fy(val);
+		COLORREF col = item.color;
+		nodes.push_back({ i, ty, ty, pTl->name, col });
+	}
+
+	std::sort(nodes.begin(), nodes.end(), [](const LabelNode& a, const LabelNode& b) {
+		return a.targetY < b.targetY;
+	});
+
+	float minGap = static_cast<float>(g_data.DPI(15));
+	if (!nodes.empty())
+	{
+		// 向下推开
+		for (size_t i = 1; i < nodes.size(); ++i)
+		{
+			if (nodes[i].y < nodes[i - 1].y + minGap)
+				nodes[i].y = nodes[i - 1].y + minGap;
+		}
+		// 触底回拉
+		float maxBottom = static_cast<float>(plotRc.bottom);
+		if (nodes.back().y > maxBottom)
+		{
+			nodes.back().y = maxBottom;
+			for (int i = static_cast<int>(nodes.size()) - 2; i >= 0; --i)
+			{
+				if (nodes[static_cast<size_t>(i)].y > nodes[static_cast<size_t>(i + 1)].y - minGap)
+					nodes[static_cast<size_t>(i)].y = nodes[static_cast<size_t>(i + 1)].y - minGap;
+			}
+		}
+		// 触顶钳制
+		float minTop = static_cast<float>(plotRc.top);
+		for (size_t i = 0; i < nodes.size(); ++i)
+		{
+			if (nodes[i].y < minTop + i * minGap)
+				nodes[i].y = minTop + i * minGap;
+		}
+	}
+
+	for (const auto& node : nodes)
+	{
+		bool isFocused = (node.tlIdx == focusedTlIdx);
+		BYTE alpha = (focusedTlIdx >= 0) ? (isFocused ? 255 : 100) : 230;
+
+		CRect lblRc(plotRc.right + g_data.DPI(5), static_cast<int>(node.y) - g_data.DPI(7),
+			chartRc.right - g_data.DPI(2), static_cast<int>(node.y) + g_data.DPI(8));
+		DrawStrSingle(g, node.text, isFocused ? f10b.get() : f10.get(), lblRc, node.color, alpha, Gdiplus::StringAlignmentNear);
 	}
 }
 
@@ -2058,19 +2489,58 @@ bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 				m_hover_bubble_stat = hovStat;
 				changed = true;
 			}
-			int hov = -1;
-			for (int i = 0; i < static_cast<int>(m_treemap_cells.size()); i++)
+
+			int hovTab = -1;
+			for (int i = 0; i < 2; i++)
 			{
-				if (m_treemap_cells[static_cast<size_t>(i)].rect.PtInRect(point))
+				if (!m_sector_tab_rects[i].IsRectEmpty() && m_sector_tab_rects[i].PtInRect(point))
 				{
-					hov = m_treemap_cells[static_cast<size_t>(i)].sectorIdx;
+					hovTab = i;
 					break;
 				}
 			}
-			if (hov != m_hover_bubble)
+			if (hovTab != m_hover_sector_tab)
 			{
-				m_hover_bubble = hov;
+				m_hover_sector_tab = hovTab;
 				changed = true;
+			}
+
+			if (m_sector_view_mode == 0)
+			{
+				int hov = -1;
+				for (int i = 0; i < static_cast<int>(m_treemap_cells.size()); i++)
+				{
+					if (m_treemap_cells[static_cast<size_t>(i)].rect.PtInRect(point))
+					{
+						hov = m_treemap_cells[static_cast<size_t>(i)].sectorIdx;
+						break;
+					}
+				}
+				if (hov != m_hover_bubble)
+				{
+					m_hover_bubble = hov;
+					changed = true;
+				}
+			}
+			else
+			{
+				int hovIdx = -1;
+				if (!m_sector_timeline_inner_rect.IsRectEmpty() && m_sector_timeline_inner_rect.PtInRect(point))
+				{
+					float mouseX = static_cast<float>(point.x);
+					hovIdx = static_cast<int>(round((mouseX - m_sector_timeline_inner_rect.left) * 240.0f / m_sector_timeline_inner_rect.Width()));
+					if (hovIdx < 0) hovIdx = 0;
+					if (hovIdx > 240) hovIdx = 240;
+				}
+				if (hovIdx != m_hover_timeline_idx)
+				{
+					m_hover_timeline_idx = hovIdx;
+					changed = true;
+				}
+				if (m_bubble_chart_rect.PtInRect(point))
+				{
+					changed = true;
+				}
 			}
 			break;
 		}
@@ -2265,7 +2735,21 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 	{
 	case PAGE_BUBBLE:
 	{
-		// 点击流入/流出合计卡片 → 切换单色视图（再点同一个恢复红绿全部）
+		// 点击板块视图切换Tab [资金树图] [时间走向]
+		for (int i = 0; i < 2; i++)
+		{
+			if (!m_sector_tab_rects[i].IsRectEmpty() && m_sector_tab_rects[i].PtInRect(point))
+			{
+				if (m_sector_view_mode != i)
+				{
+					m_sector_view_mode = i;
+					RequestData();
+				}
+				return;
+			}
+		}
+
+		// 点击流入/流出合计卡片 → 切换单色/过滤视图（再点同一个恢复红绿全部）
 		for (int i = 0; i < 2; i++)
 		{
 			if (!m_bubble_stat_rects[i].IsRectEmpty() && m_bubble_stat_rects[i].PtInRect(point))
@@ -2275,11 +2759,23 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 				return;
 			}
 		}
-		for (const auto& cellNode : m_treemap_cells)
+
+		if (m_sector_view_mode == 0)
 		{
-			if (cellNode.rect.PtInRect(point))
+			for (const auto& cellNode : m_treemap_cells)
 			{
-				m_selected_sector = cellNode.sectorIdx;
+				if (cellNode.rect.PtInRect(point))
+				{
+					m_selected_sector = cellNode.sectorIdx;
+					return;
+				}
+			}
+		}
+		else
+		{
+			if (m_bubble_chart_rect.PtInRect(point) && m_hover_timeline_sector >= 0)
+			{
+				m_selected_sector = m_hover_timeline_sector;
 				return;
 			}
 		}
@@ -2475,8 +2971,13 @@ bool CMarketCenterPanel::IsCursorOverInteractive(CPoint point) const
 			for (int i = 0; i < 2; i++)
 				if (!m_bubble_stat_rects[i].IsRectEmpty() && m_bubble_stat_rects[i].PtInRect(point)) { hand = true; break; }
 			if (!hand)
+				for (int i = 0; i < 2; i++)
+					if (!m_sector_tab_rects[i].IsRectEmpty() && m_sector_tab_rects[i].PtInRect(point)) { hand = true; break; }
+			if (!hand && m_sector_view_mode == 0)
 				for (const auto& cellNode : m_treemap_cells)
 					if (cellNode.rect.PtInRect(point)) { hand = true; break; }
+			if (!hand && m_sector_view_mode == 1 && m_bubble_chart_rect.PtInRect(point))
+				hand = true;
 			break;
 		case PAGE_ETF_INFLOW:
 			if (m_theme_panel_open && m_theme_panel_rect.PtInRect(point))
