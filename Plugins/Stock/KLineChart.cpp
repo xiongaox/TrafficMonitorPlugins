@@ -305,9 +305,8 @@ void CKLineChart::DrawKLineBars(CDC& memDC, const KLineDrawData& drawData, const
 
 		if (!buyDate.empty())
 		{
-			std::string itemDayStr(item.day.begin(), item.day.end());
-			std::string buyDateStr(buyDate.begin(), buyDate.end());
-			if (itemDayStr == buyDateStr)
+			std::wstring itemDayStr(item.day.begin(), item.day.end());
+			if (itemDayStr == buyDate)
 			{
 				CString buyTxt = _T("买");
 				CSize buySize = memDC.GetTextExtent(buyTxt);
@@ -337,9 +336,8 @@ void CKLineChart::DrawKLineBuyMarkers(CDC& memDC, const KLineDrawData& drawData,
 	for (int i = drawData.finalStartIndex; i < klineData.size(); i++)
 	{
 		const auto& item = klineData[i];
-		std::string itemDayStr(item.day.begin(), item.day.end());
-		std::string buyDateStr(buyDate.begin(), buyDate.end());
-		if (itemDayStr == buyDateStr)
+		std::wstring itemDayStr(item.day.begin(), item.day.end());
+		if (itemDayStr == buyDate)
 		{
 			int barX = drawData.x + (i - drawData.finalStartIndex) * (drawData.barWidth + drawData.gap);
 			int highY = drawData.y + static_cast<int>((drawData.maxPrice - item.high) * drawData.unitY);
@@ -534,9 +532,8 @@ void CKLineChart::DrawKLineTrendBuyMarkers(CDC& memDC, const KLineDrawData& draw
 	for (int i = drawData.finalStartIndex; i < klineData.size(); i++)
 	{
 		const auto& item = klineData[i];
-		std::string itemDayStr(item.day.begin(), item.day.end());
-		std::string buyDateStr(buyDate.begin(), buyDate.end());
-		if (itemDayStr == buyDateStr)
+		std::wstring itemDayStr(item.day.begin(), item.day.end());
+		if (itemDayStr == buyDate)
 		{
 			int pointIdx = i - drawData.finalStartIndex;
 			if (pointIdx >= 0 && pointIdx < closePoints.size())

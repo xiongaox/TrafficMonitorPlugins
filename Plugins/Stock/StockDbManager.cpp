@@ -1071,7 +1071,7 @@ bool CStockDbManager::SaveAvgDiffStats(const std::wstring& stockCode, double min
 {
 	if (m_db == nullptr) return false;
 
-	std::string code(stockCode.begin(), stockCode.end());
+	std::string code = CCommon::UnicodeToStr(stockCode);
 	std::string dateStr = GetTodayDateString();
 
 	const char* sql = "INSERT OR REPLACE INTO avg_diff_stats (stock_code, trade_date, min_avg_diff, max_avg_diff, current_avg_diff, update_time) VALUES (?, ?, ?, ?, ?, ?);";
@@ -1095,7 +1095,7 @@ AvgDiffStats CStockDbManager::LoadAvgDiffStats(const std::wstring& stockCode)
 	AvgDiffStats result = { 0.0, 0.0, 0.0 };
 	if (m_db == nullptr) return result;
 
-	std::string code(stockCode.begin(), stockCode.end());
+	std::string code = CCommon::UnicodeToStr(stockCode);
 	std::string today = GetTodayDateString();
 
 	// 只加载当天的记录，避免加载昨日数据导致重启后min/max被旧值污染

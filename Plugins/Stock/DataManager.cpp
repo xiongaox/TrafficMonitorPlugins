@@ -1395,7 +1395,7 @@ STOCK::Volume CDataManager::GetCirculatingAShares(const std::wstring& code)
 double CDataManager::GetAlertLowPrice(const std::wstring& code)
 {
 	auto it = m_stock_alert_prices.find(code);
-	Log1("GetAlertLowPrice: code=%s, found=%d\n", code.c_str(), it != m_stock_alert_prices.end());
+	Log2("GetAlertLowPrice: code=%s, found=%d\n", code.c_str(), (int)(it != m_stock_alert_prices.end()));
 	if (it != m_stock_alert_prices.end())
 	{
 		return it->second.first;
@@ -1406,7 +1406,7 @@ double CDataManager::GetAlertLowPrice(const std::wstring& code)
 double CDataManager::GetAlertHighPrice(const std::wstring& code)
 {
 	auto it = m_stock_alert_prices.find(code);
-	Log1("GetAlertHighPrice: code=%s, found=%d\n", code.c_str(), it != m_stock_alert_prices.end());
+	Log2("GetAlertHighPrice: code=%s, found=%d\n", code.c_str(), (int)(it != m_stock_alert_prices.end()));
 	if (it != m_stock_alert_prices.end())
 	{
 		return it->second.second;
