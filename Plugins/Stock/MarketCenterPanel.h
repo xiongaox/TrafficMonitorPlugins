@@ -50,10 +50,11 @@ private:
 	{
 		PAGE_BUBBLE = 0,     // 基金气泡图
 		PAGE_ETF_INFLOW = 1, // ETF申购净流入
-		PAGE_MAINFLOW = 2,   // 主力资金
-		PAGE_TREND = 3,      // 涨跌趋势
-		PAGE_ETF_RANK = 4,   // ETF涨跌榜
-		PAGE_COUNT = 5
+		PAGE_MONEY_FLOW = 2, // 资金流向
+		PAGE_MAINFLOW = 3,   // 主力资金
+		PAGE_TREND = 4,      // 涨跌趋势
+		PAGE_ETF_RANK = 5,   // ETF涨跌榜
+		PAGE_COUNT = 6
 	};
 
 	// ===== 统计卡通用单元 =====
@@ -109,6 +110,7 @@ private:
 	void DrawBubblePage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfInflowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawThemePanel(Gdiplus::Graphics& g, const CRect& chartRc);
+	void DrawMoneyFlowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawTrendPage(Gdiplus::Graphics& g, const CRect& rc);
 	void DrawEtfRankPage(Gdiplus::Graphics& g, const CRect& rc);
@@ -181,6 +183,29 @@ private:
 	int m_theme_panel_scroll_max{ 0 };
 	int m_hover_theme_row{ -1 };
 	bool m_hover_theme_close{ false };
+
+	// ===== 资金流向页 =====
+	struct MoneyFlowCache
+	{
+		time_t dataTime{ 0 };
+		std::vector<double> inst;
+		std::vector<double> main;
+		std::vector<double> big;
+		std::vector<double> smallOrder;
+		double instNow{ NAN };
+		double mainNow{ NAN };
+		double bigNow{ NAN };
+		double smallOrderNow{ NAN };
+		MC::MoneyFlowLeader leaderInst;
+		MC::MoneyFlowLeader leaderMain;
+		bool hasData{ false };
+	};
+	MoneyFlowCache m_moneyflow_cache;
+	CRect m_moneyflow_plot_rect;
+	int m_hover_moneyflow_idx{ -1 };
+	std::vector<StatCardRect> m_moneyflow_stat_rects;
+	int m_moneyflow_series_mask{ 0xF };
+	int m_hover_moneyflow_card{ -1 };
 
 	// ===== 主力资金页 =====
 	std::vector<StatCardRect> m_mainflow_stat_rects;

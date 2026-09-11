@@ -30,6 +30,11 @@ namespace
 	const COLORREF MF_SZ = RGB(245, 166, 35);
 	const COLORREF MF_ETF = RGB(237, 91, 196);
 	const COLORREF MF_IDX = RGB(154, 161, 176);
+	// 资金流向曲线色（机构/主力/大户/散户，对应图一）
+	const COLORREF FLOW_INST = RGB(74, 144, 226);  // 机构（浅蓝）
+	const COLORREF FLOW_MAIN = RGB(245, 166, 35);  // 主力（橙黄）
+	const COLORREF FLOW_BIG  = RGB(80, 227, 194);  // 大户（水绿）
+	const COLORREF FLOW_SMALL= RGB(255, 107, 107); // 散户（珊瑚粉红）
 
 	constexpr const wchar_t* MC_FONT = L"微软雅黑";
 
@@ -303,6 +308,7 @@ void CMarketCenterPanel::RequestData()
 		case PAGE_ETF_RANK:
 			mc.RequestIfStale(CMarketCenterData::DS_ETFS, 300, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
+		case PAGE_MONEY_FLOW:
 		case PAGE_MAINFLOW:
 			mc.RequestIfStale(CMarketCenterData::DS_MAINFLOW, 120, hWnd, CMarketCenterData::RequestPriority::Foreground);
 		break;
@@ -324,6 +330,8 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	m_hover_inflow_bar = -1;
 	m_treemap_mode = 0;   // 离开页面恢复红绿全部视图
 	m_hover_bubble_stat = -1;
+	m_hover_moneyflow_card = -1;
+	m_hover_moneyflow_idx = -1;
 	m_theme_panel_open = false;
 	// 切页后拉取该页数据（懒加载；数据到达由悬浮窗 WM_MC_DATA_UPDATED 触发重绘）
 	RequestData();
@@ -344,6 +352,7 @@ CMarketCenterData::DataSet CMarketCenterPanel::CurrentDataSet() const
 	case PAGE_BUBBLE: return CMarketCenterData::DS_SECTORS;
 	case PAGE_ETF_INFLOW:
 	case PAGE_ETF_RANK: return CMarketCenterData::DS_ETFS;
+	case PAGE_MONEY_FLOW:
 	case PAGE_MAINFLOW: return CMarketCenterData::DS_MAINFLOW;
 	case PAGE_TREND: return CMarketCenterData::DS_TREND;
 	default: return CMarketCenterData::DS_SECTORS;
@@ -451,7 +460,7 @@ void CMarketCenterPanel::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
 {
 	// 菜单第一项直接贴住顶部标题条（无上边距）
 	// 菜单项
-	const wchar_t* titles[PAGE_COUNT] = { L"板块资金流", L"ETF申购净流入", L"主力资金", L"涨跌趋势", L"ETF涨跌榜" };
+	const wchar_t* titles[PAGE_COUNT] = { L"板块资金流", L"ETF申购净流入", L"资金流向", L"主力资金", L"涨跌趋势", L"ETF涨跌榜" };
 	int itemH = g_data.DPI(34);
 	int top = rc.top;
 	for (int i = 0; i < PAGE_COUNT; i++)
@@ -491,6 +500,7 @@ void CMarketCenterPanel::DrawPage(Gdiplus::Graphics& g, const CRect& content)
 	{
 	case PAGE_BUBBLE: DrawBubblePage(g, content); break;
 	case PAGE_ETF_INFLOW: DrawEtfInflowPage(g, content); break;
+	case PAGE_MONEY_FLOW: DrawMoneyFlowPage(g, content); break;
 	case PAGE_MAINFLOW: DrawMainFlowPage(g, content); break;
 	case PAGE_TREND: DrawTrendPage(g, content); break;
 	case PAGE_ETF_RANK: DrawEtfRankPage(g, content); break;
@@ -1105,7 +1115,299 @@ void CMarketCenterPanel::DrawThemePanel(Gdiplus::Graphics& g, const CRect& chart
 	g.ResetClip();
 }
 
-// ============ 页面3：主力资金 ============
+// ============ 页面3：资金流向（多维度资金博弈分时，对应图一） ============
+
+void CMarketCenterPanel::DrawMoneyFlowPage(Gdiplus::Graphics& g, const CRect& rc)
+{
+	DrawPageTitle(g, rc, L"资金流向", L"全市场大单/超大单博弈分时（沪深合计）");
+
+	auto f10 = MkFont(10);
+	auto f11 = MkFont(11);
+	auto f11b = MkFont(11, true);
+	auto f12b = MkFont(12, true);
+	auto f15b = MkFont(15, true);
+
+	CMarketCenterData& mc = CMarketCenterData::Instance();
+	const int AXIS_N = 241;
+
+	// 缓存机制：若后台数据时间戳变动或未初始化，才执行加锁与数据聚合
+	if (mc.m_fflow_time != m_moneyflow_cache.dataTime || !m_moneyflow_cache.hasData)
+	{
+		std::vector<MC::FflowMinute> sh, sz;
+		MC::MoneyFlowLeader leaderInst, leaderMain;
+		time_t curTime = 0;
+		{
+			std::lock_guard<std::mutex> lock(mc.m_mutex);
+			sh = mc.m_fflow_sh;
+			sz = mc.m_fflow_sz;
+			leaderInst = mc.m_leader_inst;
+			leaderMain = mc.m_leader_main;
+			curTime = mc.m_fflow_time;
+		}
+
+		m_moneyflow_cache.inst.assign(static_cast<size_t>(AXIS_N), NAN);
+		m_moneyflow_cache.main.assign(static_cast<size_t>(AXIS_N), NAN);
+		m_moneyflow_cache.big.assign(static_cast<size_t>(AXIS_N), NAN);
+		m_moneyflow_cache.smallOrder.assign(static_cast<size_t>(AXIS_N), NAN);
+
+		auto putAdd = [&](const MC::FflowMinute& f) {
+			int i = CMarketCenterData::TimeIndex(f.time);
+			if (i >= 0 && i < AXIS_N)
+			{
+				size_t si = static_cast<size_t>(i);
+				m_moneyflow_cache.inst[si] = (isnan(m_moneyflow_cache.inst[si]) ? 0.0 : m_moneyflow_cache.inst[si]) + f.superBig / 1e8;
+				m_moneyflow_cache.main[si] = (isnan(m_moneyflow_cache.main[si]) ? 0.0 : m_moneyflow_cache.main[si]) + f.main / 1e8;
+				m_moneyflow_cache.big[si] = (isnan(m_moneyflow_cache.big[si]) ? 0.0 : m_moneyflow_cache.big[si]) + f.big / 1e8;
+				m_moneyflow_cache.smallOrder[si] = (isnan(m_moneyflow_cache.smallOrder[si]) ? 0.0 : m_moneyflow_cache.smallOrder[si]) + f.smallOrder / 1e8;
+			}
+		};
+		for (auto& f : sh) putAdd(f);
+		for (auto& f : sz) putAdd(f);
+
+		auto lastOf = [](const std::vector<double>& arr) -> double {
+			for (int i = static_cast<int>(arr.size()) - 1; i >= 0; i--)
+				if (!isnan(arr[static_cast<size_t>(i)]))
+					return arr[static_cast<size_t>(i)];
+			return NAN;
+		};
+		m_moneyflow_cache.instNow = lastOf(m_moneyflow_cache.inst);
+		m_moneyflow_cache.mainNow = lastOf(m_moneyflow_cache.main);
+		m_moneyflow_cache.bigNow = lastOf(m_moneyflow_cache.big);
+		m_moneyflow_cache.smallOrderNow = lastOf(m_moneyflow_cache.smallOrder);
+		m_moneyflow_cache.leaderInst = leaderInst;
+		m_moneyflow_cache.leaderMain = leaderMain;
+		m_moneyflow_cache.dataTime = curTime;
+		m_moneyflow_cache.hasData = (!isnan(m_moneyflow_cache.instNow) || !isnan(m_moneyflow_cache.mainNow) ||
+			!isnan(m_moneyflow_cache.bigNow) || !isnan(m_moneyflow_cache.smallOrderNow));
+	}
+
+	const auto& instArr = m_moneyflow_cache.inst;
+	const auto& mainArr = m_moneyflow_cache.main;
+	const auto& bigArr = m_moneyflow_cache.big;
+	const auto& smallArr = m_moneyflow_cache.smallOrder;
+	double instNow = m_moneyflow_cache.instNow;
+	double mainNow = m_moneyflow_cache.mainNow;
+	double bigNow = m_moneyflow_cache.bigNow;
+	double smallNow = m_moneyflow_cache.smallOrderNow;
+	bool hasAny = m_moneyflow_cache.hasData;
+
+	if (!hasAny)
+	{
+		auto f12 = MkFont(12);
+		DrawStatus(g, rc, CMarketCenterData::DS_MAINFLOW, L"正在获取全市场资金流向分时…", f12.get());
+	}
+
+	// 顶部统计卡兼图例（4列：机构、主力、大户、散户，可点击开关曲线）
+	CRect statsRc(rc.left + g_data.DPI(16), rc.top + g_data.DPI(16), rc.right - g_data.DPI(16), rc.top + g_data.DPI(16) + g_data.DPI(54));
+	FillCard(g, statsRc);
+	m_moneyflow_stat_rects.clear();
+
+	struct FlowCell { const wchar_t* label; COLORREF color; double value; };
+	FlowCell flowCells[4] = {
+		{ L"机构", FLOW_INST, instNow },
+		{ L"主力", FLOW_MAIN, mainNow },
+		{ L"大户", FLOW_BIG, bigNow },
+		{ L"散户", FLOW_SMALL, smallNow },
+	};
+
+	const int cellW = statsRc.Width() / 4;
+	for (int i = 0; i < 4; i++)
+	{
+		CRect cell(statsRc.left + i * cellW, statsRc.top, statsRc.left + (i + 1) * cellW, statsRc.bottom);
+		bool off = (m_moneyflow_series_mask & (1 << i)) == 0;
+		BYTE alpha = off ? 96 : 255;
+		if (m_hover_moneyflow_card == i)
+		{
+			Gdiplus::SolidBrush hoverBg(Gdi(MC_TEXT, 10));
+			g.FillRectangle(&hoverBg, Gdiplus::REAL(cell.left + 1), Gdiplus::REAL(cell.top + 1), Gdiplus::REAL(cellW - 2), Gdiplus::REAL(cell.Height() - 2));
+		}
+		if (i > 0)
+		{
+			Gdiplus::Pen sepPen(Gdi(MC_BORDER), 1.0f);
+			g.DrawLine(&sepPen, Gdiplus::REAL(cell.left), Gdiplus::REAL(cell.top + g_data.DPI(10)), Gdiplus::REAL(cell.left), Gdiplus::REAL(cell.bottom - g_data.DPI(10)));
+		}
+
+		// 色块 + 标签
+		CRect lblRc = cell;
+		lblRc.top += g_data.DPI(8);
+		lblRc.bottom = lblRc.top + g_data.DPI(16);
+		int swatchW = g_data.DPI(14), swatchH = g_data.DPI(4);
+		std::wstring label = flowCells[i].label;
+		auto fLbl = MkFont(11);
+		CSize lblSize = MeasureStr(g, fLbl.get(), label);
+		int totalW = swatchW + g_data.DPI(5) + lblSize.cx;
+		int startX = cell.CenterPoint().x - totalW / 2;
+		Gdiplus::SolidBrush swBrush(Gdi(flowCells[i].color, off ? static_cast<BYTE>(96) : static_cast<BYTE>(255)));
+		g.FillRectangle(&swBrush, Gdiplus::REAL(startX), Gdiplus::REAL(lblRc.top + (lblRc.Height() - swatchH) / 2), Gdiplus::REAL(swatchW), Gdiplus::REAL(swatchH));
+		DrawStr(g, label, fLbl.get(), CRect(startX + swatchW + g_data.DPI(5), lblRc.top, cell.right, lblRc.bottom), MC_TEXT_SUB, alpha);
+
+		// 数值（带单位“亿”，正红负绿）
+		std::wstring valStr = isnan(flowCells[i].value) ? L"--" : FormatYi(flowCells[i].value * 1e8, 2);
+		COLORREF valColor = UpDownColor(flowCells[i].value);
+		DrawStrMid(g, valStr, f15b.get(), CRect(cell.left, cell.top + g_data.DPI(26), cell.right, cell.bottom - g_data.DPI(6)), valColor, alpha);
+		m_moneyflow_stat_rects.push_back({ cell, i });
+	}
+
+	if (!hasAny)
+		return;
+
+	// 底部领头股票条：预留空间高 24px
+	const int leaderH = g_data.DPI(24);
+	CRect leaderRc(statsRc.left, rc.bottom - leaderH - g_data.DPI(10), statsRc.right, rc.bottom - g_data.DPI(10));
+
+	// 中间图表区域
+	CRect chartRc(statsRc.left, statsRc.bottom + g_data.DPI(8), statsRc.right, leaderRc.top - g_data.DPI(4));
+	const int padL = g_data.DPI(2), padR = g_data.DPI(2), padT = g_data.DPI(18), padB = g_data.DPI(22);
+	CRect plotRc(chartRc.left + padL, chartRc.top + padT, chartRc.right - padR, chartRc.bottom - padB);
+	m_moneyflow_plot_rect = plotRc; // 供 HandleMouseMove 做精准 Hover 判断
+	if (plotRc.Width() < g_data.DPI(100) || plotRc.Height() < g_data.DPI(60))
+		return;
+
+	// 单 Y 轴范围：包含可见曲线并包含 0 轴
+	double flowLo = 0, flowHi = 0;
+	bool flowAny = false;
+	auto mergeFlow = [&](const std::vector<double>& arr) {
+		for (double v : arr)
+		{
+			if (isnan(v)) continue;
+			flowLo = min(flowLo, v);
+			flowHi = max(flowHi, v);
+			flowAny = true;
+		}
+	};
+	if (m_moneyflow_series_mask & 1) mergeFlow(instArr);
+	if (m_moneyflow_series_mask & 2) mergeFlow(mainArr);
+	if (m_moneyflow_series_mask & 4) mergeFlow(bigArr);
+	if (m_moneyflow_series_mask & 8) mergeFlow(smallArr);
+	if (!flowAny) { flowLo = -10; flowHi = 10; }
+
+	// 确保 0 轴在坐标系内
+	flowLo = min(flowLo, 0.0);
+	flowHi = max(flowHi, 0.0);
+	double flowPad = max(1.0, (flowHi - flowLo) * 0.08);
+	flowLo -= flowPad; flowHi += flowPad;
+
+	auto fx = [&](int i) -> float { return plotRc.left + static_cast<float>(i) * plotRc.Width() / (AXIS_N - 1); };
+	auto fyFlow = [&](double v) -> float { return static_cast<float>(plotRc.bottom - (v - flowLo) / (flowHi - flowLo) * plotRc.Height()); };
+
+	// 网格 + 左轴刻度 + 强化0轴
+	{
+		double step = NiceStep(flowHi - flowLo);
+		auto f10 = MkFont(10);
+		for (double tv = ceil(flowLo / step) * step; tv <= flowHi; tv += step)
+		{
+			float y = fyFlow(tv);
+			bool isZero = fabs(tv) < 1e-6;
+			Gdiplus::Pen gridPen(Gdi(isZero ? RGB(70, 78, 96) : MC_GRID), isZero ? 1.5f : 1.0f);
+			g.DrawLine(&gridPen, Gdiplus::REAL(plotRc.left), y, Gdiplus::REAL(plotRc.right), y);
+
+			// 左侧刻度数值
+			std::wstring lbl = FormatAxisNum(tv, step) + L"亿";
+			CRect lblRc(plotRc.left + g_data.DPI(4), static_cast<int>(y) - g_data.DPI(8), plotRc.left + g_data.DPI(60), static_cast<int>(y) + g_data.DPI(8));
+			{
+				Gdiplus::SolidBrush bgBrush(Gdi(MC_BG, 190));
+				g.FillRectangle(&bgBrush, Gdiplus::REAL(lblRc.left - g_data.DPI(2)), Gdiplus::REAL(lblRc.top), Gdiplus::REAL(lblRc.Width() + g_data.DPI(4)), Gdiplus::REAL(lblRc.Height()));
+			}
+			DrawStr(g, lbl, f10.get(), lblRc, isZero ? MC_TEXT : MC_TEXT_SUB);
+		}
+	}
+
+	// X 轴时间标签 09:30 10:30 13:00 14:00 15:00
+	{
+		auto f10 = MkFont(10);
+		const auto& axis = CMarketCenterData::TimeAxis();
+		const int marks[5] = { 0, 60, 120, 180, 240 };
+		for (int k = 0; k < 5; k++)
+		{
+			int mi = marks[k];
+			if (mi >= static_cast<int>(axis.size()))
+				continue;
+			CRect lblRc(static_cast<int>(fx(mi)) - g_data.DPI(24), plotRc.bottom + g_data.DPI(4), static_cast<int>(fx(mi)) + g_data.DPI(24), plotRc.bottom + g_data.DPI(20));
+			DrawStrMid(g, axis[static_cast<size_t>(mi)], f10.get(), lblRc, MC_TEXT_SUB);
+		}
+	}
+
+	// 4条折线
+	auto drawSeries = [&](const std::vector<double>& arr, COLORREF color, float width) {
+		Gdiplus::Pen pen(Gdi(color), width);
+		std::vector<Gdiplus::PointF> pts;
+		for (int i = 0; i < AXIS_N; i++)
+		{
+			double v = arr[static_cast<size_t>(i)];
+			if (isnan(v))
+				continue;
+			pts.push_back(Gdiplus::PointF(fx(i), fyFlow(v)));
+		}
+		if (pts.size() >= 2)
+			g.DrawLines(&pen, pts.data(), static_cast<INT>(pts.size()));
+	};
+
+	if (m_moneyflow_series_mask & 8) drawSeries(smallArr, FLOW_SMALL, 1.8f); // 散户
+	if (m_moneyflow_series_mask & 4) drawSeries(bigArr, FLOW_BIG, 1.8f);     // 大户
+	if (m_moneyflow_series_mask & 1) drawSeries(instArr, FLOW_INST, 1.8f);   // 机构
+	if (m_moneyflow_series_mask & 2) drawSeries(mainArr, FLOW_MAIN, 2.0f);   // 主力（稍粗突出）
+
+	// 鼠标悬停十字光标（Crosshair）：根据防抖后的 m_hover_moneyflow_idx 极速绘制
+	if (m_hover_moneyflow_idx >= 0 && m_hover_moneyflow_idx < AXIS_N)
+	{
+		int hoverIdx = m_hover_moneyflow_idx;
+		float curX = fx(hoverIdx);
+		Gdiplus::Pen crossPen(Gdi(RGB(180, 190, 210), 120), 1.0f);
+		crossPen.SetDashStyle(Gdiplus::DashStyleDash);
+		g.DrawLine(&crossPen, curX, static_cast<float>(plotRc.top), curX, static_cast<float>(plotRc.bottom));
+
+		// 收集该点的4个值在顶部浮层/提示显示
+		const auto& axis = CMarketCenterData::TimeAxis();
+		if (hoverIdx < static_cast<int>(axis.size()))
+		{
+			std::wstring tStr = axis[static_cast<size_t>(hoverIdx)];
+			double iVal = (hoverIdx < static_cast<int>(instArr.size())) ? instArr[static_cast<size_t>(hoverIdx)] : NAN;
+			double mVal = (hoverIdx < static_cast<int>(mainArr.size())) ? mainArr[static_cast<size_t>(hoverIdx)] : NAN;
+			double bVal = (hoverIdx < static_cast<int>(bigArr.size())) ? bigArr[static_cast<size_t>(hoverIdx)] : NAN;
+			double sVal = (hoverIdx < static_cast<int>(smallArr.size())) ? smallArr[static_cast<size_t>(hoverIdx)] : NAN;
+			std::wstring tip = tStr + L" | 机构:" + (isnan(iVal) ? L"--" : FormatYi(iVal * 1e8, 2))
+				+ L" 主力:" + (isnan(mVal) ? L"--" : FormatYi(mVal * 1e8, 2))
+				+ L" 大户:" + (isnan(bVal) ? L"--" : FormatYi(bVal * 1e8, 2))
+				+ L" 散户:" + (isnan(sVal) ? L"--" : FormatYi(sVal * 1e8, 2));
+
+			auto fTip = MkFont(11);
+			CSize szTip = MeasureStr(g, fTip.get(), tip);
+			int tipW = szTip.cx + g_data.DPI(16);
+			int tipH = g_data.DPI(20);
+			int tipX = min(max(static_cast<int>(curX) - tipW / 2, plotRc.left), plotRc.right - tipW);
+			int tipY = plotRc.top + g_data.DPI(2);
+			CRect tipRc(tipX, tipY, tipX + tipW, tipY + tipH);
+			Gdiplus::SolidBrush tipBg(Gdi(RGB(15, 17, 23), 220));
+			g.FillRectangle(&tipBg, Gdiplus::REAL(tipRc.left), Gdiplus::REAL(tipRc.top), Gdiplus::REAL(tipRc.Width()), Gdiplus::REAL(tipRc.Height()));
+			Gdiplus::Pen tipBorder(Gdi(MC_BORDER), 1.0f);
+			g.DrawRectangle(&tipBorder, Gdiplus::REAL(tipRc.left), Gdiplus::REAL(tipRc.top), Gdiplus::REAL(tipRc.Width()), Gdiplus::REAL(tipRc.Height()));
+			DrawStrMid(g, tip, fTip.get(), tipRc, MC_TEXT);
+		}
+	}
+
+	// 底部领头股票条绘制（机构领头 + 主力领头）
+	{
+		int midX = leaderRc.left + leaderRc.Width() / 2;
+		CRect instLeadRc(leaderRc.left, leaderRc.top, midX - g_data.DPI(10), leaderRc.bottom);
+		CRect mainLeadRc(midX + g_data.DPI(10), leaderRc.top, leaderRc.right, leaderRc.bottom);
+
+		// 机构领头：中际旭创 57.10亿
+		std::wstring instLeadStr = L"机构领头：";
+		if (m_moneyflow_cache.leaderInst.name.empty()) instLeadStr += L"--";
+		else instLeadStr += m_moneyflow_cache.leaderInst.name + L"  " + FormatYi(m_moneyflow_cache.leaderInst.flow, 2);
+
+		// 主力领头：杭电股份 3.30亿
+		std::wstring mainLeadStr = L"主力领头：";
+		if (m_moneyflow_cache.leaderMain.name.empty()) mainLeadStr += L"--";
+		else mainLeadStr += m_moneyflow_cache.leaderMain.name + L"  " + FormatYi(m_moneyflow_cache.leaderMain.flow, 2);
+
+		auto f11bLead = MkFont(11, true);
+		DrawStr(g, instLeadStr, f11bLead.get(), instLeadRc, FLOW_INST);
+		DrawStr(g, mainLeadStr, f11bLead.get(), mainLeadRc, FLOW_MAIN, 255, Gdiplus::StringAlignmentFar);
+	}
+}
+
+// ============ 页面4：主力资金 ============
 
 void CMarketCenterPanel::DrawMainFlowPage(Gdiplus::Graphics& g, const CRect& rc)
 {
@@ -1823,6 +2125,32 @@ bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 			}
 			break;
 		}
+		case PAGE_MONEY_FLOW:
+		{
+			int hov = -1;
+			for (int i = 0; i < static_cast<int>(m_moneyflow_stat_rects.size()); i++)
+				if (m_moneyflow_stat_rects[static_cast<size_t>(i)].rect.PtInRect(point))
+					hov = i;
+			if (hov != m_hover_moneyflow_card)
+			{
+				m_hover_moneyflow_card = hov;
+				changed = true;
+			}
+			int hovIdx = -1;
+			if (m_moneyflow_plot_rect.PtInRect(point) && m_moneyflow_plot_rect.Width() > 0)
+			{
+				float mouseX = static_cast<float>(point.x);
+				hovIdx = static_cast<int>(round((mouseX - m_moneyflow_plot_rect.left) * 240.0f / m_moneyflow_plot_rect.Width()));
+				if (hovIdx < 0) hovIdx = 0;
+				if (hovIdx > 240) hovIdx = 240;
+			}
+			if (hovIdx != m_hover_moneyflow_idx)
+			{
+				m_hover_moneyflow_idx = hovIdx;
+				changed = true;
+			}
+			break;
+		}
 		case PAGE_MAINFLOW:
 		{
 			int hov = -1;
@@ -1890,12 +2218,14 @@ bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 void CMarketCenterPanel::HandleMouseLeave()
 {
 	if (m_hover_menu != -1 || m_hover_bubble != -1 || m_hover_inflow_bar != -1 ||
-		m_hover_mainflow_card != -1 || m_hover_inflow_card != -1 || m_hover_dist_bar != -1 ||
+		m_hover_moneyflow_card != -1 || m_hover_moneyflow_idx != -1 || m_hover_mainflow_card != -1 || m_hover_inflow_card != -1 || m_hover_dist_bar != -1 ||
 		m_hover_rank_header != -1 || m_hover_rank_row != -1 || m_hover_theme_row != -1 || m_hover_theme_close)
 	{
 		m_hover_menu = -1;
 		m_hover_bubble = -1;
 		m_hover_inflow_bar = -1;
+		m_hover_moneyflow_card = -1;
+		m_hover_moneyflow_idx = -1;
 		m_hover_mainflow_card = -1;
 		m_hover_inflow_card = -1;
 		m_hover_dist_bar = -1;
@@ -2035,6 +2365,20 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 			m_theme_panel_open = false;
 			m_hover_theme_row = -1;
 			m_hover_theme_close = false;
+		}
+		break;
+	}
+	case PAGE_MONEY_FLOW:
+	{
+		for (int i = 0; i < static_cast<int>(m_moneyflow_stat_rects.size()); i++)
+		{
+			if (m_moneyflow_stat_rects[static_cast<size_t>(i)].rect.PtInRect(point))
+			{
+				m_moneyflow_series_mask ^= (1 << i);
+				if (m_moneyflow_series_mask == 0)
+					m_moneyflow_series_mask = 0xF;
+				return;
+			}
 		}
 		break;
 	}

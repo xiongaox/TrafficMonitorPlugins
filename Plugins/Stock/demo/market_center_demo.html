@@ -319,6 +319,7 @@
   <div class="brand">行情中心</div>
   <div class="menu-item active" data-page="bubble">基金气泡图</div>
   <div class="menu-item" data-page="etfinflow">ETF申购净流入</div>
+  <div class="menu-item" data-page="moneyflow">资金流向</div>
   <div class="menu-item" data-page="mainflow">主力资金</div>
   <div class="menu-item" data-page="trend">涨跌趋势</div>
   <div class="menu-item" data-page="etfrank">ETF涨跌榜</div>
@@ -349,21 +350,29 @@
     </div>
   </div>
 
-  <!-- 2. ETF申购净流入 -->
+  <!-- 2. ETF申购净流入（含主题聚合下钻浮层） -->
   <div class="page" id="page-etfinflow">
-    <div class="page-title" id="etfinflow-title">实时ETF申购净流入 <span class="page-sub">口径：ETF 场内资金净流入（模拟数据）</span></div>
-    <div class="stat-row grid4" id="etfinflow-stats"></div>
-    <div class="chart-heading" id="etfinflow-heading">ETF 当日主力净流入 Top10（亿）</div>
-    <div id="etfinflow-body">
+    <div class="page-title">ETF申购净流入 <span class="page-sub">主题聚合净流入 Top10（点击条目可下钻看明细）</span></div>
+    <div class="stat-row grid2" id="etfinflow-stats"></div>
+    <div id="etfinflow-chart-wrap">
       <div class="chart" id="chart-etfinflow"></div>
-      <div id="etf-theme-panel" class="hidden">
-        <div id="etf-theme-head">
-          <span id="etf-theme-title">—</span>
-          <span id="etf-theme-close">✕</span>
+      <!-- 下钻浮层：初始隐藏，点击某主题柱子时在右侧或整屏滑出 -->
+      <div id="theme-drilldown">
+        <div class="hd">
+          <span class="title" id="theme-drilldown-title">主题明细</span>
+          <button class="close-btn" id="theme-drilldown-close" title="关闭 (Esc)">✕</button>
         </div>
-        <div class="scroll-wrap" id="etf-theme-scroll">
-          <table class="rank" id="etf-theme-table">
-            <thead><tr><th>名称</th><th>代码</th><th>现价</th><th>涨跌幅</th></tr></thead>
+        <div class="drill-sub" id="theme-drilldown-sub">按净流入排序</div>
+        <div class="drill-table-wrap">
+          <table class="drill-table" id="theme-drilldown-table">
+            <thead>
+              <tr>
+                <th style="text-align:left">名称</th>
+                <th style="text-align:right">净流入</th>
+                <th style="text-align:right">现价</th>
+                <th style="text-align:right">涨跌幅</th>
+              </tr>
+            </thead>
             <tbody></tbody>
           </table>
         </div>
@@ -371,7 +380,18 @@
     </div>
   </div>
 
-  <!-- 3. 主力资金（参考同花顺实时主力资金页） -->
+  <!-- 3. 资金流向（多维度资金博弈分时，对应图一） -->
+  <div class="page" id="page-moneyflow">
+    <div class="page-title">资金流向 <span class="page-sub">全市场大单/超大单博弈分时（模拟数据）</span></div>
+    <div class="stat-row grid4" id="moneyflow-stats"></div>
+    <div class="chart" id="chart-moneyflow" style="flex:1; min-height:0;"></div>
+    <div style="display:flex; justify-content:space-between; padding:4px 8px; font-size:12px; font-weight:bold; color:var(--text-sub);">
+      <span style="color:#4A90E2">机构领头：中际旭创 +57.10亿</span>
+      <span style="color:#F5A623">主力领头：杭电股份 +3.30亿</span>
+    </div>
+  </div>
+
+  <!-- 4. 主力资金（参考同花顺实时主力资金页） -->
   <div class="page" id="page-mainflow">
     <div class="page-title">实时主力资金 <span class="page-sub">沪深两市大盘资金流（模拟数据）</span></div>
     <div class="stat-row grid4" id="mainflow-stats"></div>
@@ -477,6 +497,12 @@ const mainflow = {
   sz: genFlowSeries(-30, 11),       // 深证主力净流入(亿)
   etf: genFlowSeries(15, 4),        // ETF申购净流入(亿)，走势平稳
   index: genIndexSeries(3980)       // 上证指数(点)
+};
+const moneyflow = {
+  inst: genFlowSeries(10, 5),       // 机构超大单(亿)
+  main: genFlowSeries(-150, 12),    // 主力净流入(亿)
+  big: genFlowSeries(-130, 10),     // 大户大单(亿)
+  small: genFlowSeries(-50, 6)      // 散户小单(亿)
 };
 
 // ---- 涨跌趋势 ----
@@ -695,7 +721,58 @@ function selectSector(name) {
     `<div class="row"><span>${r[0]}</span><b>${r[1]}</b></div>`).join("");
 }
 
-// ================= 3. 主力资金 =================
+// ================= 3. 资金流向（参考图一） =================
+const FLOW_SERIES = [
+  { key: "inst",  label: "机构", color: "#4A90E2", width: 1.8 },
+  { key: "main",  label: "主力", color: "#F5A623", width: 2.0 },
+  { key: "big",   label: "大户", color: "#50E3C2", width: 1.8 },
+  { key: "small", label: "散户", color: "#FF6B6B", width: 1.8 }
+];
+const flowOff = new Set();
+function drawMoneyflow() {
+  const f = v => (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(2) + "亿";
+  const vals = {
+    inst: moneyflow.inst[NOW_IDX],
+    main: moneyflow.main[NOW_IDX],
+    big: moneyflow.big[NOW_IDX],
+    small: moneyflow.small[NOW_IDX]
+  };
+  document.getElementById("moneyflow-stats").innerHTML = FLOW_SERIES.map(s => {
+    const v = vals[s.key];
+    const cls = v >= 0 ? "up" : "down";
+    return `<div class="stat clickable ${flowOff.has(s.key) ? "off" : ""}" data-key="${s.key}">
+      <span class="lbl"><i class="swatch" style="background:${s.color}"></i>${s.label}</span>
+      <span class="val ${cls}">${f(v)}</span></div>`;
+  }).join("");
+  document.querySelectorAll("#moneyflow-stats .stat").forEach(el => {
+    el.addEventListener("click", () => {
+      const k = el.dataset.key;
+      flowOff.has(k) ? flowOff.delete(k) : flowOff.add(k);
+      drawMoneyflow();
+    });
+  });
+  const line = (s, data) => ({
+    name: s.label, type: "line", data, showSymbol: false, smooth: false,
+    lineStyle: { width: s.width, color: s.color, opacity: flowOff.has(s.key) ? 0.08 : 1 },
+    itemStyle: { color: s.color }, emphasis: { focus: "series" }
+  });
+  mkChart("chart-moneyflow").setOption({
+    backgroundColor: "transparent",
+    legend: { show: false },
+    grid: { left: 45, right: 10, top: 20, bottom: 28 },
+    tooltip: { trigger: "axis", valueFormatter: v => v == null ? "--" : (+v).toFixed(2) + "亿" },
+    xAxis: { type: "category", data: TIME_AXIS, ...AXIS_STYLE,
+      axisLabel: { ...AXIS_STYLE.axisLabel, interval: 59,
+        alignMinLabel: "left", alignMaxLabel: "right" } },
+    yAxis: {
+      type: "value", ...AXIS_STYLE, scale: true,
+      axisLabel: { ...AXIS_STYLE.axisLabel, formatter: v => v.toFixed(0) + "亿" }
+    },
+    series: FLOW_SERIES.map(s => line(s, moneyflow[s.key]))
+  }, { notMerge: true });
+}
+
+// ================= 4. 主力资金 =================
 const MF_SERIES = [
   { key: "sh",    label: "主力净流入", color: "#4D8AF0", yAxis: 1, width: 1.8 },
   { key: "sz",    label: "深证",       color: "#F5A623", yAxis: 1, width: 1.8 },
@@ -946,6 +1023,7 @@ function showEtfThemeList(themeName) {
 const PAGE_DRAWERS = {
   bubble: () => { drawBubble(); selectSector("AI应用"); },
   etfinflow: drawEtfInflow,
+  moneyflow: drawMoneyflow,
   mainflow: drawMainflow,
   trend: () => { drawTrend(); drawVolume(); },
   etfrank: drawEtfRank

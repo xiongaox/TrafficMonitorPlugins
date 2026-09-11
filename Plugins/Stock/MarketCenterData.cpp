@@ -275,6 +275,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 	std::vector<MC::FflowMinute> fflowSh, fflowSz;
 	std::vector<MC::IndexTrendPoint> indexTrend;
 	std::vector<MC::EtfFlowSample> etfFlow;
+	MC::MoneyFlowLeader leaderInst, leaderMain;
 	long long distTime = 0;
 	switch (ds)
 	{
@@ -305,6 +306,18 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 			parseFlow(yyjson_obj_get(data,"sh"), fflowSh); parseFlow(yyjson_obj_get(data,"sz"), fflowSz);
 			yyjson_val* arr=yyjson_obj_get(data,"index"); if(!yyjson_is_arr(arr)||yyjson_arr_size(arr)>2000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(arr,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::IndexTrendPoint v;v.time=JsonString(item,"time");v.price=JsonNumber(item,"a");if(v.time.empty()){ok=false;break;}indexTrend.push_back(std::move(v)); } }
 			arr=yyjson_obj_get(data,"etfFlow"); if(!yyjson_is_arr(arr)||yyjson_arr_size(arr)>1000) ok=false; else { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(arr,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::EtfFlowSample v;v.time=JsonString(item,"time");v.inflow=JsonNumber(item,"a");if(v.time.empty()){ok=false;break;}etfFlow.push_back(std::move(v)); } }
+			yyjson_val* lInst = yyjson_obj_get(data, "leaderInst");
+			if (lInst && yyjson_is_obj(lInst)) {
+				leaderInst.code = JsonString(lInst, "code");
+				leaderInst.name = JsonString(lInst, "name");
+				leaderInst.flow = JsonNumber(lInst, "flow");
+			}
+			yyjson_val* lMain = yyjson_obj_get(data, "leaderMain");
+			if (lMain && yyjson_is_obj(lMain)) {
+				leaderMain.code = JsonString(lMain, "code");
+				leaderMain.name = JsonString(lMain, "name");
+				leaderMain.flow = JsonNumber(lMain, "flow");
+			}
 		}
 		break;
 	case DS_TREND:
@@ -330,7 +343,15 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 		{
 		case DS_SECTORS: m_sectors=std::move(sectors); m_sectors_time=fetchedAt; break;
 		case DS_ETFS: m_etfs=std::move(etfs); m_etf_total=etfTotal; m_etfs_time=fetchedAt; break;
-		case DS_MAINFLOW: m_fflow_sh=std::move(fflowSh); m_fflow_sz=std::move(fflowSz); m_index_trend=std::move(indexTrend); m_etf_flow_curve=std::move(etfFlow); m_fflow_time=fetchedAt; break;
+		case DS_MAINFLOW:
+			m_fflow_sh=std::move(fflowSh);
+			m_fflow_sz=std::move(fflowSz);
+			m_index_trend=std::move(indexTrend);
+			m_etf_flow_curve=std::move(etfFlow);
+			m_leader_inst=std::move(leaderInst);
+			m_leader_main=std::move(leaderMain);
+			m_fflow_time=fetchedAt;
+			break;
 		case DS_TREND: m_dist=std::move(dist); m_trend_curve=std::move(trendCurve); m_dist_time=fetchedAt; m_turnover_time=fetchedAt; break;
 		default: break;
 		}
@@ -377,6 +398,15 @@ std::string CMarketCenterData::SerializeSnapshot(DataSet ds) const
 		for (size_t i=0;i<m_index_trend.size();++i) { if(i)out+=","; const auto& v=m_index_trend[i]; writePoint(v.time,v.price); }
 		out += "],\"etfFlow\":[";
 		for (size_t i=0;i<m_etf_flow_curve.size();++i) { if(i)out+=","; const auto& v=m_etf_flow_curve[i]; writePoint(v.time,v.inflow); }
+		out += "],\"leaderInst\":{";
+		JsonStringField(out, "code", m_leader_inst.code); out += ",";
+		JsonStringField(out, "name", m_leader_inst.name); out += ",";
+		JsonDoubleField(out, "flow", m_leader_inst.flow);
+		out += "},\"leaderMain\":{";
+		JsonStringField(out, "code", m_leader_main.code); out += ",";
+		JsonStringField(out, "name", m_leader_main.name); out += ",";
+		JsonDoubleField(out, "flow", m_leader_main.flow);
+		out += "}";
 		out += "]}"; break;
 	case DS_TREND:
 		out += "{\"time\":" + std::to_string(static_cast<long long>(m_dist.time)) + ",\"zt\":" + std::to_string(m_dist.zt) + ",\"dt\":" + std::to_string(m_dist.dt) + ",\"buckets\":{";
@@ -628,6 +658,16 @@ const std::vector<std::wstring>& CMarketCenterData::TimeAxis()
 
 int CMarketCenterData::TimeIndex(const std::wstring& hhmm)
 {
+	if (hhmm.size() >= 5 && hhmm[2] == L':')
+	{
+		int h = (hhmm[0] - L'0') * 10 + (hhmm[1] - L'0');
+		int m = (hhmm[3] - L'0') * 10 + (hhmm[4] - L'0');
+		int mins = h * 60 + m;
+		if (mins >= 570 && mins < 690)
+			return mins - 570; // 09:30~11:29 -> 0~119
+		if (mins >= 780 && mins <= 900)
+			return 120 + (mins - 780); // 13:00~15:00 -> 120~240
+	}
 	const auto& axis = TimeAxis();
 	for (size_t i = 0; i < axis.size(); i++)
 	{
@@ -891,15 +931,46 @@ namespace
 		yyjson_doc_free(doc);
 		return ok;
 	}
+
+	bool FetchMoneyFlowLeader(const wchar_t* fid, MC::MoneyFlowLeader& out)
+	{
+		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=1&po=1&np=1&fltt=2&invt=2&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fid="
+			+ std::wstring(fid) + L"&fields=f12,f14," + std::wstring(fid);
+		std::string resp;
+		if (!HttpGet(url, resp)) return false;
+		yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
+		if (!doc) return false;
+		bool ok = false;
+		yyjson_val* root = yyjson_doc_get_root(doc);
+		yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
+		yyjson_val* diff = data ? yyjson_obj_get(data, "diff") : nullptr;
+		if (diff && yyjson_is_arr(diff) && yyjson_arr_size(diff) > 0)
+		{
+			yyjson_val* item = yyjson_arr_get_first(diff);
+			if (item && yyjson_is_obj(item))
+			{
+				out.code = JsonString(item, "f12");
+				out.name = JsonString(item, "f14");
+				std::string fidStr = CCommon::UnicodeToStr(fid, false);
+				out.flow = JsonNumber(item, fidStr.c_str(), 0.0);
+				ok = !out.name.empty();
+			}
+		}
+		yyjson_doc_free(doc);
+		return ok;
+	}
 }
 
 bool CMarketCenterData::FetchMainFlow()
 {
 	std::vector<MC::FflowMinute> sh, sz;
 	std::vector<MC::IndexTrendPoint> trend;
+	MC::MoneyFlowLeader leaderInst, leaderMain;
 	bool okSh = FetchFflowForSecid(L"1.000001", sh);
 	bool okSz = FetchFflowForSecid(L"0.399001", sz);
 	bool okIdx = FetchIndexTrends(trend);
+	bool okInst = FetchMoneyFlowLeader(L"f66", leaderInst);
+	bool okMain = FetchMoneyFlowLeader(L"f62", leaderMain);
 	if (!okSh && !okSz)
 		return false;
 
@@ -908,6 +979,8 @@ bool CMarketCenterData::FetchMainFlow()
 		if (okSh) m_fflow_sh = std::move(sh);
 		if (okSz) m_fflow_sz = std::move(sz);
 		if (okIdx) m_index_trend = std::move(trend);
+		if (okInst) m_leader_inst = std::move(leaderInst);
+		if (okMain) m_leader_main = std::move(leaderMain);
 		m_fflow_time = time(nullptr);
 		MarkSuccess(DS_MAINFLOW);
 	}

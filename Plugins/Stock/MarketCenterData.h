@@ -84,6 +84,14 @@ namespace MC
 		std::wstring time;
 		double inflow{ 0.0 };     // 全市场ETF主力净流入合计(元)
 	};
+
+	// 资金流向领头股（机构/主力）
+	struct MoneyFlowLeader
+	{
+		std::wstring code;
+		std::wstring name;
+		double flow{ 0.0 };     // 净额(元)
+	};
 }
 
 class CMarketCenterData
@@ -103,6 +111,8 @@ public:
 	std::vector<MC::FflowMinute> m_fflow_sh;            // 上证主力资金分时
 	std::vector<MC::FflowMinute> m_fflow_sz;            // 深证主力资金分时
 	std::vector<MC::IndexTrendPoint> m_index_trend;     // 上证指数分时
+	MC::MoneyFlowLeader m_leader_inst;                  // 机构领头股
+	MC::MoneyFlowLeader m_leader_main;                  // 主力领头股
 	MC::UpDownDist m_dist;                              // 最新涨跌分布
 	double m_turnover_today{ 0.0 };                      // 沪深今日合计成交额(元)
 	double m_turnover_yesterday{ 0.0 };                  // 沪深昨日合计成交额(元)
