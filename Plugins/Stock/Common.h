@@ -120,6 +120,9 @@ public:
 	static bool IsFundCode(const std::wstring& code);
 	// 判断股票代码是否为科创板（688/689）
 	static bool IsStarMarketStock(const std::wstring& code);
+	// 判断股票代码是否为美股代码（gb_ / us / 105. / 106. / 107.）
+	static bool IsUSStockCode(const std::wstring& code);
+	static bool IsUSStockCode(const std::string& code);
 
 	// 根据涨跌幅百分比获取颜色
 	// >= 5%: 紫色, 0%~5%: 红色, -5%~0%: 绿色, <= -5%: 墨绿色

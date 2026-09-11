@@ -66,12 +66,12 @@ public:
 	void FetchTimeline(const std::wstring& code);
 	// 上金所品种（118.*）实时快照（东财 stock/get）
 	void FetchSgeSnapshot(const std::wstring& code);
-	// 日K线（腾讯前复权）
-	void FetchDayKLine(const std::wstring& code, int days = 750);
-	// 周K线（腾讯前复权）
-	void FetchWeekKLine(const std::wstring& code, int weeks = 750);
-	// 月K线（腾讯前复权）
-	void FetchMonthKLine(const std::wstring& code, int months = 750);
+	// 日K线（腾讯前复权，美股或强制时优先东财）
+	void FetchDayKLine(const std::wstring& code, int days = 750, bool forceEastMoney = false);
+	// 周K线（腾讯前复权，美股或强制时优先东财）
+	void FetchWeekKLine(const std::wstring& code, int weeks = 750, bool forceEastMoney = false);
+	// 月K线（腾讯前复权，美股或强制时优先东财）
+	void FetchMonthKLine(const std::wstring& code, int months = 750, bool forceEastMoney = false);
 	// 5分钟K线（新浪）
 	void FetchMin5KLine(const std::wstring& code, int datalen = 250);
 	// 30分钟K线（新浪）

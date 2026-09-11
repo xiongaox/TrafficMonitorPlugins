@@ -608,13 +608,14 @@ bool CStockDbManager::SaveTimelineCache(const std::wstring& stockCode, const std
 
 	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
+	bool isUS = CCommon::IsUSStockCode(stockCode);
 	std::string tradeDate = GetTodayDateString();
 	time_t now = time(nullptr);
 	bool ok = true;
 	for (const auto& item : data)
 	{
 		if (item.time.empty()) continue;
-		if (!CCommon::IsValidTimelineTime(item.time, isHK, isSecid)) continue;
+		if (!CCommon::IsValidTimelineTime(item.time, isHK, isSecid || isUS)) continue;
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
@@ -646,12 +647,13 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadTimelineCache(const std::
 
 	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
+	bool isUS = CCommon::IsUSStockCode(stockCode);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
-		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
+		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid || isUS)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);
@@ -679,12 +681,13 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadLatestTimelineCache(const
 
 	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
+	bool isUS = CCommon::IsUSStockCode(stockCode);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
-		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
+		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid || isUS)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);
@@ -901,7 +904,7 @@ int CStockDbManager::HealAbnormalDayKLineCache()
 	int healed = 0;
 	for (const auto& code : codes)
 	{
-		if (CCommon::IsEmSecidCode(code))
+		if (CCommon::IsEmSecidCode(code) || CCommon::IsUSStockCode(code) || code.find(kHK) == 0)
 			continue;
 		auto points = LoadKLineCache(code, STOCK::Period::DAY);
 		std::string detail;

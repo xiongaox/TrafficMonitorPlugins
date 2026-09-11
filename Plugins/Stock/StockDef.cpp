@@ -3,6 +3,7 @@
 #include "SignalAnalyzer.h"
 #include <cmath>
 #include <iomanip>
+#include <algorithm>
 #include "Common.h"
 #include <DataManager.h>
 #include <Stock.h>
@@ -72,7 +73,8 @@ void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vec
 			auto stockData = getStock(key);
 			if (!stockData) continue;
 
-			stockData->info.code = key;
+			std::wstring originalCode = stockData->info.code.empty() ? key : stockData->info.code;
+			stockData->info.code = originalCode;
 
 			std::string values = line.substr(pos + (line[pos + 1] == '\"' ? 2 : 1));
 			if (!values.empty() && values.back() == '\"')
@@ -82,7 +84,7 @@ void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vec
 			if (data_arr.size() >= 30)
 			{
 				stockData->info.is_ok = true;
-				stockData->info.LoadTencent(key, data_arr);
+				stockData->info.LoadTencent(originalCode, data_arr);
 				stockData->UpdateOrderPriceAccum();
 			}
 		}
@@ -97,12 +99,13 @@ void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vec
 			std::wstring key = CCommon::StrToUnicode(item_arr[0].c_str());
 			auto stockData = getStock(key);
 			if (!stockData) continue;
-			stockData->info.code = key;
+			std::wstring originalCode = stockData->info.code.empty() ? key : stockData->info.code;
+			stockData->info.code = originalCode;
 			stockData->info.is_ok = true;
 
 			std::string data = item_arr[1];
 			std::vector<std::string> data_arr = CCommon::split(data, ",");
-			stockData->info.Load(key, data_arr);
+			stockData->info.Load(originalCode, data_arr);
 			stockData->UpdateOrderPriceAccum();
 		}
 	}
@@ -906,7 +909,8 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	openPrice = { convert<Price>(data[5]) };
 	bool isStar = CCommon::IsStarMarketStock(key);
 	bool isHK = (key.find(kHK) == 0);
-	Volume volMultiplier = (isStar || isHK) ? 1 : 100;
+	bool isUS = CCommon::IsUSStockCode(key);
+	Volume volMultiplier = (isStar || isHK || isUS) ? 1 : 100;
 	volume = { convert<Volume>(data[6]) * volMultiplier };
 	if (data.size() > 7 && !data[7].empty())
 		outerVolume = { convert<Volume>(data[7]) * volMultiplier };
@@ -939,7 +943,7 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	if (data.size() > 34) lowPrice = { convert<Price>(data[34]) };
 
 	if (data.size() > 37 && !data[37].empty())
-		turnover = { convert<Amount>(data[37]) * (isHK ? 1.0 : 10000.0) };
+		turnover = { convert<Amount>(data[37]) * ((isHK || isUS) ? 1.0 : 10000.0) };
 
 	if (data.size() > 38 && !data[38].empty())
 		turnoverRate = { convert<Amount>(data[38]) };
@@ -1380,7 +1384,8 @@ void STOCK::StockData::addTimelinePoint(const TimelinePoint& point)
 {
 	bool isSecid = CCommon::IsEmSecidCode(info.code);
 	bool isHK = (info.code.find(kHK) == 0);
-	if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) return;
+	bool isUS = CCommon::IsUSStockCode(info.code);
+	if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid || isUS)) return;
 	auto timelineData = MakesureHistoricalData<TimelineData>(Period::TIMELINE);
 	timelineData->data.push_back(point);
 }
@@ -1406,6 +1411,7 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 
 	bool isSecid = CCommon::IsEmSecidCode(info.code);
 	bool isHK = (info.code.find(kHK) == 0);
+	bool isUS = CCommon::IsUSStockCode(info.code);
 
 	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
 	if (doc != nullptr)
@@ -1434,7 +1440,7 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 							point.time = utilities::JsonHelper::GetJsonString(item, "m");
 							if (point.time.size() > 5 && point.time.find(':') != std::string::npos)
 								point.time = point.time.substr(0, 5);
-							if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
+							if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid || isUS)) continue;
 							point.volume = GetJsonVolume(item, "v");
 							point.price = GetJsonPrice(item, "p");
 							point.amount = point.price * point.volume;
@@ -1552,14 +1558,14 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 											pt.time = t.substr(0, 5);
 										else
 											pt.time = t;
-										if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid)) continue;
+										if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid || isUS)) continue;
 										pt.price = static_cast<Price>(atof(parts[1].c_str()));
 										if (parts.size() >= 4)
 										{
 											double rawCumVol = atof(parts[2].c_str());
 											double cumAmt = atof(parts[3].c_str());
 
-											bool isVolInShares = CCommon::IsStarMarketStock(info.code);
+											bool isVolInShares = CCommon::IsStarMarketStock(info.code) || isUS;
 											if (rawCumVol > 0.0 && cumAmt > 0.0 && pt.price > 0.0)
 											{
 												double avgIfShares = cumAmt / rawCumVol;
@@ -1582,7 +1588,7 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 										}
 										else if (parts.size() >= 3)
 										{
-											bool isVolInShares = CCommon::IsStarMarketStock(info.code);
+											bool isVolInShares = CCommon::IsStarMarketStock(info.code) || isUS;
 											double volVal = atof(parts[2].c_str());
 											pt.volume = static_cast<Volume>(volVal * (isVolInShares ? 1.0 : 100.0));
 											pt.amount = pt.price * pt.volume;
@@ -1627,10 +1633,10 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 									else
 										pt.time = dt;
 									pt.fullTime = dt;
-									if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid)) continue;
+									if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid || isUS)) continue;
 									pt.price = static_cast<Price>(atof(parts[2].c_str()));
 									double cumVolLots = atof(parts[5].c_str());
-									double cumVolShares = cumVolLots * 100.0;
+									double cumVolShares = isUS ? cumVolLots : (cumVolLots * 100.0);
 									double cumAmt = atof(parts[6].c_str());
 									pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
 									pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
@@ -1725,7 +1731,7 @@ bool STOCK::HasAbnormalKLineMove(const std::vector<STOCK::KLinePoint>& points, s
 	return false;
 }
 
-std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey)
+std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey, std::wstring* outSourceDesc)
 {
 	std::vector<STOCK::KLinePoint> points;
 	if (jsonData.empty()) return points;
@@ -1750,6 +1756,7 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 			yyjson_val* eastmoneyKlines = yyjson_obj_get(dataVal, "klines");
 			if (eastmoneyKlines != nullptr && yyjson_is_arr(eastmoneyKlines))
 			{
+				if (outSourceDesc) *outSourceDesc = L"东方财富 - 前复权";
 				yyjson_val* item;
 				yyjson_arr_iter arrIter;
 				yyjson_arr_iter_init(eastmoneyKlines, &arrIter);
@@ -1766,7 +1773,8 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 						point.close = static_cast<Price>(atof(values[2].c_str()));
 						point.high = static_cast<Price>(atof(values[3].c_str()));
 						point.low = static_cast<Price>(atof(values[4].c_str()));
-						point.volume = static_cast<Volume>(atof(values[5].c_str()) * 100);
+						Volume emVolMultiplier = (CCommon::IsUSStockCode(stock_id) || CCommon::IsStarMarketStock(stock_id)) ? 1 : 100;
+						point.volume = static_cast<Volume>(atof(values[5].c_str()) * emVolMultiplier);
 						points.push_back(point);
 					}
 				}
@@ -1796,9 +1804,14 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 				{
 					std::string qfqKey = "qfq" + periodKey;
 					yyjson_val* klineArr = yyjson_obj_get(stockObj, qfqKey.c_str());
-					if (klineArr == nullptr || !yyjson_is_arr(klineArr) || yyjson_arr_size(klineArr) == 0)
+					bool isQfq = (klineArr != nullptr && yyjson_is_arr(klineArr) && yyjson_arr_size(klineArr) > 0);
+					if (!isQfq)
 					{
 						klineArr = yyjson_obj_get(stockObj, periodKey.c_str());
+					}
+					if (outSourceDesc)
+					{
+						*outSourceDesc = isQfq ? L"腾讯 - 前复权" : L"腾讯 - 不复权";
 					}
 
 					if (klineArr != nullptr && yyjson_is_arr(klineArr))
@@ -1825,7 +1838,7 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 								point.close = GetValPrice(v2);
 								point.high = GetValPrice(v3);
 								point.low = GetValPrice(v4);
-								Volume volMultiplier = CCommon::IsStarMarketStock(stock_id) ? 1 : 100;
+								Volume volMultiplier = (CCommon::IsStarMarketStock(stock_id) || CCommon::IsUSStockCode(stock_id)) ? 1 : 100;
 								point.volume = GetValVolume(v5) * volMultiplier;
 
 								points.push_back(point);
@@ -1839,6 +1852,7 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 	// 2. 新浪格式: [ {"day":"2026-08-28","open":"1.16","high":"1.17","low":"1.13","close":"1.13","volume":"1227850200"}, ... ]
 	else if (yyjson_is_arr(root))
 	{
+		if (outSourceDesc) *outSourceDesc = L"新浪";
 		yyjson_val* item;
 		yyjson_arr_iter iter;
 		yyjson_arr_iter_init(root, &iter);
@@ -2227,4 +2241,56 @@ double STOCK::StockData::CalculateAnnualizedReturn(double costPrice, double hold
 		return 0;
 
 	return (profitLossPercent / daysHeld) * 365;
+}
+
+std::shared_ptr<StockData> STOCK::StockMarket::findMatchingStock(const std::wstring& code)
+{
+	auto it = stocks.find(code);
+	if (it != stocks.end())
+		return it->second;
+
+	if (CCommon::IsUSStockCode(code))
+	{
+		std::wstring pure = CCommon::GetPureCode(code);
+		size_t dot = pure.find(L'.');
+		if (dot != std::wstring::npos)
+		{
+			if (pure.size() > 0 && iswdigit(pure[0]))
+				pure = pure.substr(dot + 1);
+			else
+				pure = pure.substr(0, dot);
+		}
+		std::transform(pure.begin(), pure.end(), pure.begin(), ::towlower);
+
+		for (auto& pair : stocks)
+		{
+			if (CCommon::IsUSStockCode(pair.first))
+			{
+				std::wstring regPure = CCommon::GetPureCode(pair.first);
+				size_t regDot = regPure.find(L'.');
+				if (regDot != std::wstring::npos)
+				{
+					if (regPure.size() > 0 && iswdigit(regPure[0]))
+						regPure = regPure.substr(regDot + 1);
+					else
+						regPure = regPure.substr(0, regDot);
+				}
+				std::transform(regPure.begin(), regPure.end(), regPure.begin(), ::towlower);
+				if (!pure.empty() && pure == regPure)
+					return pair.second;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+std::shared_ptr<StockData> STOCK::StockMarket::getStock(const std::wstring& code)
+{
+	auto stock = findMatchingStock(code);
+	if (stock)
+	{
+		return stock;
+	}
+	return addStock(code);
 }

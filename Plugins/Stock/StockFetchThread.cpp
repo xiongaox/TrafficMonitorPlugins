@@ -924,24 +924,24 @@ void CStockFetchThread::FetchSgeSnapshot(const std::wstring& code)
 	}
 }
 
-void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days)
+void CStockFetchThread::FetchDayKLine(const std::wstring& code, int days, bool forceEastMoney)
 {
 	std::string resp;
-	bool ok = g_http_fetcher.FetchDayKLine(code, days, resp);
+	bool ok = g_http_fetcher.FetchDayKLine(code, days, resp, forceEastMoney);
 	g_data.ApplyDayKLine(code, resp, ok);
 }
 
-void CStockFetchThread::FetchWeekKLine(const std::wstring& code, int weeks)
+void CStockFetchThread::FetchWeekKLine(const std::wstring& code, int weeks, bool forceEastMoney)
 {
 	std::string resp;
-	bool ok = g_http_fetcher.FetchWeekKLine(code, weeks, resp);
+	bool ok = g_http_fetcher.FetchWeekKLine(code, weeks, resp, forceEastMoney);
 	g_data.ApplyWeekKLine(code, resp, ok);
 }
 
-void CStockFetchThread::FetchMonthKLine(const std::wstring& code, int months)
+void CStockFetchThread::FetchMonthKLine(const std::wstring& code, int months, bool forceEastMoney)
 {
 	std::string resp;
-	bool ok = g_http_fetcher.FetchMonthKLine(code, months, resp);
+	bool ok = g_http_fetcher.FetchMonthKLine(code, months, resp, forceEastMoney);
 	g_data.ApplyMonthKLine(code, resp, ok);
 }
 

@@ -453,6 +453,24 @@ bool CCommon::IsEmSecidCode(const std::string& code)
 	return true;
 }
 
+bool CCommon::IsUSStockCode(const std::wstring& code)
+{
+	if (code.rfind(L"gb_", 0) == 0 || code.rfind(L"us", 0) == 0)
+		return true;
+	if (code.rfind(L"105.", 0) == 0 || code.rfind(L"106.", 0) == 0 || code.rfind(L"107.", 0) == 0)
+		return true;
+	return false;
+}
+
+bool CCommon::IsUSStockCode(const std::string& code)
+{
+	if (code.rfind("gb_", 0) == 0 || code.rfind("us", 0) == 0)
+		return true;
+	if (code.rfind("105.", 0) == 0 || code.rfind("106.", 0) == 0 || code.rfind("107.", 0) == 0)
+		return true;
+	return false;
+}
+
 bool CCommon::IsValidTimelineTime(const std::string& timeStr, bool isHK, bool isFullSession)
 {
 	if (timeStr.size() < 4) return false;
@@ -677,6 +695,10 @@ std::vector<StockSearchResult> CCommon::SearchStock(const std::wstring& keyword)
 					{
 						std::string fCode = tokens[3];
 						std::string pCode = tokens[2];
+						if (tokens.size() > 1 && tokens[1] == "41" && fCode.rfind("gb_", 0) != 0)
+						{
+							fCode = "gb_" + pCode;
+						}
 						std::wstring wName = StrToUnicode(tokens[4].c_str(), false);
 						std::wstring wFullCode = StrToUnicode(fCode.c_str(), false);
 
