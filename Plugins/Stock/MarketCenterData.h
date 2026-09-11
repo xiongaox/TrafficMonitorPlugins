@@ -104,8 +104,8 @@ public:
 	std::vector<MC::FflowMinute> m_fflow_sz;            // 深证主力资金分时
 	std::vector<MC::IndexTrendPoint> m_index_trend;     // 上证指数分时
 	MC::UpDownDist m_dist;                              // 最新涨跌分布
-	double m_turnover_today{ 0.0 };                      // 沪深今日合计成交额(元)
-	double m_turnover_yesterday{ 0.0 };                  // 沪深昨日合计成交额(元)
+	double m_turnover_today{ 0.0 };                      // 沪深京今日合计成交额(元)
+	double m_turnover_yesterday{ 0.0 };                  // 沪深京昨日合计成交额(元)
 	std::vector<MC::TrendSample> m_trend_curve;         // 涨跌家数分时（自积累）
 	std::vector<MC::EtfFlowSample> m_etf_flow_curve;    // ETF累计净流入分时（自积累）
 

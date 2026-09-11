@@ -1045,9 +1045,10 @@ bool CMarketCenterData::FetchTrendDist()
 	FetchZDPool("ZTPool", dist.zt);
 	FetchZDPool("DTPool", dist.dt);
 
-	// 沪深成交额（今日 + 昨日）
-	double shT = 0, shPrev = 0, szT = 0, szPrev = 0;
+	// 沪深京成交额（今日 + 昨日，合并北交所北证50实现全市场口径）
+	double shT = 0, shPrev = 0, szT = 0, szPrev = 0, bjT = 0, bjPrev = 0;
 	bool okTurnover = FetchIndexTurnover(L"1.000001", shT, shPrev) && FetchIndexTurnover(L"0.399001", szT, szPrev);
+	bool okBj = FetchIndexTurnover(L"0.899050", bjT, bjPrev);
 
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
@@ -1055,8 +1056,8 @@ bool CMarketCenterData::FetchTrendDist()
 		m_dist_time = time(nullptr);
 		if (okTurnover)
 		{
-			m_turnover_today = shT + szT;
-			m_turnover_yesterday = shPrev + szPrev;
+			m_turnover_today = shT + szT + (okBj ? bjT : 0.0);
+			m_turnover_yesterday = shPrev + szPrev + (okBj ? bjPrev : 0.0);
 			m_turnover_time = time(nullptr);
 		}
 		MarkSuccess(DS_TREND);
