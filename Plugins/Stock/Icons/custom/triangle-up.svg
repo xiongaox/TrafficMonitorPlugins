@@ -1,0 +1,6 @@
+<!-- Project-defined icon: solid triangle for dense list sort indicators.
+     Not part of Lucide; follows Lucide's 24 x 24 canvas, visual centring and
+     whitespace so it sits consistently beside the Lucide line icons. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <polygon points="12,5 4,19 20,19" />
+</svg>

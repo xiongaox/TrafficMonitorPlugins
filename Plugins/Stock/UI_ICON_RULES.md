@@ -1,7 +1,7 @@
 # Stock Plugin UI Icon Rules
 
 This file governs every UI icon change under `Plugins/Stock`. It is based on
-`C:\Users\xiongaox\Downloads\AI_UI_Icon_Rules.md` and is kept beside the code so
+[`AI_UI_Icon_Rules.md`](AI_UI_Icon_Rules.md) and is kept beside the code so
 future UI work has a versioned, reviewable contract.
 
 ## Required Workflow
@@ -15,21 +15,31 @@ Before adding or modifying a UI icon:
    Design Icons. Record the source and version beside the imported asset.
 4. Add the source SVG to `Icons/lucide/`, update the reviewed geometry in
    `IconsData.h`, and expose it through `Icons::Id` in `Icons.h`/`Icons.cpp`.
+   When no library icon is suitable, add a reviewed project-defined source to
+   `Icons/custom/` instead and state its origin in a leading comment.
 5. Render it only through `Icons::Draw`. Do not reproduce geometry in a window,
    panel, dialog, or button implementation.
 
 The checked-in source set uses `lucide-static v1.43.0`, whose ISC license is
 included in each SVG source file. Run `python Icons/gen_icons.py` after changing
-the source set; the script validates that SVGs stay within the renderer's
-supported line-art subset.
+the source set. The script is a validator, not a generator: it confirms that
+every source stays within the renderer's supported subset, allows only `path`,
+`line`, `polyline`, `polygon`, `circle`, and `rect` elements, accepts only the
+`M m L l H h V v Z z` path commands, and checks that all coordinates fall inside
+the 24 x 24 canvas. It reports, but does not reject, sources that use arc
+commands, because their curves are approximated as polylines in `IconsData.h`.
+It never emits `IconsData.h`; update that file by hand.
 
 ## Rendering Contract
 
 `Icons::Draw(Gdiplus::Graphics&, Icons::Id, bounds, color, alpha, strokeWidth)`
-is the sole operational-icon renderer. It scales Lucide's 24 x 24 viewBox,
-uses Lucide's 2px round-cap/round-join stroke treatment, and accepts the active
-UI color. Callers retain ownership of hover, pressed, disabled, and selected
-backgrounds, while icon color must follow the same state color as nearby text.
+is the sole operational-icon renderer. It scales the 24 x 24 viewBox, uses
+Lucide's 2px round-cap/round-join stroke treatment, and accepts the active UI
+color. It draws three kinds of geometry: stroked polylines, stroked circles, and
+filled polygons. Filled shapes are drawn first so that stroke work cannot be
+occluded by them. Callers retain ownership of hover, pressed, disabled, and
+selected backgrounds, while icon color must follow the same state color as
+nearby text.
 
 Recommended visible bounds:
 
@@ -55,7 +65,7 @@ Use `g_data.DPI()` or `g_data.RDPI()` for all size and spacing calculations.
 
 ## Current Standard Mappings
 
-| Action | Icons::Id | Lucide source |
+| Action | Icons::Id | Source |
 |---|---|---|
 | Close / dismiss | `X` | `x.svg` |
 | Confirmed / selected | `Check` | `check.svg` |
@@ -69,6 +79,14 @@ Use `g_data.DPI()` or `g_data.RDPI()` for all size and spacing calculations.
 | Expand / collapse | `ChevronUp`, `ChevronDown` | matching SVG |
 | Expand / collapse secondary panel | `ChevronsUp`, `ChevronsDown` | matching SVG |
 | Open / close left panel | `PanelLeftOpen`, `PanelLeftClose` | matching SVG |
+| Sort direction, dense list | `SolidTriangleUp`, `SolidTriangleDown` | `custom/triangle-up.svg`, `custom/triangle-down.svg` |
+
+The two solid triangles are the only icons in the set that deviate from
+Lucide's line-art style. Lucide's `triangle` is an outlined shape, which reads
+as a chart annotation rather than a sort affordance at dense list sizes, so the
+project defines a filled pair on the same 24 x 24 canvas. They remain subject to
+every rule above: the geometry lives in `IconsData.h` as polygons, and they are
+drawn only through `Icons::Draw`.
 
 ## Data Visualization Exemptions
 

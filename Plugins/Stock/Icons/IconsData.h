@@ -1,8 +1,11 @@
 #pragma once
 
-// Generated from lucide-static v1.43.0 SVG sources in Icons/lucide.
-// The coordinates are in Lucide's 24 x 24 viewBox. Keep this file generated:
-// run gen_icons.py from this directory after changing the source SVG set.
+// Reviewed geometry derived from the SVG sources in Icons/lucide and Icons/custom.
+// The coordinates are in Lucide's 24 x 24 viewBox. gen_icons.py validates that the
+// source set stays inside the renderer's supported subset; it does not emit this
+// file, so update the data below by hand after changing the source SVG set. Sources
+// that use arc commands (pencil, refresh-cw, trash-2) are approximated as polylines
+// here, because the renderer draws straight segments only.
 
 namespace IconsData
 {
@@ -25,18 +28,28 @@ namespace IconsData
 		float radius;
 	};
 
+	struct Polygon
+	{
+		const Point* points;
+		int pointCount;
+	};
+
 	struct Icon
 	{
 		const Stroke* strokes;
 		int strokeCount;
 		const Circle* circles;
 		int circleCount;
+		const Polygon* polygons;
+		int polygonCount;
 	};
 
 #define ICON_POINTS(name, ...) \
 	static const Point name[] = { __VA_ARGS__ }
 #define ICON_STROKES(name, ...) \
 	static const Stroke name[] = { __VA_ARGS__ }
+#define ICON_POLYGONS(name, ...) \
+	static const Polygon name[] = { __VA_ARGS__ }
 
 	ICON_POINTS(kX0, { 18, 6 }, { 6, 18 });
 	ICON_POINTS(kX1, { 6, 6 }, { 18, 18 });
@@ -104,6 +117,15 @@ namespace IconsData
 	ICON_POINTS(kPanelLeftClose2, { 16, 15 }, { 13, 12 }, { 16, 9 });
 	ICON_STROKES(kPanelLeftClose, { kPanelLeftClose0, _countof(kPanelLeftClose0) }, { kPanelLeftClose1, _countof(kPanelLeftClose1) }, { kPanelLeftClose2, _countof(kPanelLeftClose2) });
 
+	// Solid sort indicators. These are the only filled icons in the set; their
+	// sources live in Icons/custom rather than Icons/lucide.
+	ICON_POINTS(kSolidTriangleUp0, { 12, 5 }, { 4, 19 }, { 20, 19 });
+	ICON_POLYGONS(kSolidTriangleUp, { kSolidTriangleUp0, _countof(kSolidTriangleUp0) });
+
+	ICON_POINTS(kSolidTriangleDown0, { 4, 5 }, { 20, 5 }, { 12, 19 });
+	ICON_POLYGONS(kSolidTriangleDown, { kSolidTriangleDown0, _countof(kSolidTriangleDown0) });
+
 #undef ICON_POINTS
 #undef ICON_STROKES
+#undef ICON_POLYGONS
 }

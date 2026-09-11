@@ -7,21 +7,23 @@ namespace
 	const IconsData::Icon& GetIcon(Icons::Id id)
 	{
 		using namespace IconsData;
-		static const Icon x = { kX, _countof(kX), nullptr, 0 };
-		static const Icon check = { kCheck, _countof(kCheck), nullptr, 0 };
-		static const Icon plus = { kPlus, _countof(kPlus), nullptr, 0 };
-		static const Icon trash2 = { kTrash2, _countof(kTrash2), nullptr, 0 };
-		static const Icon pencil = { kPencil, _countof(kPencil), nullptr, 0 };
-		static const Icon arrowUp = { kArrowUp, _countof(kArrowUp), nullptr, 0 };
-		static const Icon arrowDown = { kArrowDown, _countof(kArrowDown), nullptr, 0 };
-		static const Icon arrowUpDown = { kArrowUpDown, _countof(kArrowUpDown), nullptr, 0 };
-		static const Icon refreshCw = { kRefreshCw, _countof(kRefreshCw), nullptr, 0 };
-		static const Icon chevronUp = { kChevronUp, _countof(kChevronUp), nullptr, 0 };
-		static const Icon chevronDown = { kChevronDown, _countof(kChevronDown), nullptr, 0 };
-		static const Icon chevronsUp = { kChevronsUp, _countof(kChevronsUp), nullptr, 0 };
-		static const Icon chevronsDown = { kChevronsDown, _countof(kChevronsDown), nullptr, 0 };
-		static const Icon panelLeftOpen = { kPanelLeftOpen, _countof(kPanelLeftOpen), nullptr, 0 };
-		static const Icon panelLeftClose = { kPanelLeftClose, _countof(kPanelLeftClose), nullptr, 0 };
+		static const Icon x = { kX, _countof(kX), nullptr, 0, nullptr, 0 };
+		static const Icon check = { kCheck, _countof(kCheck), nullptr, 0, nullptr, 0 };
+		static const Icon plus = { kPlus, _countof(kPlus), nullptr, 0, nullptr, 0 };
+		static const Icon trash2 = { kTrash2, _countof(kTrash2), nullptr, 0, nullptr, 0 };
+		static const Icon pencil = { kPencil, _countof(kPencil), nullptr, 0, nullptr, 0 };
+		static const Icon arrowUp = { kArrowUp, _countof(kArrowUp), nullptr, 0, nullptr, 0 };
+		static const Icon arrowDown = { kArrowDown, _countof(kArrowDown), nullptr, 0, nullptr, 0 };
+		static const Icon arrowUpDown = { kArrowUpDown, _countof(kArrowUpDown), nullptr, 0, nullptr, 0 };
+		static const Icon refreshCw = { kRefreshCw, _countof(kRefreshCw), nullptr, 0, nullptr, 0 };
+		static const Icon chevronUp = { kChevronUp, _countof(kChevronUp), nullptr, 0, nullptr, 0 };
+		static const Icon chevronDown = { kChevronDown, _countof(kChevronDown), nullptr, 0, nullptr, 0 };
+		static const Icon chevronsUp = { kChevronsUp, _countof(kChevronsUp), nullptr, 0, nullptr, 0 };
+		static const Icon chevronsDown = { kChevronsDown, _countof(kChevronsDown), nullptr, 0, nullptr, 0 };
+		static const Icon panelLeftOpen = { kPanelLeftOpen, _countof(kPanelLeftOpen), nullptr, 0, nullptr, 0 };
+		static const Icon panelLeftClose = { kPanelLeftClose, _countof(kPanelLeftClose), nullptr, 0, nullptr, 0 };
+		static const Icon solidTriangleUp = { nullptr, 0, nullptr, 0, kSolidTriangleUp, _countof(kSolidTriangleUp) };
+		static const Icon solidTriangleDown = { nullptr, 0, nullptr, 0, kSolidTriangleDown, _countof(kSolidTriangleDown) };
 
 		switch (id)
 		{
@@ -40,6 +42,8 @@ namespace
 		case Icons::Id::ChevronsDown: return chevronsDown;
 		case Icons::Id::PanelLeftOpen: return panelLeftOpen;
 		case Icons::Id::PanelLeftClose: return panelLeftClose;
+		case Icons::Id::SolidTriangleUp: return solidTriangleUp;
+		case Icons::Id::SolidTriangleDown: return solidTriangleDown;
 		}
 		return x;
 	}
@@ -55,36 +59,42 @@ void Icons::Draw(Gdiplus::Graphics& graphics, Id id, const Gdiplus::RectF& bound
 	const float offsetX = bounds.X + (bounds.Width - 24.0f * scale) / 2.0f;
 	const float offsetY = bounds.Y + (bounds.Height - 24.0f * scale) / 2.0f;
 	const Gdiplus::Color strokeColor(alpha, GetRValue(color), GetGValue(color), GetBValue(color));
-	if (id == Id::SolidTriangleUp || id == Id::SolidTriangleDown)
+	const IconsData::Icon& icon = GetIcon(id);
+
+	std::vector<Gdiplus::PointF> points;
+
+	for (int polygonIndex = 0; polygonIndex < icon.polygonCount; ++polygonIndex)
 	{
-		const float left = offsetX + 4.0f * scale;
-		const float right = offsetX + 20.0f * scale;
-		const float top = offsetY + 5.0f * scale;
-		const float bottom = offsetY + 19.0f * scale;
-		const float centerX = offsetX + 12.0f * scale;
-		Gdiplus::PointF points[3] = {
-			id == Id::SolidTriangleUp ? Gdiplus::PointF(centerX, top) : Gdiplus::PointF(left, top),
-			id == Id::SolidTriangleUp ? Gdiplus::PointF(left, bottom) : Gdiplus::PointF(right, top),
-			id == Id::SolidTriangleUp ? Gdiplus::PointF(right, bottom) : Gdiplus::PointF(centerX, bottom),
-		};
+		const IconsData::Polygon& polygon = icon.polygons[polygonIndex];
+		if (polygon.pointCount < 3)
+			continue;
+
+		points.clear();
+		points.reserve(polygon.pointCount);
+		for (int pointIndex = 0; pointIndex < polygon.pointCount; ++pointIndex)
+		{
+			const IconsData::Point& point = polygon.points[pointIndex];
+			points.emplace_back(offsetX + point.x * scale, offsetY + point.y * scale);
+		}
 		Gdiplus::SolidBrush brush(strokeColor);
-		graphics.FillPolygon(&brush, points, _countof(points));
-		return;
+		graphics.FillPolygon(&brush, points.data(), static_cast<INT>(points.size()));
 	}
+
+	if (icon.strokeCount == 0 && icon.circleCount == 0)
+		return;
 
 	Gdiplus::Pen pen(strokeColor, max(1.0f, strokeWidth * scale));
 	pen.SetStartCap(Gdiplus::LineCapRound);
 	pen.SetEndCap(Gdiplus::LineCapRound);
 	pen.SetLineJoin(Gdiplus::LineJoinRound);
 
-	const IconsData::Icon& icon = GetIcon(id);
 	for (int strokeIndex = 0; strokeIndex < icon.strokeCount; ++strokeIndex)
 	{
 		const IconsData::Stroke& stroke = icon.strokes[strokeIndex];
 		if (stroke.pointCount < 2)
 			continue;
 
-		std::vector<Gdiplus::PointF> points;
+		points.clear();
 		points.reserve(stroke.pointCount);
 		for (int pointIndex = 0; pointIndex < stroke.pointCount; ++pointIndex)
 		{
