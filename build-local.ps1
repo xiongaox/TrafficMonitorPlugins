@@ -94,6 +94,13 @@ $PluginDir | ForEach-Object { Write-Host "[*] Target: $_" -ForegroundColor Gray 
 
 # -------------------------------------------------------------------- 3. 编译
 if (-not $NoBuild) {
+    # 部分受限环境（沙箱 / AI 工具）会把 PATHEXT 收窄到只剩 .CPL 并清空 ComSpec。
+    # 此时 PowerShell 把 MSBuild.exe 当作文档而非可执行程序，报「无法在管道中间运行文档」，
+    # 且不产生任何 MSBuild 输出，最终只留下本脚本含糊的 "Build failed"。提前说明真实原因。
+    if ($env:PATHEXT -notmatch '\.EXE') {
+        throw "PATHEXT 不含 .EXE（实际值：'$env:PATHEXT'），PowerShell 无法启动 MSBuild.exe。请在普通终端中运行本脚本。"
+    }
+
     $msbuild = Get-MSBuildPath
     Write-Host "[*] MSBuild: $msbuild" -ForegroundColor Gray
 
