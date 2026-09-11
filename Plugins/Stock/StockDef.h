@@ -214,7 +214,7 @@ namespace STOCK
 	};
 
 	// 解析各类格式（腾讯QFQ/分钟K、东方财富klines、新浪JSON）为标准KLinePoint列表
-	std::vector<KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey);
+	std::vector<KLinePoint> ParseKLinePointsFromJson(const std::string& jsonData, const std::wstring& stock_id, const std::string& periodKey, std::wstring* outSourceDesc = nullptr);
 
 	// K线单日异常跳变判定阈值：A股单日涨跌停最大±30%（北交所），基金份额折算/除权在
 	// 不复权数据上形成的断崖（实测 -52%~-66%）远超该值；前复权序列不会出现此类跳变
@@ -349,10 +349,11 @@ namespace STOCK
 	{
 	public:
 		std::vector<KLinePoint> data;
+		std::wstring sourceDesc; // 数据源描述（如 L"东方财富 - 前复权"、L"腾讯 - 前复权"、L"腾讯 - 不复权"、L"本地缓存"）
 		Period GetPeriod() const override { return Period::DAY; }
 		TimePoint GetStartTime() const override { return data.empty() ? "" : data.front().day; }
 		TimePoint GetEndTime() const override { return data.empty() ? "" : data.back().day; }
-		void Clear() { data.clear(); }
+		void Clear() { data.clear(); sourceDesc.clear(); }
 
 		// 计算N日均线（从末尾往前取period天）
 		double CalculateMA(int period) const;
@@ -1226,16 +1227,11 @@ namespace STOCK
 			return stocks[code];
 		}
 
+		// 查找匹配的股票对象（支持美股在跨数据源下的格式兼容：usNVDA / gb_nvda / 105.NVDA 匹配 gb_nvda.oq 等）
+		std::shared_ptr<StockData> findMatchingStock(const std::wstring& code);
+
 		// 获取股票数据
-		std::shared_ptr<StockData> getStock(const std::wstring& code)
-		{
-			auto it = stocks.find(code);
-			if (it != stocks.end())
-			{
-				return it->second;
-			}
-			return addStock(code);
-		}
+		std::shared_ptr<StockData> getStock(const std::wstring& code);
 	};
 
 	// 转换函数模板

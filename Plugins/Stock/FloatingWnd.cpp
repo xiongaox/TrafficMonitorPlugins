@@ -3,6 +3,7 @@
 #include <afxinet.h>
 #include <memory>
 #include <map>
+#include <thread>
 #include "Common.h"
 #include "DataManager.h"
 #include <Stock.h>
@@ -12,6 +13,7 @@
 #include "OptionsDlg.h"
 #include "TradeRecordDialog.h"
 #include "StockFetchThread.h"
+#include "StockHttpFetcher.h"
 #include "SmartSignalTestDlg.h"
 #include "ChartColors.h"
 #include "Icons/Icons.h"
@@ -106,7 +108,9 @@ enum {
 	IDC_EXPAND_BTN = 1020,
 	IDC_TOGGLE_STOCK_LIST_BTN = 1021,
 	IDC_CALL_AUCTION_BTN = 1022,
-	IDC_REFRESH_TIMER = 1023
+	IDC_REFRESH_TIMER = 1023,
+	IDC_KLINE_SOURCE_BTN = 1025,
+	IDC_KLINE_PROGRESS_TIMER = 1026
 };
 
 BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
@@ -136,6 +140,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_BN_CLICKED(IDC_KLINE_BTN, &CFloatingWnd::OnBnClickedKLineBtn)
 	ON_BN_CLICKED(IDC_WEEK_KLINE_BTN, &CFloatingWnd::OnBnClickedWeekKLineBtn)
 	ON_BN_CLICKED(IDC_MONTH_KLINE_BTN, &CFloatingWnd::OnBnClickedMonthKLineBtn)
+	ON_BN_CLICKED(IDC_KLINE_SOURCE_BTN, &CFloatingWnd::OnBnClickedKLineSourceBtn)
 	ON_BN_CLICKED(IDC_CLOSE_BTN, &CFloatingWnd::OnBnClickedCloseBtn)
 	ON_BN_CLICKED(IDC_MA_BTN, &CFloatingWnd::OnBnClickedMABtn)
 	ON_BN_CLICKED(IDC_BOLL_BTN, &CFloatingWnd::OnBnClickedBollBtn)
@@ -169,11 +174,13 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_btnKLine.Create(_T("日K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_KLINE_BTN);
 	m_btnWeekKLine.Create(_T("周K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_WEEK_KLINE_BTN);
 	m_btnMonthKLine.Create(_T("月K"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_MONTH_KLINE_BTN);
+	m_btnKLineSource.Create(_T(""), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_KLINE_SOURCE_BTN);
 	m_btnCallAuction.ShowWindow(SW_HIDE);
 	m_btnTimeLine.ShowWindow(SW_HIDE);
 	m_btnKLine.ShowWindow(SW_HIDE);
 	m_btnWeekKLine.ShowWindow(SW_HIDE);
 	m_btnMonthKLine.ShowWindow(SW_HIDE);
+	m_btnKLineSource.ShowWindow(SW_HIDE);
 
 	// 右侧按钮：关闭、放大、自选折叠、筹码峰（全自绘）
 	const int closeBtnWidth = g_data.RDPI(22);
@@ -249,6 +256,8 @@ LRESULT CFloatingWnd::OnUpdateStatus(WPARAM wParam, LPARAM lParam)
 	else
 		m_chartDirty = true;
 	Invalidate(FALSE);
+	if (m_btnKLineSource.GetSafeHwnd())
+		m_btnKLineSource.Invalidate();
 	return 0;
 }
 
@@ -1517,9 +1526,28 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnMonthKLine, modeStartX + (modeTabW + tabGap) * 4, tabY, modeTabW, tabH);
 				SafeShowWindow(m_btnMonthKLine, true);
 
+				// 定位 K 线数据源状态与刷新按钮（放置在指标按钮与模式切换按钮之间的中间空余区域）
+				int indicatorsEndX = tabX + (tabW + tabGap) * 5;
+				int middleStartX = indicatorsEndX + g_data.RDPI(6);
+				int middleEndX = modeStartX - g_data.RDPI(6);
+				int middleW = middleEndX - middleStartX;
+				bool isKLineMode = (m_viewMode >= UI_VIEW_DAY_KLINE);
+				if (isKLineMode && middleW >= g_data.RDPI(80))
+				{
+					int sourceBtnW = min(middleW, g_data.RDPI(260));
+					int sourceBtnX = middleStartX + (middleW - sourceBtnW) / 2;
+					SafeSetWindowPos(m_btnKLineSource, sourceBtnX, tabY, sourceBtnW, tabH);
+					SafeShowWindow(m_btnKLineSource, true);
+					m_btnKLineSource.Invalidate();
+				}
+				else
+				{
+					SafeShowWindow(m_btnKLineSource, false);
+				}
+
 				CButton* subBtns[] = {
 					&m_btnIndicatorCJL, &m_btnIndicatorMACD, &m_btnIndicatorKDJ, &m_btnIndicatorRSI, &m_btnIndicatorWR,
-					&m_btnCallAuction, &m_btnTimeLine, &m_btnKLine, &m_btnWeekKLine, &m_btnMonthKLine
+					&m_btnCallAuction, &m_btnTimeLine, &m_btnKLine, &m_btnWeekKLine, &m_btnMonthKLine, &m_btnKLineSource
 				};
 				for (auto* b : subBtns)
 				{
@@ -1540,6 +1568,7 @@ void CFloatingWnd::OnPaint()
 				SafeShowWindow(m_btnKLine, false);
 				SafeShowWindow(m_btnWeekKLine, false);
 				SafeShowWindow(m_btnMonthKLine, false);
+				SafeShowWindow(m_btnKLineSource, false);
 			}
 			SafeShowWindow(m_btnMA, false);
 			SafeShowWindow(m_btnBoll, false);
@@ -2303,7 +2332,7 @@ void CFloatingWnd::HideChartButtons(bool hide)
 		&m_btnMA, &m_btnBoll, &m_btnIndicatorCJL, &m_btnIndicatorMACD,
 		&m_btnIndicatorKDJ, &m_btnIndicatorWR, &m_btnIndicatorRSI,
 		&m_btnChipPeak, &m_btnOrderBook, &m_btnEtfHoldings,
-		&m_btnExpand, &m_btnToggleStockList,
+		&m_btnExpand, &m_btnToggleStockList, &m_btnKLineSource,
 	};
 	for (auto* b : btns)
 		if (b->GetSafeHwnd())
@@ -2947,6 +2976,9 @@ void CFloatingWnd::UpdateModeButtons()
 		SafeShowWindow(m_btnKLine, showModeBtns);
 		SafeShowWindow(m_btnWeekKLine, showModeBtns);
 		SafeShowWindow(m_btnMonthKLine, showModeBtns);
+		bool isKLineMode = (m_viewMode >= UI_VIEW_DAY_KLINE && m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode);
+		SafeShowWindow(m_btnKLineSource, isKLineMode);
+		if (m_btnKLineSource.GetSafeHwnd()) m_btnKLineSource.Invalidate();
 
 		// 副图指标按钮在所有模式下显示（除总览模式、放大模式和竞价模式外）
 		bool showIndicatorBtns = m_viewMode != UI_VIEW_OVERVIEW && !m_expandedMode && m_viewMode != UI_VIEW_AUCTION;
@@ -3440,6 +3472,93 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	(void)nIDCtl;
 	if (lpDrawItemStruct->CtlType != ODT_BUTTON) return;
 	UINT nID = lpDrawItemStruct->CtlID;
+
+	if (nID == IDC_KLINE_SOURCE_BTN)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect rect = lpDrawItemStruct->rcItem;
+		bool isSelected = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
+
+		bool isRefreshingThis = m_isKLineRefreshing.load() && (m_klineRefreshingStockId == m_stock_id);
+
+		CString srcDesc = _T("未知");
+		if (isRefreshingThis)
+		{
+			int progress = m_klineRefreshProgress.load();
+			srcDesc.Format(_T("正在刷新 %d%%"), max(1, min(progress, 99)));
+		}
+		else
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			auto stockData = g_data.GetStockData(m_stock_id);
+			if (stockData)
+			{
+				STOCK::KLineData* klineObj = nullptr;
+				if (m_viewMode == UI_VIEW_DAY_KLINE) klineObj = stockData->getKLineData();
+				else if (m_viewMode == UI_VIEW_WEEK_KLINE) klineObj = stockData->getWeekKLineData();
+				else if (m_viewMode == UI_VIEW_MONTH_KLINE) klineObj = stockData->getMonthKLineData();
+				if (klineObj)
+				{
+					if (!klineObj->sourceDesc.empty())
+						srcDesc = klineObj->sourceDesc.c_str();
+					else if (!klineObj->data.empty())
+						srcDesc = _T("本地缓存");
+					else
+						srcDesc = _T("无数据");
+				}
+			}
+		}
+
+		COLORREF bgColor = isSelected ? RGB(38, 42, 54) : RGB(24, 27, 34);
+		dc.FillSolidRect(rect, bgColor);
+
+		dc.SetBkMode(TRANSPARENT);
+		CFont btnFont;
+		CreateStockFont(btnFont, dc, g_data.RDPI(10), FW_NORMAL);
+		CFont* pOldFont = dc.SelectObject(&btnFont);
+
+		CString prefix = _T("数据来源：");
+		CString src = srcDesc;
+		CString refresh = _T(" [刷新]");
+
+		CSize szPre = dc.GetTextExtent(prefix);
+		CSize szSrc = dc.GetTextExtent(src);
+		CSize szRef = dc.GetTextExtent(refresh);
+		int totalTextW = szPre.cx + szSrc.cx + szRef.cx;
+
+		int curX = max(rect.left + g_data.RDPI(4), rect.left + (rect.Width() - totalTextW) / 2);
+		int textY = rect.top + (rect.Height() - szPre.cy) / 2;
+
+		// "数据来源：" - 浅灰
+		dc.SetTextColor(RGB(148, 163, 184));
+		dc.TextOut(curX, textY, prefix);
+		curX += szPre.cx;
+
+		// 数据源描述：中间正在刷新时使用50%的白色(RGB(160, 160, 160))，不与[刷新]的蓝色冲突
+		if (isRefreshingThis || src.Find(_T("正在刷新")) != -1)
+			dc.SetTextColor(RGB(160, 160, 160)); // 50%的白色
+		else if (src.Find(_T("不复权")) != -1)
+			dc.SetTextColor(RGB(251, 146, 60)); // 橙黄色突出提示“不复权”
+		else if (src.Find(_T("前复权")) != -1)
+			dc.SetTextColor(RGB(226, 232, 240)); // 亮白/正常
+		else if (src.Find(_T("失败")) != -1)
+			dc.SetTextColor(RGB(248, 113, 113)); // 浅红提示失败
+		else
+			dc.SetTextColor(RGB(148, 163, 184));
+
+		dc.TextOut(curX, textY, src);
+		curX += szSrc.cx;
+
+		// " [刷新]" - 天蓝强调色
+		dc.SetTextColor(isSelected ? RGB(125, 211, 252) : RGB(56, 189, 248));
+		dc.TextOut(curX, textY, refresh);
+
+		dc.SelectObject(pOldFont);
+		btnFont.DeleteObject();
+		dc.Detach();
+		return;
+	}
 
 	// 获取信号与激活状态
 	COLORREF signalColor = CLR_INVALID;
@@ -3951,6 +4070,7 @@ LRESULT CFloatingWnd::OnShowTradeDialog(WPARAM wParam, LPARAM lParam)
 void CFloatingWnd::OnDestroy()
 {
 	KillTimer(IDC_REFRESH_TIMER);
+	KillTimer(IDC_KLINE_PROGRESS_TIMER);
 	m_marketCenterPanel.SetNotifyWnd(nullptr);
 
 	CWnd::OnDestroy();
@@ -3963,6 +4083,28 @@ void CFloatingWnd::OnDestroy()
 
 void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 {
+	if (nIDEvent == IDC_KLINE_PROGRESS_TIMER)
+	{
+		if (m_isKLineRefreshing.load())
+		{
+			int cur = m_klineRefreshProgress.load();
+			if (cur < 92)
+			{
+				int step = max(1, (95 - cur) / 5);
+				m_klineRefreshProgress.store(cur + step);
+			}
+			if (m_btnKLineSource.GetSafeHwnd())
+				m_btnKLineSource.Invalidate();
+		}
+		else
+		{
+			KillTimer(IDC_KLINE_PROGRESS_TIMER);
+			if (m_btnKLineSource.GetSafeHwnd())
+				m_btnKLineSource.Invalidate();
+		}
+		return;
+	}
+
 	if (nIDEvent == IDC_REFRESH_TIMER)
 	{
 		// 行情中心视图：刷新时钟 + 拉取过期数据，并重绘（时钟每秒变化）
@@ -3989,7 +4131,11 @@ void CFloatingWnd::OnTimer(UINT_PTR nIDEvent)
 			needRedraw = true;
 		}
 		if (needRedraw)
+		{
 			Invalidate();
+			if (m_btnKLineSource.GetSafeHwnd())
+				m_btnKLineSource.Invalidate();
+		}
 	}
 	CWnd::OnTimer(nIDEvent);
 }
@@ -4139,6 +4285,12 @@ void CFloatingWnd::UpdateGroupTabHover(const CPoint& point)
 
 BOOL CFloatingWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 {
+	if (pWnd && pWnd->GetSafeHwnd() && pWnd->GetDlgCtrlID() == IDC_KLINE_SOURCE_BTN)
+	{
+		::SetCursor(::LoadCursor(NULL, IDC_HAND));
+		return TRUE;
+	}
+
 	// 行情中心视图：可交互元素上显示手型光标
 	if (m_marketCenterMode && nHitTest == HTCLIENT)
 	{
@@ -4152,6 +4304,74 @@ BOOL CFloatingWnd::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 		}
 	}
 	return CWnd::OnSetCursor(pWnd, nHitTest, message);
+}
+
+void CFloatingWnd::OnBnClickedKLineSourceBtn()
+{
+	if (m_stock_id.empty()) return;
+	if (m_isKLineRefreshing.load()) return;
+
+	// 重置东财冷却时间，确保用户点击刷新时优先重试东财
+	g_http_fetcher.ResetEastMoneyCooldown();
+
+	m_isKLineRefreshing = true;
+	m_klineRefreshProgress = 15;
+	m_klineRefreshingStockId = m_stock_id;
+
+	if (m_btnKLineSource.GetSafeHwnd())
+		m_btnKLineSource.Invalidate();
+
+	// 启动进度动画定时器（100ms平滑递增）
+	SetTimer(IDC_KLINE_PROGRESS_TIMER, 100, NULL);
+
+	// 独立线程立即抓取，避免在后台任务队列(push_back)排队导致卡顿很久
+	std::wstring stockId = m_stock_id;
+	UIViewMode vm = m_viewMode;
+	HWND hWnd = GetSafeHwnd();
+
+	std::thread([this, stockId, vm, hWnd]() {
+		std::string resp;
+		bool ok = false;
+		if (vm == UI_VIEW_DAY_KLINE)
+			ok = g_http_fetcher.FetchDayKLine(stockId, 750, resp, true);
+		else if (vm == UI_VIEW_WEEK_KLINE)
+			ok = g_http_fetcher.FetchWeekKLine(stockId, 150, resp, true);
+		else if (vm == UI_VIEW_MONTH_KLINE)
+			ok = g_http_fetcher.FetchMonthKLine(stockId, 60, resp, true);
+
+		m_klineRefreshProgress = 100;
+
+		if (vm == UI_VIEW_DAY_KLINE)
+			g_data.ApplyDayKLine(stockId, resp, ok);
+		else if (vm == UI_VIEW_WEEK_KLINE)
+			g_data.ApplyWeekKLine(stockId, resp, ok);
+		else if (vm == UI_VIEW_MONTH_KLINE)
+			g_data.ApplyMonthKLine(stockId, resp, ok);
+
+		if (!ok)
+		{
+			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+			auto stockData = g_data.GetStockData(stockId);
+			if (stockData)
+			{
+				STOCK::KLineData* klineObj = nullptr;
+				if (vm == UI_VIEW_DAY_KLINE) klineObj = stockData->getKLineData();
+				else if (vm == UI_VIEW_WEEK_KLINE) klineObj = stockData->getWeekKLineData();
+				else if (vm == UI_VIEW_MONTH_KLINE) klineObj = stockData->getMonthKLineData();
+				if (klineObj && (klineObj->sourceDesc.empty() || klineObj->sourceDesc.find(L"刷新") != std::wstring::npos))
+				{
+					klineObj->sourceDesc = L"刷新失败";
+				}
+			}
+		}
+
+		m_isKLineRefreshing = false;
+
+		if (::IsWindow(hWnd))
+		{
+			::PostMessage(hWnd, (WM_USER + 100), 0, 0);
+		}
+	}).detach();
 }
 
 void CFloatingWnd::OnMouseLeave()

@@ -41,12 +41,14 @@ public:
 
 	// 分时图（多级保底：腾讯分时 -> 新浪分时 -> 东财分时）
 	bool FetchTimeline(const std::wstring& code, std::string& outResp);
-	// 日K线（多级保底：腾讯前复权 -> 东方财富前复权）
-	bool FetchDayKLine(const std::wstring& code, int days, std::string& outResp);
-	// 周K线（多级保底：腾讯前复权 -> 东方财富前复权）
-	bool FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp);
-	// 月K线（多级保底：腾讯前复权 -> 东方财富前复权）
-	bool FetchMonthKLine(const std::wstring& code, int months, std::string& outResp);
+	// 日K线（多级保底：腾讯前复权 -> 东方财富前复权，美股或强制时优先东财）
+	bool FetchDayKLine(const std::wstring& code, int days, std::string& outResp, bool forceEastMoney = false);
+	// 周K线（多级保底：腾讯前复权 -> 东方财富前复权，美股或强制时优先东财）
+	bool FetchWeekKLine(const std::wstring& code, int weeks, std::string& outResp, bool forceEastMoney = false);
+	// 月K线（多级保底：腾讯前复权 -> 东方财富前复权，美股或强制时优先东财）
+	bool FetchMonthKLine(const std::wstring& code, int months, std::string& outResp, bool forceEastMoney = false);
+	// 重置东财失败冷却期，允许立即重新尝试东财
+	void ResetEastMoneyCooldown() { m_eastmoney_fail_until = 0; }
 	// 5分钟K线（多级保底：腾讯5分K -> 新浪5分K -> 东财5分K）
 	bool FetchMin5KLine(const std::wstring& code, int datalen, std::string& outResp);
 	// 30分钟K线（多级保底：腾讯30分K -> 新浪30分K -> 东财30分K）

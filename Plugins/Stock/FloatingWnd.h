@@ -3,6 +3,7 @@
 #include <afxwin.h>
 #include <string>
 #include <vector>
+#include <atomic>
 #include <StockDef.h>
 #include <TransparentWnd.h>
 #include "SignalAnalyzer.h"
@@ -84,6 +85,7 @@ protected:
 	afx_msg void OnBnClickedExpandBtn();
 	afx_msg void OnBnClickedToggleStockListBtn();
 	afx_msg void OnBnClickedCallAuctionBtn();
+	afx_msg void OnBnClickedKLineSourceBtn();
 
 private:
 	void EnsureChipPeakData();
@@ -138,6 +140,7 @@ private:
 	CButton m_btnKLine;
 	CButton m_btnWeekKLine;
 	CButton m_btnMonthKLine;
+	CButton m_btnKLineSource;   // K线数据源状态与刷新按钮
 	CButton m_btnMA;
 	CButton m_btnBoll;
 	CButton m_btnClose;
@@ -261,4 +264,9 @@ private:
 	COLORREF m_wrSignalColor{ CLR_INVALID };
 	COLORREF m_rsiSignalColor{ CLR_INVALID };
 	COLORREF m_maSignalColor{ CLR_INVALID };
+
+	// K线数据源刷新与进度状态
+	std::atomic<bool> m_isKLineRefreshing{ false };
+	std::atomic<int> m_klineRefreshProgress{ 0 };
+	std::wstring m_klineRefreshingStockId;
 };

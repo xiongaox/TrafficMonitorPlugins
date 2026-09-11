@@ -516,18 +516,27 @@ void CDataManager::LoadKLineCache(STOCK::Period period)
 			stockData->clearKLineData();
 			for (const auto& point : points)
 				stockData->addKLinePoint(point);
+			auto kd = stockData->getKLineData();
+			if (kd && !kd->data.empty() && kd->sourceDesc.empty())
+				kd->sourceDesc = L"本地缓存";
 		}
 		else if (period == STOCK::Period::WEEK)
 		{
 			stockData->clearWeekKLineData();
 			for (const auto& point : points)
 				stockData->addWeekKLinePoint(point);
+			auto kd = stockData->getWeekKLineData();
+			if (kd && !kd->data.empty() && kd->sourceDesc.empty())
+				kd->sourceDesc = L"本地缓存";
 		}
 		else if (period == STOCK::Period::MONTH)
 		{
 			stockData->clearMonthKLineData();
 			for (const auto& point : points)
 				stockData->addMonthKLinePoint(point);
+			auto kd = stockData->getMonthKLineData();
+			if (kd && !kd->data.empty() && kd->sourceDesc.empty())
+				kd->sourceDesc = L"本地缓存";
 		}
 		else if (period == STOCK::Period::MIN5)
 		{
@@ -1145,21 +1154,34 @@ void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& re
 	// 口径防护：不复权数据在基金份额折算/除权日会形成巨幅断崖（正常行情单日不可能超过
 	// 涨跌停限制），检测到异常跳变时整批拒绝，保持内存现有（前复权）数据不变，也不写缓存
 	// 注：secid 代码（如上金所黄金、期货指数等）无分红折算概念，不作此过滤
-	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "day");
+	std::wstring sourceDesc;
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "day", &sourceDesc);
 	std::string abnormalDetail;
-	if (!newPoints.empty() && !CCommon::IsEmSecidCode(code) && STOCK::HasAbnormalKLineMove(newPoints, &abnormalDetail))
+	if (!newPoints.empty() && !CCommon::IsEmSecidCode(code) && !CCommon::IsUSStockCode(code) && code.find(kHK) != 0 && STOCK::HasAbnormalKLineMove(newPoints, &abnormalDetail))
 	{
 		std::string log = "[KLine] reject abnormal day kline of " + CCommon::UnicodeToStr(code.c_str())
 			+ ": " + abnormalDetail;
 		CCommon::WriteLog(log.c_str(), m_log_path.c_str());
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockData = GetStockData(code);
+		auto klineData = stockData ? stockData->getKLineData() : nullptr;
+		if (klineData && klineData->sourceDesc.find(L"刷新") != std::wstring::npos)
+			klineData->sourceDesc = L"数据异常已拦截";
 		return;
 	}
 
 	stockMarket.LoadKLineData(code, newPoints);
-	auto stockData = GetStockData(code);
-	auto klineData = stockData ? stockData->getKLineData() : nullptr;
-	if (klineData && !klineData->data.empty())
-		SaveKLineCache(code, STOCK::Period::DAY, klineData->data);
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockData = GetStockData(code);
+		auto klineData = stockData ? stockData->getKLineData() : nullptr;
+		if (klineData)
+		{
+			klineData->sourceDesc = sourceDesc;
+			if (!klineData->data.empty())
+				SaveKLineCache(code, STOCK::Period::DAY, klineData->data);
+		}
+	}
 }
 
 void CDataManager::ApplyWeekKLine(const std::wstring& code, const std::string& resp, bool ok)
@@ -1170,12 +1192,20 @@ void CDataManager::ApplyWeekKLine(const std::wstring& code, const std::string& r
 		return;
 	}
 
-	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "week");
+	std::wstring sourceDesc;
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "week", &sourceDesc);
 	stockMarket.LoadWeekKLineData(code, newPoints);
-	auto stockData = GetStockData(code);
-	auto klineData = stockData ? stockData->getWeekKLineData() : nullptr;
-	if (klineData && !klineData->data.empty())
-		SaveKLineCache(code, STOCK::Period::WEEK, klineData->data);
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockData = GetStockData(code);
+		auto klineData = stockData ? stockData->getWeekKLineData() : nullptr;
+		if (klineData)
+		{
+			klineData->sourceDesc = sourceDesc;
+			if (!klineData->data.empty())
+				SaveKLineCache(code, STOCK::Period::WEEK, klineData->data);
+		}
+	}
 }
 
 void CDataManager::ApplyMonthKLine(const std::wstring& code, const std::string& resp, bool ok)
@@ -1186,12 +1216,20 @@ void CDataManager::ApplyMonthKLine(const std::wstring& code, const std::string& 
 		return;
 	}
 
-	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "month");
+	std::wstring sourceDesc;
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "month", &sourceDesc);
 	stockMarket.LoadMonthKLineData(code, newPoints);
-	auto stockData = GetStockData(code);
-	auto klineData = stockData ? stockData->getMonthKLineData() : nullptr;
-	if (klineData && !klineData->data.empty())
-		SaveKLineCache(code, STOCK::Period::MONTH, klineData->data);
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockData = GetStockData(code);
+		auto klineData = stockData ? stockData->getMonthKLineData() : nullptr;
+		if (klineData)
+		{
+			klineData->sourceDesc = sourceDesc;
+			if (!klineData->data.empty())
+				SaveKLineCache(code, STOCK::Period::MONTH, klineData->data);
+		}
+	}
 }
 
 void CDataManager::ApplyMin5KLine(const std::wstring& code, const std::string& resp, bool ok)
