@@ -57,7 +57,7 @@ std::vector<std::wstring> CStockListPanel::GetStockListCodes(int groupTab, int s
 		src = &g_data.m_setting_data.m_custom_groups[groupTab - 2].codes;
 	for (const auto& code : *src)
 	{
-		if (GetStockPriority(code) >= 200 && code.find(kHK) != 0)  // 只保留非指数、非港股股票
+		if (GetStockPriority(code) >= 200)  // 只保留非指数股票（含A股及港股个股）
 			stockCodes.push_back(code);
 	}
 

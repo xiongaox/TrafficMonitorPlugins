@@ -279,7 +279,9 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 		std::vector<std::string> data_arr = CCommon::split(values, "~");
 		if (data_arr.size() >= 9 && !data_arr[7].empty() && !data_arr[8].empty())
 		{
-			Volume volMultiplier = CCommon::IsStarMarketStock(stockData->info.code) ? 1 : 100;
+			bool isStar = CCommon::IsStarMarketStock(stockData->info.code);
+			bool isHK = (stockData->info.code.find(kHK) == 0);
+			Volume volMultiplier = (isStar || isHK) ? 1 : 100;
 			Volume innerVolume = convert<Volume>(data_arr[8]) * volMultiplier;
 			Volume outerVolume = convert<Volume>(data_arr[7]) * volMultiplier;
 			if (innerVolume > 0 || outerVolume > 0)
@@ -903,7 +905,8 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	prevClosePrice = { convert<Price>(data[4]) };
 	openPrice = { convert<Price>(data[5]) };
 	bool isStar = CCommon::IsStarMarketStock(key);
-	Volume volMultiplier = isStar ? 1 : 100;
+	bool isHK = (key.find(kHK) == 0);
+	Volume volMultiplier = (isStar || isHK) ? 1 : 100;
 	volume = { convert<Volume>(data[6]) * volMultiplier };
 	if (data.size() > 7 && !data[7].empty())
 		outerVolume = { convert<Volume>(data[7]) * volMultiplier };
@@ -936,7 +939,7 @@ void STOCK::StockInfo::LoadTencent(std::wstring key, const std::vector<std::stri
 	if (data.size() > 34) lowPrice = { convert<Price>(data[34]) };
 
 	if (data.size() > 37 && !data[37].empty())
-		turnover = { convert<Amount>(data[37]) * 10000.0 }; // 万元 -> 元
+		turnover = { convert<Amount>(data[37]) * (isHK ? 1.0 : 10000.0) };
 
 	if (data.size() > 38 && !data[38].empty())
 		turnoverRate = { convert<Amount>(data[38]) };
