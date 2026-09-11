@@ -1461,56 +1461,125 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 					}
 				}
 
-				// 解析IOPV时序数据，按最近时间匹配到分时点
-				yyjson_val* iopvTimeline = yyjson_obj_get(result, "iopv_timeline");
-				if (iopvTimeline && yyjson_is_arr(iopvTimeline) && !outPoints.empty())
-				{
-					struct IopvTimePoint { std::string time; Price iopv; };
-					std::vector<IopvTimePoint> iopvPoints;
-
-					yyjson_val* iopvItem;
-					yyjson_arr_iter iopvIter;
-					yyjson_arr_iter_init(iopvTimeline, &iopvIter);
-					while ((iopvItem = yyjson_arr_iter_next(&iopvIter)))
+					// 解析IOPV时序数据，按最近时间匹配到分时点
+					yyjson_val* iopvTimeline = yyjson_obj_get(result, "iopv_timeline");
+					if (iopvTimeline && yyjson_is_arr(iopvTimeline) && !outPoints.empty())
 					{
-						if (!iopvItem || !yyjson_is_obj(iopvItem)) continue;
-						IopvTimePoint pt;
-						pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "m");
-						if (pt.time.empty())
-							pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "time");
-						if (pt.time.size() > 5 && pt.time.find(':') != std::string::npos)
-							pt.time = pt.time.substr(0, 5);
-						pt.iopv = GetJsonPrice(iopvItem, "iopv");
-						if (!pt.time.empty() && pt.iopv > 0)
-							iopvPoints.push_back(pt);
-					}
+						struct IopvTimePoint { std::string time; Price iopv; };
+						std::vector<IopvTimePoint> iopvPoints;
 
-					if (!iopvPoints.empty())
-					{
-						for (auto& tp : outPoints)
+						yyjson_val* iopvItem;
+						yyjson_arr_iter iopvIter;
+						yyjson_arr_iter_init(iopvTimeline, &iopvIter);
+						while ((iopvItem = yyjson_arr_iter_next(&iopvIter)))
 						{
-							Price bestIopv = 0;
-							int bestDist = INT_MAX;
-							for (const auto& ip : iopvPoints)
+							if (!iopvItem || !yyjson_is_obj(iopvItem)) continue;
+							IopvTimePoint pt;
+							pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "m");
+							if (pt.time.empty())
+								pt.time = utilities::JsonHelper::GetJsonString(iopvItem, "time");
+							if (pt.time.size() > 5 && pt.time.find(':') != std::string::npos)
+								pt.time = pt.time.substr(0, 5);
+							pt.iopv = GetJsonPrice(iopvItem, "iopv");
+							if (!pt.time.empty() && pt.iopv > 0)
+								iopvPoints.push_back(pt);
+						}
+
+						if (!iopvPoints.empty())
+						{
+							for (auto& tp : outPoints)
 							{
-								if (tp.time.size() != ip.time.size())
-									continue;
-								int dist = 0;
-								for (size_t i = 0; i < tp.time.size() && dist == 0; i++)
+								Price bestIopv = 0;
+								int bestDist = INT_MAX;
+								for (const auto& ip : iopvPoints)
 								{
-									if (tp.time[i] != ip.time[i])
-										dist = abs(tp.time[i] - ip.time[i]);
+									if (tp.time.size() != ip.time.size())
+										continue;
+									int dist = 0;
+									for (size_t i = 0; i < tp.time.size() && dist == 0; i++)
+									{
+										if (tp.time[i] != ip.time[i])
+											dist = abs(tp.time[i] - ip.time[i]);
+									}
+									if (dist < bestDist)
+									{
+										bestDist = dist;
+										bestIopv = ip.iopv;
+									}
 								}
-								if (dist < bestDist)
-								{
-									bestDist = dist;
-									bestIopv = ip.iopv;
-								}
+								tp.iopv = bestIopv;
 							}
-							tp.iopv = bestIopv;
 						}
 					}
-				}
+
+					// 新浪美股分时格式解析保底: { "result": { "data": { "minline_1": [ { "first_min": [...], "other_min": [...] } ] } } }
+					if (outPoints.empty() && isUS)
+					{
+						yyjson_val* rData = yyjson_obj_get(result, "data");
+						if (rData && yyjson_is_obj(rData))
+						{
+							yyjson_val* minlineArr = yyjson_obj_get(rData, "minline_1");
+							if (minlineArr && yyjson_is_arr(minlineArr) && yyjson_arr_size(minlineArr) > 0)
+							{
+								yyjson_val* mObj = yyjson_arr_get_first(minlineArr);
+								if (mObj && yyjson_is_obj(mObj))
+								{
+									yyjson_val* firstMin = yyjson_obj_get(mObj, "first_min");
+									if (firstMin && yyjson_is_arr(firstMin) && yyjson_arr_size(firstMin) >= 5)
+									{
+										TimelinePoint pt;
+										const char* timeStr = yyjson_get_str(yyjson_arr_get(firstMin, 1));
+										if (timeStr)
+										{
+											std::string t = timeStr;
+											pt.time = t.size() >= 5 ? t.substr(0, 5) : t;
+											pt.price = static_cast<Price>(atof(yyjson_get_str(yyjson_arr_get(firstMin, 3))));
+											pt.volume = static_cast<Volume>(atof(yyjson_get_str(yyjson_arr_get(firstMin, 4))));
+											pt.amount = pt.price * pt.volume;
+											pt.averagePrice = pt.price;
+											if (CCommon::IsValidTimelineTime(pt.time, isHK, true))
+												outPoints.push_back(pt);
+										}
+									}
+
+									yyjson_val* otherMin = yyjson_obj_get(mObj, "other_min");
+									if (otherMin && yyjson_is_arr(otherMin))
+									{
+										yyjson_val* item;
+										yyjson_arr_iter iter;
+										yyjson_arr_iter_init(otherMin, &iter);
+										while ((item = yyjson_arr_iter_next(&iter)))
+										{
+											if (item && yyjson_is_arr(item) && yyjson_arr_size(item) >= 2)
+											{
+												TimelinePoint pt;
+												const char* priceStr = yyjson_get_str(yyjson_arr_get(item, 0));
+												const char* volStr = yyjson_get_str(yyjson_arr_get(item, 1));
+												if (priceStr && volStr)
+												{
+													pt.price = static_cast<Price>(atof(priceStr));
+													pt.volume = static_cast<Volume>(atof(volStr));
+													pt.amount = pt.price * pt.volume;
+													pt.averagePrice = pt.price;
+													if (yyjson_arr_size(item) >= 3)
+													{
+														const char* timeStr = yyjson_get_str(yyjson_arr_get(item, 2));
+														if (timeStr)
+														{
+															std::string t = timeStr;
+															pt.time = t.size() >= 5 ? t.substr(0, 5) : t;
+														}
+													}
+													if (CCommon::IsValidTimelineTime(pt.time, isHK, true))
+														outPoints.push_back(pt);
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
 			}
 			// 2. 腾讯格式: { "code": 0, "data": { "sh600519": { "data": { "data": [ "0930 1500.00 123 184500.00", ... ] } } } }
 			// 3. 东方财富格式: { "data": { "trends": [ "2026-08-28 09:30,1500.00,1500.00,1500.00,1500.00,123,184500.00,1500.00", ... ] } }
@@ -1608,52 +1677,60 @@ void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::ve
 						}
 					}
 
-					// 东方财富 trends
-					if (outPoints.empty())
-					{
-						yyjson_val* trendsArr = yyjson_obj_get(dataVal, "trends");
-						if (trendsArr && yyjson_is_arr(trendsArr))
+						// 东方财富 trends
+						if (outPoints.empty())
 						{
-							yyjson_val* tItem;
-							yyjson_arr_iter tIter;
-							yyjson_arr_iter_init(trendsArr, &tIter);
-							double prevCumVolume = 0.0;
-							double prevCumAmount = 0.0;
-							while ((tItem = yyjson_arr_iter_next(&tIter)))
+							yyjson_val* trendsArr = yyjson_obj_get(dataVal, "trends");
+							if (trendsArr && yyjson_is_arr(trendsArr))
 							{
-								const char* tStr = yyjson_get_str(tItem);
-								if (!tStr) continue;
-								std::vector<std::string> parts = CCommon::split(tStr, ',');
-								if (parts.size() >= 8)
+								yyjson_val* tItem;
+								yyjson_arr_iter tIter;
+								yyjson_arr_iter_init(trendsArr, &tIter);
+								double prevCumVolume = 0.0;
+								double prevCumAmount = 0.0;
+								while ((tItem = yyjson_arr_iter_next(&tIter)))
 								{
-									TimelinePoint pt;
-									std::string dt = parts[0];
-									if (dt.size() >= 16)
-										pt.time = dt.substr(11, 5);
-									else
-										pt.time = dt;
-									pt.fullTime = dt;
-									if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid || isUS)) continue;
-									pt.price = static_cast<Price>(atof(parts[2].c_str()));
-									double cumVolLots = atof(parts[5].c_str());
-									double cumVolShares = isUS ? cumVolLots : (cumVolLots * 100.0);
-									double cumAmt = atof(parts[6].c_str());
-									pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
-									pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
-									prevCumVolume = cumVolShares;
-									prevCumAmount = cumAmt;
-									double emAvg = (parts.size() >= 8 ? atof(parts[7].c_str()) : 0.0);
-									if (emAvg > 0.0)
-										pt.averagePrice = static_cast<Price>(emAvg);
-									else if (cumVolShares > 0.0)
-										pt.averagePrice = static_cast<Price>(cumAmt / cumVolShares);
-									else
-										pt.averagePrice = pt.price;
-									outPoints.push_back(pt);
+									const char* tStr = yyjson_get_str(tItem);
+									if (!tStr) continue;
+									std::vector<std::string> parts = CCommon::split(tStr, ',');
+									if (parts.size() >= 7)
+									{
+										TimelinePoint pt;
+										std::string dt = parts[0];
+										if (dt.size() >= 16)
+											pt.time = dt.substr(11, 5);
+										else
+											pt.time = dt;
+										pt.fullTime = dt;
+										if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid || isUS)) continue;
+										pt.price = static_cast<Price>(atof(parts[2].c_str()));
+										double cumVolLots = atof(parts[5].c_str());
+										double cumVolShares = isUS ? cumVolLots : (cumVolLots * 100.0);
+										double cumAmt = atof(parts[6].c_str());
+										if (isUS)
+										{
+											pt.volume = static_cast<Volume>(cumVolShares);
+											pt.amount = cumAmt;
+										}
+										else
+										{
+											pt.volume = static_cast<Volume>((std::max)(0.0, cumVolShares - prevCumVolume));
+											pt.amount = (std::max)(0.0, cumAmt - prevCumAmount);
+											prevCumVolume = cumVolShares;
+											prevCumAmount = cumAmt;
+										}
+										double emAvg = (parts.size() >= 8 ? atof(parts[7].c_str()) : 0.0);
+										if (emAvg > 0.0)
+											pt.averagePrice = static_cast<Price>(emAvg);
+										else if (cumVolShares > 0.0 && !isUS)
+											pt.averagePrice = static_cast<Price>(cumAmt / cumVolShares);
+										else
+											pt.averagePrice = pt.price;
+										outPoints.push_back(pt);
+									}
 								}
 							}
 						}
-					}
 				}
 			}
 		}

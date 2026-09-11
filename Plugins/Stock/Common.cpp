@@ -459,6 +459,14 @@ bool CCommon::IsUSStockCode(const std::wstring& code)
 		return true;
 	if (code.rfind(L"105.", 0) == 0 || code.rfind(L"106.", 0) == 0 || code.rfind(L"107.", 0) == 0)
 		return true;
+
+	std::wstring lower = code;
+	std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+	if (lower.find(L".oq") != std::wstring::npos || lower.find(L".o") != std::wstring::npos
+		|| lower.find(L".n") != std::wstring::npos || lower.find(L".a") != std::wstring::npos)
+	{
+		return true;
+	}
 	return false;
 }
 
@@ -468,6 +476,14 @@ bool CCommon::IsUSStockCode(const std::string& code)
 		return true;
 	if (code.rfind("105.", 0) == 0 || code.rfind("106.", 0) == 0 || code.rfind("107.", 0) == 0)
 		return true;
+
+	std::string lower = code;
+	std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+	if (lower.find(".oq") != std::string::npos || lower.find(".o") != std::string::npos
+		|| lower.find(".n") != std::string::npos || lower.find(".a") != std::string::npos)
+	{
+		return true;
+	}
 	return false;
 }
 
