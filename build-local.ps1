@@ -3,8 +3,9 @@
     编译 Stock 插件并同步到本机全部 TrafficMonitor 安装目录。
 
 .DESCRIPTION
-    由原 build-local.ps1（多目录同步 + MD5 校验）与 sync-stock-local.ps1
-    （vswhere 定位 MSBuild、单目录覆盖、runas 重启）合并而来。
+    由原 build-local.ps1（多目录同步）、sync-stock-local.ps1（vswhere 定位 MSBuild、
+    单目录覆盖、runas 重启）与 deploy.ps1（单目录替换 + SHA256 校验）合并而来，
+    是本地编译 / 部署 Stock 插件的唯一入口。
 
     多个 TrafficMonitor 安装共用 AppData 里的同一份 config.ini，插件显示项勾选按
     item id 持久化，任一目录的 Stock.dll 版本落后都会在切换实例时把勾选状态挤掉
@@ -29,6 +30,10 @@
 .EXAMPLE
     .\build-local.ps1 -NoRestart -NoBuild
     不编译、不重启，只把现有 Stock.dll 复制到各安装目录。
+
+.EXAMPLE
+    .\build-local.ps1 -NoBuild -NoRestart -PluginDir 'D:\Program Files (x86)\NIR\TrafficMonitor\plugins'
+    只把现有 Stock.dll 部署到指定目录（等价于原 deploy.ps1）。
 #>
 param(
     [string[]]$PluginDir = @(),
@@ -127,8 +132,8 @@ if (-not $NoRestart) {
     }
 }
 
-# ------------------------------------------------------- 5. 逐目录同步 + MD5 校验
-$hashSrc = (Get-FileHash -Path $src -Algorithm MD5).Hash
+# --------------------------------------------------- 5. 逐目录同步 + SHA256 校验
+$hashSrc = (Get-FileHash -Path $src -Algorithm SHA256).Hash
 $failed = @()
 
 foreach ($dir in $PluginDir) {
@@ -137,12 +142,12 @@ foreach ($dir in $PluginDir) {
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         Copy-Item -Path $src -Destination $dst -Force -ErrorAction Stop
 
-        $hashDst = (Get-FileHash -Path $dst -Algorithm MD5).Hash
-        if ($hashSrc -ne $hashDst) { throw 'MD5 mismatch between source and destination!' }
+        $hashDst = (Get-FileHash -Path $dst -Algorithm SHA256).Hash
+        if ($hashSrc -ne $hashDst) { throw 'SHA256 mismatch between source and destination!' }
 
         $sizeMB = [math]::Round((Get-Item $dst).Length / 1MB, 2)
         Write-Host "[+] Replaced: $dst ($sizeMB MB)" -ForegroundColor Green
-        Write-Host "[+] Verified MD5: $hashDst" -ForegroundColor Green
+        Write-Host "[+] Verified SHA256: $hashDst" -ForegroundColor Green
     } catch {
         Write-Host '=========================================================' -ForegroundColor Red
         Write-Host "[ERROR] Failed to replace Stock.dll in $dir !" -ForegroundColor Red
