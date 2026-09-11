@@ -6104,11 +6104,13 @@ void CSearchResultDropdown::OnPaint()
 	Gdiplus::StringFormat sfNear;
 	sfNear.SetAlignment(Gdiplus::StringAlignmentNear);
 	sfNear.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfNear.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
 	sfNear.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
 
 	Gdiplus::StringFormat sfCenter;
 	sfCenter.SetAlignment(Gdiplus::StringAlignmentCenter);
 	sfCenter.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	sfCenter.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
 
 	// 2. 绘制左侧搜索结果项
 	int maxItems = min(static_cast<int>(m_results.size()), 8);
