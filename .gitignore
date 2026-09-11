@@ -47,6 +47,7 @@ __pycache__/
 .workbuddy-ai/
 .zcode/
 .trae/
+.gemini/
 .codeartsdoer/
 .dsh-vision-router/
 .codegraph/
