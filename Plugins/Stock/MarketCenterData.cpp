@@ -183,7 +183,6 @@ CMarketCenterData::DataSetState CMarketCenterData::GetDataSetState(DataSet ds, i
 		case DS_ETFS: state.hasData = !m_etfs.empty(); state.fetchedAt = m_etfs_time; break;
 		case DS_MAINFLOW: state.hasData = !m_fflow_sh.empty() || !m_fflow_sz.empty() || !m_index_trend.empty(); state.fetchedAt = m_fflow_time; break;
 		case DS_TREND: state.hasData = !m_dist.buckets.empty(); state.fetchedAt = m_dist_time; break;
-		case DS_GOLD: state.hasData = !m_golds.empty(); state.fetchedAt = m_gold_time; break;
 		default: break;
 		}
 		state.stale = state.fetchedAt == 0 || time(nullptr) - state.fetchedAt > staleSec;
@@ -251,7 +250,6 @@ bool CMarketCenterData::IsStale(DataSet ds, int staleSec) const
 	case DS_ETFS: t = m_etfs_time; break;
 	case DS_MAINFLOW: t = m_fflow_time; break;
 	case DS_TREND: t = m_dist_time; break;
-	case DS_GOLD: t = m_gold_time; break;
 	default: break;
 	}
 	return t == 0 || time(nullptr) - t > staleSec;
@@ -271,7 +269,6 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 
 	std::vector<MC::SectorFlow> sectors;
 	std::vector<MC::EtfQuote> etfs;
-	std::vector<MC::GoldQuote> golds;
 	long long etfTotal = 0;
 	MC::UpDownDist dist;
 	std::vector<MC::TrendSample> trendCurve;
@@ -293,10 +290,6 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 	case DS_ETFS:
 		if (!yyjson_is_obj(data)) ok=false;
 		else { yyjson_val* items=yyjson_obj_get(data,"items"); yyjson_val* total=yyjson_obj_get(data,"total"); if(!yyjson_is_arr(items)||yyjson_arr_size(items)>5000||!JsonFinite(total)) ok=false; else { etfTotal=static_cast<long long>(JsonNumber(data,"total")); size_t idx,max; yyjson_val* item; yyjson_arr_foreach(items,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::EtfQuote v; v.code=JsonString(item,"code");v.name=JsonString(item,"name");v.theme=JsonString(item,"theme");v.price=JsonNumber(item,"price");v.pct=JsonNumber(item,"pct");v.amount=JsonNumber(item,"amount");v.inflow=JsonNumber(item,"inflow"); if(v.code.empty()||v.name.empty()){ok=false;break;} etfs.push_back(std::move(v)); } } }
-		break;
-	case DS_GOLD:
-		if (!yyjson_is_arr(data) || yyjson_arr_size(data)>1000) ok=false;
-		if (ok) { size_t idx,max; yyjson_val* item; yyjson_arr_foreach(data,idx,max,item){ if(!yyjson_is_obj(item)){ok=false;break;} MC::GoldQuote v;v.code=JsonString(item,"code");v.secid=JsonString(item,"secid");v.name=JsonString(item,"name");v.region=static_cast<int>(JsonNumber(item,"region"));v.hasQuote=JsonBool(item,"hasQuote");v.hasAmount=JsonBool(item,"hasAmount");v.price=JsonNumber(item,"price");v.chg=JsonNumber(item,"chg");v.pct=JsonNumber(item,"pct");v.amount=JsonNumber(item,"amount");if(v.code.empty()||v.secid.empty()||v.name.empty()){ok=false;break;}golds.push_back(std::move(v)); } }
 		break;
 	case DS_MAINFLOW:
 		if (!yyjson_is_obj(data)) { ok=false; break; }
@@ -339,7 +332,6 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 		case DS_ETFS: m_etfs=std::move(etfs); m_etf_total=etfTotal; m_etfs_time=fetchedAt; break;
 		case DS_MAINFLOW: m_fflow_sh=std::move(fflowSh); m_fflow_sz=std::move(fflowSz); m_index_trend=std::move(indexTrend); m_etf_flow_curve=std::move(etfFlow); m_fflow_time=fetchedAt; break;
 		case DS_TREND: m_dist=std::move(dist); m_trend_curve=std::move(trendCurve); m_dist_time=fetchedAt; m_turnover_time=fetchedAt; break;
-		case DS_GOLD: m_golds=std::move(golds); m_gold_time=fetchedAt; break;
 		default: break;
 		}
 	}
@@ -349,7 +341,7 @@ bool CMarketCenterData::ApplySnapshot(DataSet ds, const std::string& payload, ti
 
 void CMarketCenterData::LoadCachedSnapshots()
 {
-	const DataSet dataSets[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND, DS_GOLD };
+	const DataSet dataSets[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND };
 	for (DataSet ds : dataSets)
 	{
 		std::string payload, tradeDate; time_t fetchedAt=0; int version=0;
@@ -392,10 +384,6 @@ std::string CMarketCenterData::SerializeSnapshot(DataSet ds) const
 		out += "},\"today\":"; JsonNum(out,m_turnover_today); out += ",\"yesterday\":"; JsonNum(out,m_turnover_yesterday); out += ",\"curve\":[";
 		for (size_t i=0;i<m_trend_curve.size();++i) { if(i)out+=","; const auto& v=m_trend_curve[i]; out+="{"; JsonStringField(out,"time",v.time); out+=","; JsonDoubleField(out,"up",static_cast<double>(v.up)); out+=","; JsonDoubleField(out,"down",static_cast<double>(v.down)); out+="}"; }
 		out += "]}"; break;
-	case DS_GOLD:
-		out += "[";
-		for (size_t i=0;i<m_golds.size();++i) { if(i)out+=","; const auto& v=m_golds[i]; out+="{"; JsonStringField(out,"code",v.code); out+=","; JsonStringField(out,"secid",v.secid); out+=","; JsonStringField(out,"name",v.name); out+=","; out+="\"region\":"+std::to_string(v.region)+","; JsonBoolField(out,"hasQuote",v.hasQuote); out+=","; JsonBoolField(out,"hasAmount",v.hasAmount); out+=","; JsonDoubleField(out,"price",v.price); out+=","; JsonDoubleField(out,"chg",v.chg); out+=","; JsonDoubleField(out,"pct",v.pct); out+=","; JsonDoubleField(out,"amount",v.amount); out+="}"; }
-		out += "]"; break;
 	}
 	out += "}";
 	return out;
@@ -464,7 +452,7 @@ void CMarketCenterData::StopExecutor()
 void CMarketCenterData::WarmupStaleData(HWND notifyWnd)
 {
 	const struct { DataSet dataSet; int staleSec; } requests[] = {
-		{ DS_SECTORS, 120 }, { DS_ETFS, 300 }, { DS_MAINFLOW, 120 }, { DS_TREND, 60 }, { DS_GOLD, 60 }
+		{ DS_SECTORS, 120 }, { DS_ETFS, 300 }, { DS_MAINFLOW, 120 }, { DS_TREND, 60 }
 	};
 	for (const auto& request : requests)
 		RequestIfStale(request.dataSet, request.staleSec, notifyWnd, RequestPriority::Warmup);
@@ -529,7 +517,6 @@ bool CMarketCenterData::ExecuteRequest(DataSet ds)
 	case DS_ETFS: return FetchEtfs();
 	case DS_MAINFLOW: return FetchMainFlow();
 	case DS_TREND: return FetchTrendDist();
-	case DS_GOLD: return FetchGold();
 	default: return false;
 	}
 }
@@ -595,7 +582,7 @@ void CMarketCenterData::ExecutorLoop()
 			::PostMessage(request.notifyWnd, WM_APP + 140, static_cast<WPARAM>(request.dataSet), ok ? 1 : 0);
 		if (ok)
 		{
-			const DataSet warmupOrder[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND, DS_GOLD };
+			const DataSet warmupOrder[] = { DS_SECTORS, DS_ETFS, DS_MAINFLOW, DS_TREND };
 			for (DataSet next : warmupOrder)
 			{
 				if (next != request.dataSet && RequestIfStale(next, next == DS_ETFS ? 300 : (next == DS_SECTORS || next == DS_MAINFLOW ? 120 : 60), request.notifyWnd, RequestPriority::Warmup))
@@ -1075,119 +1062,6 @@ bool CMarketCenterData::FetchTrendDist()
 		MarkSuccess(DS_TREND);
 	}
 	AppendTrendSample();
-	return true;
-}
-
-// ===== 黄金榜（四区域） =====
-// 大陆：上金所列表 fs=m:118 单请求（21 品种）；港/美：固定品种清单逐个 stock/get 快照。
-// 台湾：东财无台股黄金品种（台股市场 178 可用但无黄金股/ETF），如实空缺。
-bool CMarketCenterData::FetchGold()
-{
-	// 跨市场固定品种（secid, 名称, 区域）：经实测 stock/get 快照均可用
-	struct FixedGold { const wchar_t* secid; const wchar_t* name; int region; };
-	static const std::vector<FixedGold> fixedGolds = {
-		// 香港：港股黄金股 + 香港金银业贸易场现货
-		{ L"116.01818", L"招金矿业", MC::GOLD_REGION_HK },
-		{ L"116.01787", L"山东黄金股份", MC::GOLD_REGION_HK },
-		{ L"116.02099", L"中国黄金国际", MC::GOLD_REGION_HK },
-		{ L"123.HLAU", L"港伦敦金", MC::GOLD_REGION_HK },
-		{ L"123.HLSI", L"港伦敦银", MC::GOLD_REGION_HK },
-		// 美国：COMEX 主连 + 美股黄金ETF
-		{ L"101.GC00Y", L"COMEX黄金", MC::GOLD_REGION_US },
-		{ L"107.GLD", L"黄金ETF-SPDR", MC::GOLD_REGION_US },
-		{ L"107.GDX", L"金矿ETF-VanEck", MC::GOLD_REGION_US },
-	};
-
-	std::vector<MC::GoldQuote> out;
-
-	// 1. 大陆：上金所品种列表
-	{
-		std::wstring url = L"https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=50&po=1&np=1&fltt=2&invt=2&fid=f3"
-			L"&fs=m:118&fields=f12,f14,f2,f3,f4,f6,f18";
-		std::string resp;
-		if (HttpGet(url, resp))
-		{
-			yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
-			if (doc)
-			{
-				yyjson_val* root = yyjson_doc_get_root(doc);
-				yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
-				yyjson_val* diff = data ? yyjson_obj_get(data, "diff") : nullptr;
-				if (diff && yyjson_is_arr(diff))
-				{
-					yyjson_val* item;
-					yyjson_arr_iter iter;
-					yyjson_arr_iter_init(diff, &iter);
-					while ((item = yyjson_arr_iter_next(&iter)))
-					{
-						MC::GoldQuote q;
-						q.code = JsonWStr(item, "f12");
-						q.name = JsonWStr(item, "f14");
-						if (q.name.empty()) continue;
-						q.secid = L"118." + q.code;
-						q.region = MC::GOLD_REGION_CN;
-						// fltt=2 时 f2-f6 为"-"表示今日无成交（冷门品种整日 0 手），f18 昨收始终有值
-						// 无成交品种以昨收作参考价展示；f6 单独为"-"：上海金/银等净价品种不公布成交额
-						q.hasQuote = !JsonIsDash(item, "f2");
-						q.hasAmount = !JsonIsDash(item, "f6");
-						double prevClose = JsonNum(item, "f18");
-						q.price = q.hasQuote ? JsonNum(item, "f2") : prevClose;
-						q.chg = q.hasQuote ? JsonNum(item, "f4") : 0.0;
-						q.pct = q.hasQuote ? JsonNum(item, "f3") : 0.0;
-						q.amount = q.hasAmount ? JsonNum(item, "f6") : 0.0;
-						out.push_back(std::move(q));
-					}
-				}
-				yyjson_doc_free(doc);
-			}
-		}
-	}
-
-	// 2. 港/美固定品种：逐个 stock/get 快照（9 个串行请求约 2-3s；个别失败不影响其余）
-	for (const auto& fg : fixedGolds)
-	{
-		std::wstring url = L"https://push2.eastmoney.com/api/qt/stock/get?secid=" + std::wstring(fg.secid)
-			+ L"&invt=2&fltt=2&fields=f43,f58,f60,f169,f170,f47,f48";
-		std::string resp;
-		if (!HttpGet(url, resp))
-			continue;
-		yyjson_doc* doc = yyjson_read(resp.c_str(), resp.size(), 0);
-		if (!doc) continue;
-		yyjson_val* root = yyjson_doc_get_root(doc);
-		yyjson_val* data = root ? yyjson_obj_get(root, "data") : nullptr;
-		if (data && !yyjson_is_null(data))
-		{
-			MC::GoldQuote q;
-			q.secid = fg.secid;
-			q.code = fg.secid;
-			size_t dot = q.code.find(L'.');
-			if (dot != std::wstring::npos)
-				q.code = q.code.substr(dot + 1);
-			q.name = fg.name;
-			q.region = fg.region;
-			q.hasQuote = !JsonIsDash(data, "f43");
-			q.hasAmount = !JsonIsDash(data, "f48");   // stock/get 成交额是 f48（f6 非成交额）
-			double prevClose = JsonNum(data, "f60");
-			q.price = q.hasQuote ? JsonNum(data, "f43") : prevClose;
-			q.chg = q.hasQuote ? JsonNum(data, "f169") : 0.0;
-			// f170 涨跌幅与昨收换算取其一（个别市场 f170 缺失）
-			if (q.hasQuote && !JsonIsDash(data, "f170"))
-				q.pct = JsonNum(data, "f170");
-			else if (prevClose > 0)
-				q.pct = (q.price - prevClose) / prevClose * 100.0;
-			q.amount = q.hasAmount ? JsonNum(data, "f48") : 0.0;
-			out.push_back(std::move(q));
-		}
-		yyjson_doc_free(doc);
-	}
-
-	if (out.empty())
-		return false;
-
-	std::lock_guard<std::mutex> lock(m_mutex);
-	m_golds = std::move(out);
-	m_gold_time = time(nullptr);
-	MarkSuccess(DS_GOLD);
 	return true;
 }
 

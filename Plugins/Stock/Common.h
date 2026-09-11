@@ -135,8 +135,12 @@ public:
 	static int GetTradingMinute(time_t t);
 	static int GetTradingMinute(int hour, int minute);
 
-	// 校验分时数据点时间是否在交易时段内（A股：09:30-11:30, 13:00-15:00；港股：09:30-12:00, 13:00-16:10）
-	static bool IsValidTimelineTime(const std::string& timeStr, bool isHK = false);
+	// 判断代码是否为东财 secid 形态（如 118.AUTD、118.SHAU、101.GC00Y 等纯数字市场前缀+点+代码）
+	static bool IsEmSecidCode(const std::wstring& code);
+	static bool IsEmSecidCode(const std::string& code);
+
+	// 校验分时数据点时间是否在交易时段内（A股：09:30-11:30, 13:00-15:00；港股：09:30-12:00, 13:00-16:10；全时段/贵金属/期货：00:00-23:59）
+	static bool IsValidTimelineTime(const std::string& timeStr, bool isHK = false, bool isFullSession = false);
 
 	// 获取股票所属交易所名称（上交所/深交所/北交所/港交所/美股等）
 	static std::wstring GetExchangeName(const std::wstring& fullCode);

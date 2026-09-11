@@ -126,7 +126,6 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_WM_DRAWITEM()
 	ON_MESSAGE((WM_USER + 100), OnUpdateStatus)
 	ON_MESSAGE((CMarketCenterPanel::WM_MC_DATA_UPDATED), OnMarketCenterDataUpdated)
-	ON_MESSAGE((CMarketCenterPanel::WM_MC_OPEN_CHART), OnMcOpenChart)
 	ON_MESSAGE((CMarketCenterPanel::WM_MC_ETF_CLICKED), OnMcEtfClicked)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
@@ -249,6 +248,7 @@ LRESULT CFloatingWnd::OnUpdateStatus(WPARAM wParam, LPARAM lParam)
 		m_orderBookDirty = true;
 	else
 		m_chartDirty = true;
+	Invalidate(FALSE);
 	return 0;
 }
 
@@ -259,33 +259,6 @@ LRESULT CFloatingWnd::OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam)
 	// 行情中心数据到达：重绘（仅行情中心视图下有效，其他视图重绘无害）
 	if (m_marketCenterMode)
 		Invalidate(FALSE);
-	return 0;
-}
-
-LRESULT CFloatingWnd::OnMcOpenChart(WPARAM wParam, LPARAM lParam)
-{
-	UNREFERENCED_PARAMETER(lParam);
-	// 黄金榜点击品种行：退出行情中心 → 切换到该品种（secid 形态代码直连东财） → 日K视图
-	std::wstring secid = m_marketCenterPanel.GetGoldSecid(static_cast<int>(wParam));
-	std::wstring displayName = m_marketCenterPanel.GetGoldName(static_cast<int>(wParam));
-	if (secid.empty())
-		return 0;
-	// 榜单已有名称可立即展示；东财实时快照到达后再补全价格/成交额/市值。
-	if (!displayName.empty())
-	{
-		auto stockData = g_data.GetStockData(secid);
-		if (stockData)
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			stockData->info.code = secid;
-			stockData->info.displayName = displayName;
-		}
-	}
-	if (m_marketCenterMode)
-		ToggleMarketCenter();
-	SetStockId(secid);
-	SetDayKLineModeDefaults();
-	Invalidate();
 	return 0;
 }
 
@@ -503,8 +476,6 @@ void CFloatingWnd::OnPaint()
 	bool isIndex = (GetStockPriority(m_stock_id) < 200);
 	// 大盘在K线模式下不显示盘口（所有K线模式m_viewMode>=UI_VIEW_DAY_KLINE，自动覆盖）
 	bool isIndexKLine = isIndex && m_viewMode >= UI_VIEW_DAY_KLINE;
-	// secid 形态代码（118.*上金所/116.*港股黄金/101.*COMEX/107.*美股ETF等）：无五档买卖盘与流通股本，盘口(PK)/筹码峰(CM)不适用
-	bool isEmSecidStock = !m_stock_id.empty() && m_stock_id[0] >= L'0' && m_stock_id[0] <= L'9' && m_stock_id.find(L'.') != std::wstring::npos;
 
 	const int stockListWidth = m_showStockList ? CStockListPanel::GetPanelWidth() : 0;  // 左侧股票列表面板宽度
 	const int orderBookWidth = IsInfoPanelVisible(isIndexKLine) ? ORDER_BOOK_WIDTH : 0;
@@ -517,8 +488,7 @@ void CFloatingWnd::OnPaint()
 	const int singleBarHeight = g_data.RDPI(20);  // 单行状态栏高度
 	const int relatedBarHeight = 0;  // 移除顶部关联股票栏
 	const int indexBarHeight = singleBarHeight;    // 底部系统状态栏高度（单行4个）
-	// 持仓盈亏汇总仅当当前展示的品种本身在持仓中才有意义；
-	// 从黄金榜等入口查看非持仓品种（118.AUTD/116.01818 等）时改走单品种指标分支
+	// 持仓盈亏汇总仅当当前展示的品种本身在持仓中才有意义
 	const bool isCurrentStockHolding = g_data.GetHoldingCount(m_stock_id) > 0;
 	const bool showPositionSummary = (CStockListPanel::ClampGroupTab(m_activeGroupTab) == 1) && isCurrentStockHolding;
 	const int positionSummaryHeight = singleBarHeight;  // 所有分组统一保留单行高度，避免PK收起时的UI覆盖
@@ -624,7 +594,7 @@ void CFloatingWnd::OnPaint()
 			int obBtnW = g_data.RDPI(34);
 			int obBtnH = min(obTitleH, g_data.RDPI(16));
 			int obBtnTop = headerHeight + relatedBarHeight + (obTitleH - obBtnH) / 2;
-			bool showObBtns = !isIndexKLine && !isEmSecidStock;
+			bool showObBtns = !isIndexKLine;
 			bool isEtf = CCommon::IsFundCode(m_stock_id);
 			SafeSetWindowPos(m_btnChipPeak, w - obBtnW, obBtnTop, obBtnW, obBtnH);
 			SafeShowWindow(m_btnChipPeak, showObBtns);
@@ -658,7 +628,7 @@ void CFloatingWnd::OnPaint()
 			const bool isEtf = CCommon::IsFundCode(m_stock_id);
 			// 背景/描边铺满整个图表区宽度；文本内容区为右上角按钮预留空间（无按钮则铺满）
 			const int obBtnW = g_data.RDPI(34);
-			const bool showObBtns = !isIndexKLine && !isEmSecidStock;
+			const bool showObBtns = !isIndexKLine;
 			const int rightBtnsW = showObBtns ? ((isEtf ? 3 : 2) * obBtnW) : 0;
 			const int summaryContentRight = min(chartWidth, showObBtns ? (w - rightBtnsW) : w);
 			const int summaryContentW = max(0, summaryContentRight - summaryX);
@@ -797,16 +767,18 @@ void CFloatingWnd::OnPaint()
 						{
 							if (realtimeData.turnover > 0) val = CCommon::FormatAmount(realtimeData.turnover);
 						}
-						else if (mName == L"成交量")
+						else if (mName == L"成交量" || mName == L"总手")
 						{
-							if (realtimeData.volume > 0)
+							Volume vol = realtimeData.volume;
+							if (vol <= 0 && !klineData.empty()) vol = klineData.back().volume;
+							if (vol > 0)
 							{
-								if (realtimeData.volume >= 100000000)
-									val.Format(_T("%.2f亿手"), realtimeData.volume / 100000000.0 / 100.0);
-								else if (realtimeData.volume >= 1000000)
-									val.Format(_T("%.2f万手"), realtimeData.volume / 10000.0 / 100.0);
+								if (vol >= 100000000)
+									val.Format(_T("%.2f亿手"), vol / 100000000.0 / 100.0);
+								else if (vol >= 1000000)
+									val.Format(_T("%.2f万手"), vol / 10000.0 / 100.0);
 								else
-									val.Format(_T("%lld手"), realtimeData.volume / 100);
+									val.Format(_T("%lld手"), vol / 100);
 							}
 						}
 						else if (mName == L"换手率")
@@ -836,41 +808,52 @@ void CFloatingWnd::OnPaint()
 						}
 						else if (mName == L"振幅")
 						{
+							STOCK::Price curH = realtimeData.highPrice > 0 ? realtimeData.highPrice : (!klineData.empty() ? klineData.back().high : 0.0);
+							STOCK::Price curL = realtimeData.lowPrice > 0 ? realtimeData.lowPrice : (!klineData.empty() ? klineData.back().low : 0.0);
+							STOCK::Price refP = realtimeData.prevClosePrice > 0 ? realtimeData.prevClosePrice : (!klineData.empty() && klineData.size() >= 2 ? klineData[klineData.size() - 2].close : 0.0);
 							double amp = (realtimeData.amplitude > 0) ? realtimeData.amplitude :
-								(realtimeData.prevClosePrice > 0 && realtimeData.highPrice > 0 && realtimeData.lowPrice > 0 ?
-									(realtimeData.highPrice - realtimeData.lowPrice) / realtimeData.prevClosePrice * 100.0 : 0.0);
+								(refP > 0 && curH > 0 && curL > 0 ? (curH - curL) / refP * 100.0 : 0.0);
 							if (amp > 0) val.Format(_T("%.2f%%"), amp);
 						}
 						else if (mName == L"今开")
 						{
-							if (realtimeData.openPrice > 0)
+							STOCK::Price openP = realtimeData.openPrice;
+							if (openP <= 0 && !klineData.empty()) openP = klineData.back().open;
+							if (openP > 0)
 							{
-								val.Format(_T("%.2f"), realtimeData.openPrice);
-								if (realtimeData.prevClosePrice > 0)
-									valColor = (realtimeData.openPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+								val = CCommon::FormatFloat(openP);
+								STOCK::Price refP = realtimeData.prevClosePrice > 0 ? realtimeData.prevClosePrice : (!klineData.empty() && klineData.size() >= 2 ? klineData[klineData.size() - 2].close : 0.0);
+								if (refP > 0)
+									valColor = (openP >= refP) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 							}
 						}
 						else if (mName == L"昨收")
 						{
 							if (realtimeData.prevClosePrice > 0)
-								val.Format(_T("%.2f"), realtimeData.prevClosePrice);
+								val = CCommon::FormatFloat(realtimeData.prevClosePrice);
 						}
-						else if (mName == L"最高")
+						else if (mName == L"最高" || mName == L"今高")
 						{
-							if (realtimeData.highPrice > 0)
+							STOCK::Price highP = realtimeData.highPrice;
+							if (highP <= 0 && !klineData.empty()) highP = klineData.back().high;
+							if (highP > 0)
 							{
-								val.Format(_T("%.2f"), realtimeData.highPrice);
-								if (realtimeData.prevClosePrice > 0)
-									valColor = (realtimeData.highPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+								val = CCommon::FormatFloat(highP);
+								STOCK::Price refP = realtimeData.prevClosePrice > 0 ? realtimeData.prevClosePrice : (!klineData.empty() && klineData.size() >= 2 ? klineData[klineData.size() - 2].close : 0.0);
+								if (refP > 0)
+									valColor = (highP >= refP) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 							}
 						}
 						else if (mName == L"最低")
 						{
-							if (realtimeData.lowPrice > 0)
+							STOCK::Price lowP = realtimeData.lowPrice;
+							if (lowP <= 0 && !klineData.empty()) lowP = klineData.back().low;
+							if (lowP > 0)
 							{
-								val.Format(_T("%.2f"), realtimeData.lowPrice);
-								if (realtimeData.prevClosePrice > 0)
-									valColor = (realtimeData.lowPrice >= realtimeData.prevClosePrice) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
+								val = CCommon::FormatFloat(lowP);
+								STOCK::Price refP = realtimeData.prevClosePrice > 0 ? realtimeData.prevClosePrice : (!klineData.empty() && klineData.size() >= 2 ? klineData[klineData.size() - 2].close : 0.0);
+								if (refP > 0)
+									valColor = (lowP >= refP) ? COLOR_RED_UP : COLOR_GREEN_DOWN;
 							}
 						}
 						else if (mName == L"涨停")
@@ -1033,7 +1016,7 @@ void CFloatingWnd::OnPaint()
 		if (m_viewMode == UI_VIEW_AUCTION)
 		{
 			// 竞价模式：主图价格和副图成交量各占一半
-			int totalChartHeight = priceChartHeight + macdChartHeight + kdjChartHeight + volumeChartHeight;
+				int totalChartHeight = priceChartHeight + volumeChartHeight;
 			int halfChartHeight = totalChartHeight / 2;
 			const int titleH = g_data.RDPI(16);
 			int origPriceTop = priceChartTop;
@@ -1056,17 +1039,24 @@ void CFloatingWnd::OnPaint()
 			ctx.visibleCount = 0;
 			ctx.klineData = &klineData;
 
-			// Y轴范围基于集合竞价数据
-			STOCK::Price visMax = callAuctionData.matchPrice;
-			STOCK::Price visMin = callAuctionData.matchPrice;
-			for (const auto& snap : callAuctionData.snapshots)
-			{
-				if (snap.matchPrice > 0)
+				// Y轴范围只使用今天09:15-09:25的竞价快照。
+				time_t auctionNow = time(nullptr);
+				struct tm auctionToday;
+				localtime_s(&auctionToday, &auctionNow);
+				STOCK::Price visMax = 0;
+				STOCK::Price visMin = 0;
+				for (const auto& snap : callAuctionData.snapshots)
 				{
-					visMax = (std::max)(visMax, snap.matchPrice);
-					visMin = (std::min)(visMin, snap.matchPrice);
+					struct tm snapshotTm;
+					localtime_s(&snapshotTm, &snap.timestamp);
+					const int snapshotSecond = snapshotTm.tm_hour * 3600 + snapshotTm.tm_min * 60 + snapshotTm.tm_sec;
+					if (snap.matchPrice > 0 && snapshotTm.tm_year == auctionToday.tm_year && snapshotTm.tm_yday == auctionToday.tm_yday
+						&& snapshotSecond >= 9 * 3600 + 15 * 60 && snapshotSecond <= 9 * 3600 + 25 * 60)
+					{
+						if (visMax <= 0 || snap.matchPrice > visMax) visMax = snap.matchPrice;
+						if (visMin <= 0 || snap.matchPrice < visMin) visMin = snap.matchPrice;
+					}
 				}
-			}
 			STOCK::Price refPrice = callAuctionData.prevClosePrice > 0 ? callAuctionData.prevClosePrice : realtimeData.prevClosePrice;
 			if (refPrice > 0)
 			{
@@ -1132,19 +1122,18 @@ void CFloatingWnd::OnPaint()
 			tlHover.mousePos = m_mousePos;
 			tlHover.timelineIndicator = static_cast<int>(m_timelineIndicator);
 
-			m_timelineChart.DrawTimelineHeader(memDC, ctx, tlHover);
-			m_callAuctionChart.Draw(memDC, ctx, callAuctionData);
-
-			// 标题栏+图表内容（竞价模式只有价格图和成交量图）
-			m_timelineChart.DrawPriceChartArea(memDC, ctx, origPriceTop, halfChartHeight, tlHover);
-			{
-				CIndicatorChart::HoverState volHover;
-				volHover.isHoveringVolume = m_isHoveringVolume;
-				volHover.hoveredBarIndex = m_hoveredBarIndex;
-				volHover.viewMode = m_viewMode;
-				volHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
-				m_indicatorChart.DrawVolumeChartArea(memDC, ctx, origVolTop, halfChartHeight, false, volHover);
-			}
+				// 标题栏和图表底层先绘制，竞价图随后覆盖其专用内容与图例。
+				m_timelineChart.DrawTimelineHeader(memDC, ctx, tlHover);
+				m_timelineChart.DrawPriceChartArea(memDC, ctx, origPriceTop, halfChartHeight, tlHover);
+				{
+					CIndicatorChart::HoverState volHover;
+					volHover.isHoveringVolume = m_isHoveringVolume;
+					volHover.hoveredBarIndex = m_hoveredBarIndex;
+					volHover.viewMode = m_viewMode;
+					volHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
+					m_indicatorChart.DrawVolumeChartArea(memDC, ctx, origVolTop, halfChartHeight, false, volHover);
+				}
+				m_callAuctionChart.Draw(memDC, ctx, callAuctionData, m_stock_id);
 
 			memDC.RestoreDC(-1);
 
@@ -1527,6 +1516,16 @@ void CFloatingWnd::OnPaint()
 
 				SafeSetWindowPos(m_btnMonthKLine, modeStartX + (modeTabW + tabGap) * 4, tabY, modeTabW, tabH);
 				SafeShowWindow(m_btnMonthKLine, true);
+
+				CButton* subBtns[] = {
+					&m_btnIndicatorCJL, &m_btnIndicatorMACD, &m_btnIndicatorKDJ, &m_btnIndicatorRSI, &m_btnIndicatorWR,
+					&m_btnCallAuction, &m_btnTimeLine, &m_btnKLine, &m_btnWeekKLine, &m_btnMonthKLine
+				};
+				for (auto* b : subBtns)
+				{
+					if (b->GetSafeHwnd())
+						b->Invalidate();
+				}
 			}
 			else
 			{
@@ -1643,6 +1642,20 @@ void CFloatingWnd::OnPaint()
 			loadingHover.viewMode = m_viewMode;
 			loadingHover.stockId = m_stock_id;
 			m_timelineChart.DrawTimelineHeader(memDC, loadingCtx, loadingHover);
+
+			// 若处于K线模式但数据为空，触发保底拉取
+			if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
+			{
+				static time_t lastEnsureTime = 0;
+				time_t curTime = time(nullptr);
+				if (curTime - lastEnsureTime >= 3)
+				{
+					lastEnsureTime = curTime;
+					STOCK::Period p = (m_viewMode == UI_VIEW_WEEK_KLINE) ? STOCK::Period::WEEK :
+						((m_viewMode == UI_VIEW_MONTH_KLINE) ? STOCK::Period::MONTH : STOCK::Period::DAY);
+					EnsureKLineData(p);
+				}
+			}
 
 			// 数据未就绪：显示实时拉取进度（正在哪个源拉取、失败后切换到哪个源），替代原先的空白
 			// 每条状态渲染为两行（第一行"阶段 源"，第二行"状态说明"），说明过宽时按像素折行
@@ -2852,7 +2865,12 @@ void CFloatingWnd::SetStockId(const std::wstring& stockId)
 	m_timelineScrollOffset = -1;
 	// 切换股票时重置可见点数为当前模式的默认值，避免旧值导致新股票数据显示异常
 	if (m_viewMode == UI_VIEW_DAY_KLINE || m_viewMode == UI_VIEW_WEEK_KLINE || m_viewMode == UI_VIEW_MONTH_KLINE)
+	{
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;
+		STOCK::Period p = (m_viewMode == UI_VIEW_WEEK_KLINE) ? STOCK::Period::WEEK :
+			((m_viewMode == UI_VIEW_MONTH_KLINE) ? STOCK::Period::MONTH : STOCK::Period::DAY);
+		EnsureKLineData(p);
+	}
 	else
 	{
 		m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1MIN;
@@ -3392,9 +3410,9 @@ void CFloatingWnd::SafeSetWindowPos(CWnd& wnd, int x, int y, int cx, int cy)
 	}
 	if (curRect.left != x || curRect.top != y || curRect.Width() != cx || curRect.Height() != cy)
 	{
-		wnd.SetWindowPos(nullptr, x, y, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE);
-		wnd.Invalidate();
+		wnd.SetWindowPos(nullptr, x, y, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 	}
+	wnd.Invalidate();
 }
 
 void CFloatingWnd::SafeShowWindow(CWnd& wnd, bool show)
@@ -3635,6 +3653,47 @@ void CFloatingWnd::EnsureEtfHoldingsData()
 	}
 }
 
+void CFloatingWnd::EnsureKLineData(STOCK::Period period)
+{
+	if (m_stock_id.empty()) return;
+	bool hasData = false;
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockData = g_data.GetStockData(m_stock_id);
+		if (stockData)
+		{
+			if (period == STOCK::Period::DAY)
+			{
+				auto obj = stockData->getKLineData();
+				hasData = (obj && !obj->data.empty());
+			}
+			else if (period == STOCK::Period::WEEK)
+			{
+				auto obj = stockData->getWeekKLineData();
+				hasData = (obj && !obj->data.empty());
+			}
+			else if (period == STOCK::Period::MONTH)
+			{
+				auto obj = stockData->getMonthKLineData();
+				hasData = (obj && !obj->data.empty());
+			}
+		}
+	}
+
+	if (!hasData)
+	{
+		std::wstring stockId = m_stock_id;
+		CStockFetchThread::Instance().PostHighPriorityBackgroundTask([stockId, period]() {
+			if (period == STOCK::Period::DAY)
+				CStockFetchThread::Instance().FetchDayKLine(stockId, 750);
+			else if (period == STOCK::Period::WEEK)
+				CStockFetchThread::Instance().FetchWeekKLine(stockId, 750);
+			else if (period == STOCK::Period::MONTH)
+				CStockFetchThread::Instance().FetchMonthKLine(stockId, 750);
+		});
+	}
+}
+
 void CFloatingWnd::ResetHoverState()
 {
 	m_isHoveringKLine = false;
@@ -3678,6 +3737,7 @@ void CFloatingWnd::SetDayKLineModeDefaults()
 	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;  // 日K线初始缩放到最大，显示最新40根
 	m_timelineScrollOffset = -1;  // 自动滚动到末尾
 	ResetHoverState();
+	EnsureKLineData(STOCK::Period::DAY);
 }
 
 void CFloatingWnd::SetWeekKLineModeDefaults()
@@ -3693,6 +3753,7 @@ void CFloatingWnd::SetWeekKLineModeDefaults()
 	m_timelineScrollOffset = -1;  // 自动滚动到末尾
 	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;  // 周K线初始显示最新40根
 	ResetHoverState();
+	EnsureKLineData(STOCK::Period::WEEK);
 }
 
 void CFloatingWnd::SetMonthKLineModeDefaults()
@@ -3708,6 +3769,7 @@ void CFloatingWnd::SetMonthKLineModeDefaults()
 	m_timelineScrollOffset = -1;  // 自动滚动到末尾
 	m_timelineVisibleCount = TIME_LINE_VISIBLE_COUNT_1DAY;  // 月K线初始显示最新40根
 	ResetHoverState();
+	EnsureKLineData(STOCK::Period::MONTH);
 }
 
 void CFloatingWnd::OnBnClickedMABtn()

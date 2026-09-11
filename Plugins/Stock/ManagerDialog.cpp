@@ -11,6 +11,7 @@
 #include "WebDavSync.h"
 #include "ApiHealthManager.h"
 #include "ChartColors.h"
+#include "Icons/Icons.h"
 #include <Windows.h>
 #include <gdiplus.h>
 #include <algorithm>
@@ -1740,7 +1741,7 @@ BOOL CManagerDialog::OnInitDialog()
 	m_search_edit.SetFont(&m_font);
 	m_search_edit.ModifyStyle(WS_BORDER, 0);
 	m_search_edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
-	m_search_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"🔍 搜索股票/代码/拼音...");
+	m_search_edit.SendMessage(EM_SETCUEBANNER, TRUE, (LPARAM)L"搜索股票/代码/拼音...");
 
 	m_mgr_del_group_btn.Create(_T("删除分组"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, 1199);
 	m_mgr_del_group_btn.SetFont(&m_font);
@@ -1995,15 +1996,16 @@ void CManagerDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 			dc.FillSolidRect(box, checked ? COLOR_ACCENT_BLUE : RGB(20, 22, 29));
 			dc.Draw3dRect(box, boxBorder, boxBorder);
 
-			if (checked)
-			{
-				CPen pen(PS_SOLID, max(1, g_data.DPI(2)), RGB(255, 255, 255));
-				CPen* pOldPen = dc.SelectObject(&pen);
-				dc.MoveTo(box.left + g_data.DPI(3), box.top + g_data.DPI(7));
-				dc.LineTo(box.left + g_data.DPI(6), box.top + g_data.DPI(10));
-				dc.LineTo(box.left + g_data.DPI(11), box.top + g_data.DPI(4));
-				dc.SelectObject(pOldPen);
-			}
+				if (checked)
+				{
+					Gdiplus::Graphics graphics(dc.GetSafeHdc());
+					graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+					const float inset = static_cast<float>(g_data.DPI(2));
+					Icons::Draw(graphics, Icons::Id::Check,
+						Gdiplus::RectF(static_cast<Gdiplus::REAL>(box.left) + inset, static_cast<Gdiplus::REAL>(box.top) + inset,
+							static_cast<Gdiplus::REAL>(box.Width()) - inset * 2.0f, static_cast<Gdiplus::REAL>(box.Height()) - inset * 2.0f),
+						RGB(255, 255, 255));
+				}
 
 			dc.SetBkMode(TRANSPARENT);
 			dc.SetTextColor(hot ? RGB(255, 255, 255) : COLOR_TEXT_PRIMARY);
@@ -2019,7 +2021,7 @@ void CManagerDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 		// ===== 普通按钮：与浮动窗一致的扁平暗色样式（直角 + 细边框 + 悬停/按下反馈） =====
 		bool pressedState = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
 		bool hot = (lpDrawItemStruct->itemState & ODS_HOTLIGHT) != 0;
-		DrawFlatButton(dc, r, text, IsPrimaryBtn(nID), IsDestructiveBtn(nID), hot, pressedState);
+			DrawFlatButton(dc, r, text, IsPrimaryBtn(nID), IsDestructiveBtn(nID), hot, pressedState);
 
 		dc.Detach();
 		return;
@@ -3341,12 +3343,14 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 			delCx + delR + g_data.DPI(2), delCy + delR + g_data.DPI(2));
 		m_ma_tag_del_rects[i] = delRect;
 
-		if (static_cast<int>(i) == m_hover_ma_tag_del)
-		{
-			Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
-			g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
-		}
-		drawGdiText(CRect(delCx - delR, delCy - delR, delCx + delR, delCy + delR), L"×", delFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+			if (static_cast<int>(i) == m_hover_ma_tag_del)
+			{
+				Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
+				g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
+			}
+			Icons::Draw(g, Icons::Id::X,
+				Gdiplus::RectF(static_cast<Gdiplus::REAL>(delCx - delR), static_cast<Gdiplus::REAL>(delCy - delR),
+					static_cast<Gdiplus::REAL>(delR * 2), static_cast<Gdiplus::REAL>(delR * 2)), RGB(255, 255, 255));
 
 		drawGdiText(CRect(tagLeft + g_data.DPI(12), tagTop, delRect.left - g_data.DPI(2), tagTop + tagH),
 			tagText, chipFont, RGB(255, 255, 255), DT_LEFT | DT_VCENTER);
@@ -3370,7 +3374,10 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 			g.DrawRectangle(&slotPen, static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
 				static_cast<Gdiplus::REAL>(slotW), static_cast<Gdiplus::REAL>(tagH));
 
-			drawGdiText(slotRect, L"+", plusFont, slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99), DT_CENTER | DT_VCENTER);
+			Icons::Draw(g, Icons::Id::Plus,
+					Gdiplus::RectF(static_cast<Gdiplus::REAL>(slotRect.left + g_data.DPI(10)), static_cast<Gdiplus::REAL>(slotRect.top + g_data.DPI(6)),
+						static_cast<Gdiplus::REAL>(slotRect.Width() - g_data.DPI(20)), static_cast<Gdiplus::REAL>(slotRect.Height() - g_data.DPI(12))),
+					slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99));
 
 			tagLeft += slotW + tagGap;
 		}
@@ -3473,7 +3480,9 @@ void CManagerDialog::DrawMaPage(Gdiplus::Graphics& g, const CRect& contentRect)
 		{
 			Gdiplus::SolidBrush bg(Gdiplus::Color(255, 37, 99, 235));
 			g.FillRectangle(&bg, rf);
-			drawGdiText(rc, L"✓", chkFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+			Icons::Draw(g, Icons::Id::Check,
+					Gdiplus::RectF(static_cast<Gdiplus::REAL>(rc.left + g_data.DPI(2)), static_cast<Gdiplus::REAL>(rc.top + g_data.DPI(2)),
+						static_cast<Gdiplus::REAL>(rc.Width() - g_data.DPI(4)), static_cast<Gdiplus::REAL>(rc.Height() - g_data.DPI(4))), RGB(255, 255, 255));
 		}
 		else
 		{
@@ -3646,12 +3655,14 @@ void CManagerDialog::DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRe
 			delCx + delR + g_data.DPI(2), delCy + delR + g_data.DPI(2));
 		m_metric_tag_del_rects[i] = delRect;
 
-		if (static_cast<int>(i) == m_hover_metric_tag_del)
-		{
-			Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
-			g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
-		}
-		drawGdiText(CRect(delCx - delR, delCy - delR, delCx + delR, delCy + delR), L"×", delFont, RGB(255, 255, 255), DT_CENTER | DT_VCENTER);
+			if (static_cast<int>(i) == m_hover_metric_tag_del)
+			{
+				Gdiplus::SolidBrush delHoverBrush(Gdiplus::Color(255, 140, 20, 35));
+				g.FillRectangle(&delHoverBrush, delRect.left, delRect.top, delRect.Width(), delRect.Height());
+			}
+			Icons::Draw(g, Icons::Id::X,
+				Gdiplus::RectF(static_cast<Gdiplus::REAL>(delCx - delR), static_cast<Gdiplus::REAL>(delCy - delR),
+					static_cast<Gdiplus::REAL>(delR * 2), static_cast<Gdiplus::REAL>(delR * 2)), RGB(255, 255, 255));
 
 		drawGdiText(CRect(tagLeft + g_data.DPI(12), tagTop, delRect.left - g_data.DPI(2), tagTop + tagH),
 			tagText, chipFont, RGB(255, 255, 255), DT_LEFT | DT_VCENTER);
@@ -3675,7 +3686,10 @@ void CManagerDialog::DrawMetricPage(Gdiplus::Graphics& g, const CRect& contentRe
 			g.DrawRectangle(&slotPen, static_cast<Gdiplus::REAL>(tagLeft), static_cast<Gdiplus::REAL>(tagTop),
 				static_cast<Gdiplus::REAL>(slotW), static_cast<Gdiplus::REAL>(tagH));
 
-			drawGdiText(slotRect, L"+", plusFont, slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99), DT_CENTER | DT_VCENTER);
+			Icons::Draw(g, Icons::Id::Plus,
+					Gdiplus::RectF(static_cast<Gdiplus::REAL>(slotRect.left + g_data.DPI(10)), static_cast<Gdiplus::REAL>(slotRect.top + g_data.DPI(6)),
+						static_cast<Gdiplus::REAL>(slotRect.Width() - g_data.DPI(20)), static_cast<Gdiplus::REAL>(slotRect.Height() - g_data.DPI(12))),
+					slotHover ? RGB(96, 165, 250) : RGB(75, 85, 99));
 
 			tagLeft += slotW + tagGap;
 		}
@@ -5871,7 +5885,7 @@ void CDarkPopupMenu::OnPaint()
 				Gdiplus::StringFormat checkSf;
 				checkSf.SetAlignment(Gdiplus::StringAlignmentCenter);
 				checkSf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-				g.DrawString(L"✓", -1, &checkFont, checkRf, &checkSf, &checkBrush);
+				Icons::Draw(g, Icons::Id::Check, checkRf, isHover ? RGB(255, 255, 255) : RGB(59, 130, 246));
 			}
 
 			// 文本
@@ -6168,7 +6182,8 @@ void CSearchResultDropdown::OnPaint()
 		g.DrawRectangle(&plusBorder, btnRf);
 
 		Gdiplus::SolidBrush plusTxt(isBtnHover ? (isSelected ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 255, 255, 255)) : Gdiplus::Color(255, 148, 163, 184));
-		g.DrawString(isSelected ? L"▶" : L"+", -1, &plusFont, btnRf, &sfCenter, &plusTxt);
+		Icons::Draw(g, isSelected ? Icons::Id::Check : Icons::Id::Plus, btnRf,
+			isBtnHover ? (isSelected ? RGB(37, 99, 235) : RGB(255, 255, 255)) : RGB(148, 163, 184));
 
 		// 名称
 		int nameX = codeX + codeW + g_data.DPI(5);
@@ -6672,7 +6687,7 @@ void CManagerDialog::DrawFlatButton(CDC& dc, const CRect& r, const CString& text
 	dc.SetBkMode(TRANSPARENT);
 	dc.SetTextColor(textCol);
 	CFont* pOldFont = dc.SelectObject(primary ? &m_font_bold : &m_font);
-	CRect textRect(r); // DrawText 需要 LPRECT，传入可写副本
+	CRect textRect(r);
 	dc.DrawText(text, textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	dc.SelectObject(pOldFont);
 }

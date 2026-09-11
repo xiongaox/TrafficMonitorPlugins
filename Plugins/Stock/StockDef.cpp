@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "StockDef.h"
 #include "SignalAnalyzer.h"
+#include <cmath>
 #include <iomanip>
 #include "Common.h"
 #include <DataManager.h>
@@ -410,13 +411,10 @@ void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 	}
 }
 
-void STOCK::StockMarket::LoadFundIOPVData(const std::wstring& key, const CString& data)
+void STOCK::StockMarket::LoadFundIOPVData(const std::wstring& key, const std::string& rawData)
 {
 	auto stockData = getStock(key);
 	if (!stockData) return;
-
-	CStringA dataA(data);
-	std::string rawData(dataA.GetString(), dataA.GetLength());
 
 	// 兼容三种格式：
 	// 1. 上交所JSONP: jQuery...({"code":"513060","snap":["恒生医疗",0.5220,...,0.5201,...]})
@@ -574,6 +572,11 @@ void STOCK::StockMarket::LoadFundIOPVData(const std::wstring& key, const CString
 	yyjson_doc_free(doc);
 }
 
+void STOCK::StockMarket::LoadFundIOPVData(const std::wstring& key, const CString& data)
+{
+	LoadFundIOPVData(key, CCommon::UnicodeToStr(data, true));
+}
+
 void STOCK::StockMarket::LoadCallAuctionData(std::string data)
 {
 	if (data.empty())
@@ -582,6 +585,14 @@ void STOCK::StockMarket::LoadCallAuctionData(std::string data)
 	std::vector<std::string> lines = CCommon::split(CCommon::removeChar(data, '\n'), ";");
 	time_t now;
 	time(&now);
+	struct tm nowTm;
+	localtime_s(&nowTm, &now);
+	const int nowSecond = nowTm.tm_hour * 3600 + nowTm.tm_min * 60 + nowTm.tm_sec;
+	const int chartStartSecond = 9 * 3600 + 15 * 60;
+	const int chartEndSecond = 9 * 3600 + 25 * 60;
+	const bool recordSnapshot = nowSecond >= chartStartSecond && nowSecond <= chartEndSecond;
+
+	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
 
 	for (std::string line : lines)
 	{
@@ -611,6 +622,13 @@ void STOCK::StockMarket::LoadCallAuctionData(std::string data)
 		if (data_arr.size() < 46) continue;
 
 		auto& ca = stockData->callAuctionData;
+		if (ca.lastUpdateTime != 0)
+		{
+			struct tm lastUpdateTm;
+			localtime_s(&lastUpdateTm, &ca.lastUpdateTime);
+			if (lastUpdateTm.tm_year != nowTm.tm_year || lastUpdateTm.tm_yday != nowTm.tm_yday)
+				ca.Clear();
+		}
 
 		// 昨收价 [4]
 		ca.prevClosePrice = convert<Price>(data_arr[4]);
@@ -661,18 +679,18 @@ void STOCK::StockMarket::LoadCallAuctionData(std::string data)
 		ca.isValid = (ca.matchPrice > 0);
 
 		// 添加快照
-		if (ca.isValid)
+			if (ca.isValid && recordSnapshot)
 		{
 			CallAuctionSnapshot snapshot;
 			snapshot.timestamp = now;
 			snapshot.matchPrice = ca.matchPrice;
 			snapshot.matchVolume = ca.matchVolume;
 			// 计算新增撮合量
-			if (!ca.snapshots.empty())
-				snapshot.addVol = ca.matchVolume - ca.snapshots.back().matchVolume;
-			else
-				snapshot.addVol = ca.matchVolume;
-			if (snapshot.addVol < 0) snapshot.addVol = 0;
+				if (!ca.snapshots.empty())
+					snapshot.addVol = ca.matchVolume - ca.snapshots.back().matchVolume;
+				else
+					snapshot.addVol = 0;
+				if (snapshot.addVol < 0) snapshot.addVol = 0;
 			snapshot.totalAskVolume = ca.totalAskVolume;
 			snapshot.totalBidVolume = ca.totalBidVolume;
 			// 未匹配量 = 委总量 - 已撮合量的一半（近似）
@@ -689,6 +707,113 @@ void STOCK::StockMarket::LoadCallAuctionData(std::string data)
 				snapshot.bidVolumes[i] = ca.bidLevels[i].volume;
 			}
 			ca.AddSnapshot(snapshot);
+		}
+	}
+}
+
+void STOCK::StockMarket::LoadCallAuctionReplayData(const std::vector<std::wstring>& codes)
+{
+	if (codes.empty())
+		return;
+
+	time_t now = time(nullptr);
+	struct tm today;
+	localtime_s(&today, &now);
+	today.tm_hour = 9;
+	today.tm_min = 15;
+	today.tm_sec = 0;
+	time_t startTime = mktime(&today);
+	if (startTime == static_cast<time_t>(-1))
+		return;
+
+	std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+	for (const auto& code : codes)
+	{
+		if (!CCommon::IsAGStockCode(code))
+			continue;
+
+		auto stockData = getStock(code);
+		if (!stockData)
+			continue;
+
+		auto& ca = stockData->callAuctionData;
+		ca.Clear();
+		ca.isValid = true;
+		ca.isReplay = true;
+		ca.prevClosePrice = 10.00;
+		ca.limitUpPrice = 11.00;
+		ca.limitDownPrice = 9.00;
+
+		for (int point = 0; point <= 200; ++point)
+		{
+			struct ReplayPriceControl
+			{
+				int second;
+				int ticks;
+			};
+			static const ReplayPriceControl priceControls[] = {
+				{ 0, 1002 }, { 45, 1001 }, { 105, 1003 }, { 180, 1002 },
+				{ 255, 1005 }, { 300, 1004 }, { 360, 1004 }, { 420, 1005 },
+				{ 480, 1006 }, { 525, 1005 }, { 570, 1007 }, { 600, 1007 }
+			};
+			static const int volumePattern[] = { 700, 1100, 1600, 2200, 3000, 4200, 5600, 7200, 9000, 11500, 14500, 18000, 22000 };
+
+			const int second = point * 3;
+			int controlIndex = 0;
+			while (controlIndex + 1 < _countof(priceControls) && second > priceControls[controlIndex + 1].second)
+				++controlIndex;
+			const ReplayPriceControl& left = priceControls[controlIndex];
+			const ReplayPriceControl& right = priceControls[(std::min)(controlIndex + 1, static_cast<int>(_countof(priceControls)) - 1)];
+			const int span = (std::max)(1, right.second - left.second);
+			const int priceTicks = left.ticks + (right.ticks - left.ticks) * (second - left.second) / span;
+
+			double volumeScale = second < 120 ? 0.35 : (second < 300 ? 0.75 : (second < 540 ? 1.0 : 1.8));
+			Volume addVol = static_cast<Volume>(volumePattern[point % _countof(volumePattern)] * volumeScale / 100) * 100;
+			if (point > 0 && point % 29 == 0)
+				addVol += static_cast<Volume>(9000 * volumeScale / 100) * 100;
+			if (point > 0 && point % 47 == 0)
+				addVol += static_cast<Volume>(17000 * volumeScale / 100) * 100;
+
+			CallAuctionSnapshot snapshot;
+			snapshot.timestamp = startTime + second;
+			snapshot.matchPrice = priceTicks / 100.0;
+			snapshot.addVol = point == 0 ? 0 : addVol;
+			snapshot.matchVolume = point == 0 ? 0 : ca.snapshots.back().matchVolume + snapshot.addVol;
+
+			const bool earlyAuction = second < 300;
+			const int baseBidLots = earlyAuction ? 2800 - point * 4 : 1800 + (point % 9) * 35;
+			const int baseAskLots = earlyAuction ? 1900 + point * 3 : 1650 + ((point + 4) % 11) * 30;
+			const int bidOffsets[5] = { earlyAuction ? 2 : 1, earlyAuction ? 4 : 2, earlyAuction ? 7 : 3, earlyAuction ? 11 : 5, earlyAuction ? 16 : 8 };
+			const int askOffsets[5] = { earlyAuction ? 2 : 1, earlyAuction ? 5 : 2, earlyAuction ? 9 : 3, earlyAuction ? 14 : 4, earlyAuction ? 20 : 5 };
+			for (int level = 0; level < 5; ++level)
+			{
+				const int bidLots = (std::max)(100, baseBidLots + ((point + level * 3) % 7 - 3) * 90 - level * 135);
+				const int askLots = (std::max)(100, baseAskLots + ((point * 2 + level * 2) % 9 - 4) * 75 - level * 105);
+				snapshot.bidLevels[level] = (priceTicks - bidOffsets[level]) / 100.0;
+				snapshot.askLevels[level] = (priceTicks + askOffsets[level]) / 100.0;
+				snapshot.bidVolumes[level] = static_cast<Volume>(bidLots) * 100;
+				snapshot.askVolumes[level] = static_cast<Volume>(askLots) * 100;
+				snapshot.totalBidVolume += snapshot.bidVolumes[level];
+				snapshot.totalAskVolume += snapshot.askVolumes[level];
+			}
+			Volume halfMatch = snapshot.matchVolume / 2;
+			snapshot.unmatchBidVol = snapshot.totalBidVolume > halfMatch ? snapshot.totalBidVolume - halfMatch : 0;
+			snapshot.unmatchAskVol = snapshot.totalAskVolume > halfMatch ? snapshot.totalAskVolume - halfMatch : 0;
+			ca.AddSnapshot(snapshot);
+		}
+
+		const auto& lastSnapshot = ca.snapshots.back();
+		ca.lastUpdateTime = lastSnapshot.timestamp;
+		ca.matchPrice = lastSnapshot.matchPrice;
+		ca.matchVolume = lastSnapshot.matchVolume;
+		ca.totalBidVolume = lastSnapshot.totalBidVolume;
+		ca.totalAskVolume = lastSnapshot.totalAskVolume;
+		for (int level = 0; level < 5; ++level)
+		{
+			ca.bidLevels[level].price = lastSnapshot.bidLevels[level];
+			ca.bidLevels[level].volume = lastSnapshot.bidVolumes[level];
+			ca.askLevels[level].price = lastSnapshot.askLevels[level];
+			ca.askLevels[level].volume = lastSnapshot.askVolumes[level];
 		}
 	}
 }
@@ -1149,28 +1274,45 @@ CString StockInfo::GetStockShortName()
 	return shortName;
 }
 
-void STOCK::StockMarket::LoadTimelineDataByJson(std::wstring stock_id, CString* pData)
+void STOCK::StockMarket::LoadTimelineData(std::wstring stock_id, const std::vector<TimelinePoint>& newPoints)
 {
 	auto data = g_data.GetStockData(stock_id);
-	if (pData)
+	if (data && !newPoints.empty())
 	{
-		// 先将新数据解析到临时向量，避免空响应覆盖已有缓存数据
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearTimelinePoint();
+		for (const auto& pt : newPoints)
+			data->addTimelinePoint(pt);
+	}
+	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadTimelineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (pData && data)
+	{
 		std::vector<TimelinePoint> newPoints;
 		data->addTimelinePointTo(*pData, newPoints);
-		// 仅当新数据非空时才替换旧数据
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearTimelinePoint();
-			for (const auto& pt : newPoints)
-				data->addTimelinePoint(pt);
-		}
+		LoadTimelineData(stock_id, newPoints);
 	}
 	else
 	{
-		// 网络异常时不清空已有数据
+		Stock::Instance().UpdateKLine();
 	}
-	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadTimelineDataByJson(std::wstring stock_id, CString* pData)
+{
+	if (pData)
+	{
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadTimelineDataByJson(stock_id, &jsonStr);
+	}
+	else
+	{
+		LoadTimelineDataByJson(stock_id, (const std::string*)nullptr);
+	}
 }
 
 static Volume GetJsonVolume(yyjson_val* obj, const char* key)
@@ -1233,8 +1375,9 @@ static Price GetJsonPrice(yyjson_val* obj, const char* key)
 
 void STOCK::StockData::addTimelinePoint(const TimelinePoint& point)
 {
+	bool isSecid = CCommon::IsEmSecidCode(info.code);
 	bool isHK = (info.code.find(kHK) == 0);
-	if (!CCommon::IsValidTimelineTime(point.time, isHK)) return;
+	if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) return;
 	auto timelineData = MakesureHistoricalData<TimelineData>(Period::TIMELINE);
 	timelineData->data.push_back(point);
 }
@@ -1244,11 +1387,21 @@ void STOCK::StockData::addTimelinePoint(const CString& json_data)
 	addTimelinePointTo(json_data, MakesureHistoricalData<TimelineData>(Period::TIMELINE)->data);
 }
 
+void STOCK::StockData::addTimelinePoint(const std::string& json_data)
+{
+	addTimelinePointTo(json_data, MakesureHistoricalData<TimelineData>(Period::TIMELINE)->data);
+}
+
 void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<TimelinePoint>& outPoints)
 {
-	std::string _json_data = CCommon::UnicodeToStr(json_data);
+	addTimelinePointTo(CCommon::UnicodeToStr(json_data, true), outPoints);
+}
+
+void STOCK::StockData::addTimelinePointTo(const std::string& _json_data, std::vector<TimelinePoint>& outPoints)
+{
 	if (_json_data.empty()) return;
 
+	bool isSecid = CCommon::IsEmSecidCode(info.code);
 	bool isHK = (info.code.find(kHK) == 0);
 
 	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
@@ -1278,7 +1431,7 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 							point.time = utilities::JsonHelper::GetJsonString(item, "m");
 							if (point.time.size() > 5 && point.time.find(':') != std::string::npos)
 								point.time = point.time.substr(0, 5);
-							if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
+							if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
 							point.volume = GetJsonVolume(item, "v");
 							point.price = GetJsonPrice(item, "p");
 							point.amount = point.price * point.volume;
@@ -1396,7 +1549,7 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 											pt.time = t.substr(0, 5);
 										else
 											pt.time = t;
-										if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
+										if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid)) continue;
 										pt.price = static_cast<Price>(atof(parts[1].c_str()));
 										if (parts.size() >= 4)
 										{
@@ -1470,7 +1623,8 @@ void STOCK::StockData::addTimelinePointTo(const CString& json_data, std::vector<
 										pt.time = dt.substr(11, 5);
 									else
 										pt.time = dt;
-									if (!CCommon::IsValidTimelineTime(pt.time, isHK)) continue;
+									pt.fullTime = dt;
+									if (!CCommon::IsValidTimelineTime(pt.time, isHK, isSecid)) continue;
 									pt.price = static_cast<Price>(atof(parts[2].c_str()));
 									double cumVolLots = atof(parts[5].c_str());
 									double cumVolShares = cumVolLots * 100.0;
@@ -1707,7 +1861,7 @@ std::vector<STOCK::KLinePoint> STOCK::ParseKLinePointsFromJson(const std::string
 
 void STOCK::StockData::addKLineData(const CString& json_data)
 {
-	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::string jsonStr = CCommon::UnicodeToStr(json_data, true);
 	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "day");
 	if (!newPoints.empty())
 	{
@@ -1719,7 +1873,7 @@ void STOCK::StockData::addKLineData(const CString& json_data)
 
 void STOCK::StockData::addWeekKLineData(const CString& json_data)
 {
-	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::string jsonStr = CCommon::UnicodeToStr(json_data, true);
 	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "week");
 	if (!newPoints.empty())
 	{
@@ -1731,7 +1885,7 @@ void STOCK::StockData::addWeekKLineData(const CString& json_data)
 
 void STOCK::StockData::addMonthKLineData(const CString& json_data)
 {
-	std::string jsonStr = CCommon::UnicodeToStr(json_data);
+	std::string jsonStr = CCommon::UnicodeToStr(json_data, true);
 	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "month");
 	if (!newPoints.empty())
 	{
@@ -1741,226 +1895,223 @@ void STOCK::StockData::addMonthKLineData(const CString& json_data)
 	}
 }
 
-void STOCK::StockMarket::LoadKLineDataByJson(std::wstring stock_id, CString* pData)
+void STOCK::StockMarket::LoadKLineData(std::wstring stock_id, const std::vector<KLinePoint>& newPoints)
 {
 	auto data = g_data.GetStockData(stock_id);
-	if (pData && data)
+	if (data && !newPoints.empty())
 	{
-		std::string jsonStr = CCommon::UnicodeToStr(*pData);
-		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "day");
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearKLineData();
-			for (const auto& pt : newPoints)
-				data->addKLinePoint(pt);
-		}
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearKLineData();
+		for (const auto& pt : newPoints)
+			data->addKLinePoint(pt);
 	}
 	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadKLineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	if (pData)
+	{
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(*pData, stock_id, "day");
+		LoadKLineData(stock_id, newPoints);
+	}
+	else
+	{
+		Stock::Instance().UpdateKLine();
+	}
+}
+
+void STOCK::StockMarket::LoadKLineDataByJson(std::wstring stock_id, CString* pData)
+{
+	if (pData)
+	{
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadKLineDataByJson(stock_id, &jsonStr);
+	}
+	else
+	{
+		LoadKLineDataByJson(stock_id, (const std::string*)nullptr);
+	}
+}
+
+void STOCK::StockMarket::LoadWeekKLineData(std::wstring stock_id, const std::vector<KLinePoint>& newPoints)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (data && !newPoints.empty())
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearWeekKLineData();
+		for (const auto& pt : newPoints)
+			data->addWeekKLinePoint(pt);
+	}
+	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadWeekKLineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	if (pData)
+	{
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(*pData, stock_id, "week");
+		LoadWeekKLineData(stock_id, newPoints);
+	}
+	else
+	{
+		Stock::Instance().UpdateKLine();
+	}
 }
 
 void STOCK::StockMarket::LoadWeekKLineDataByJson(std::wstring stock_id, CString* pData)
 {
-	auto data = g_data.GetStockData(stock_id);
-	if (pData && data)
+	if (pData)
 	{
-		std::string jsonStr = CCommon::UnicodeToStr(*pData);
-		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "week");
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearWeekKLineData();
-			for (const auto& pt : newPoints)
-				data->addWeekKLinePoint(pt);
-		}
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadWeekKLineDataByJson(stock_id, &jsonStr);
+	}
+	else
+	{
+		LoadWeekKLineDataByJson(stock_id, (const std::string*)nullptr);
+	}
+}
+
+void STOCK::StockMarket::LoadMonthKLineData(std::wstring stock_id, const std::vector<KLinePoint>& newPoints)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (data && !newPoints.empty())
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearMonthKLineData();
+		for (const auto& pt : newPoints)
+			data->addMonthKLinePoint(pt);
 	}
 	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadMonthKLineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	if (pData)
+	{
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(*pData, stock_id, "month");
+		LoadMonthKLineData(stock_id, newPoints);
+	}
+	else
+	{
+		Stock::Instance().UpdateKLine();
+	}
 }
 
 void STOCK::StockMarket::LoadMonthKLineDataByJson(std::wstring stock_id, CString* pData)
 {
-	auto data = g_data.GetStockData(stock_id);
-	if (pData && data)
+	if (pData)
 	{
-		std::string jsonStr = CCommon::UnicodeToStr(*pData);
-		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, stock_id, "month");
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearMonthKLineData();
-			for (const auto& pt : newPoints)
-				data->addMonthKLinePoint(pt);
-		}
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadMonthKLineDataByJson(stock_id, &jsonStr);
 	}
-	Stock::Instance().UpdateKLine();
+	else
+	{
+		LoadMonthKLineDataByJson(stock_id, (const std::string*)nullptr);
+	}
 }
 
 void STOCK::StockData::addMin5KLineData(const CString& json_data)
 {
-	std::string _json_data = CCommon::UnicodeToStr(json_data);
-	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-	if (doc == nullptr) return;
-
-	yyjson_val* root = yyjson_doc_get_root(doc);
-	if (root == nullptr || !yyjson_is_arr(root))
+	std::string jsonStr = CCommon::UnicodeToStr(json_data, true);
+	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "m5");
+	if (!newPoints.empty())
 	{
-		yyjson_doc_free(doc);
-		return;
+		clearMin5KLineData();
+		for (const auto& pt : newPoints)
+			addMin5KLinePoint(pt);
 	}
-
-	clearMin5KLineData();
-
-	yyjson_val* item;
-	yyjson_arr_iter iter;
-	yyjson_arr_iter_init(root, &iter);
-	while ((item = yyjson_arr_iter_next(&iter)))
-	{
-		if (item != nullptr && yyjson_is_obj(item))
-		{
-			KLinePoint point;
-			point.day = utilities::JsonHelper::GetJsonString(item, "day");
-			point.open = GetJsonPrice(item, "open");
-			point.high = GetJsonPrice(item, "high");
-			point.low = GetJsonPrice(item, "low");
-			point.close = GetJsonPrice(item, "close");
-			point.volume = GetJsonVolume(item, "volume");
-			addMin5KLinePoint(point);
-		}
-	}
-	yyjson_doc_free(doc);
 }
 
 void STOCK::StockData::addMin30KLineData(const CString& json_data)
 {
-	std::string _json_data = CCommon::UnicodeToStr(json_data);
-	yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-	if (doc == nullptr) return;
-
-	yyjson_val* root = yyjson_doc_get_root(doc);
-	if (root == nullptr || !yyjson_is_arr(root))
+	std::string jsonStr = CCommon::UnicodeToStr(json_data, true);
+	std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(jsonStr, info.code, "m30");
+	if (!newPoints.empty())
 	{
-		yyjson_doc_free(doc);
-		return;
+		clearMin30KLineData();
+		for (const auto& pt : newPoints)
+			addMin30KLinePoint(pt);
 	}
+}
 
-	clearMin30KLineData();
-
-	yyjson_val* item;
-	yyjson_arr_iter iter;
-	yyjson_arr_iter_init(root, &iter);
-	while ((item = yyjson_arr_iter_next(&iter)))
+void STOCK::StockMarket::LoadMin5KLineData(std::wstring stock_id, const std::vector<KLinePoint>& newPoints)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (data && !newPoints.empty())
 	{
-		if (item != nullptr && yyjson_is_obj(item))
-		{
-			KLinePoint point;
-			point.day = utilities::JsonHelper::GetJsonString(item, "day");
-			point.open = GetJsonPrice(item, "open");
-			point.high = GetJsonPrice(item, "high");
-			point.low = GetJsonPrice(item, "low");
-			point.close = GetJsonPrice(item, "close");
-			point.volume = GetJsonVolume(item, "volume");
-			addMin30KLinePoint(point);
-		}
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearMin5KLineData();
+		for (const auto& pt : newPoints)
+			data->addMin5KLinePoint(pt);
 	}
-	yyjson_doc_free(doc);
+	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadMin5KLineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	if (pData)
+	{
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(*pData, stock_id, "m5");
+		LoadMin5KLineData(stock_id, newPoints);
+	}
+	else
+	{
+		Stock::Instance().UpdateKLine();
+	}
 }
 
 void STOCK::StockMarket::LoadMin5KLineDataByJson(std::wstring stock_id, CString* pData)
 {
-	auto data = g_data.GetStockData(stock_id);
 	if (pData)
 	{
-		// 先将新数据解析到临时向量，避免空响应覆盖已有缓存数据
-		std::vector<KLinePoint> newPoints;
-		{
-			std::string _json_data = CCommon::UnicodeToStr(*pData);
-			yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-			if (doc != nullptr)
-			{
-				yyjson_val* root = yyjson_doc_get_root(doc);
-				if (root != nullptr && yyjson_is_arr(root))
-				{
-					yyjson_val* item;
-					yyjson_arr_iter iter;
-					yyjson_arr_iter_init(root, &iter);
-					while ((item = yyjson_arr_iter_next(&iter)))
-					{
-						if (item != nullptr && yyjson_is_obj(item))
-						{
-							KLinePoint point;
-							point.day = utilities::JsonHelper::GetJsonString(item, "day");
-							point.open = GetJsonPrice(item, "open");
-							point.high = GetJsonPrice(item, "high");
-							point.low = GetJsonPrice(item, "low");
-							point.close = GetJsonPrice(item, "close");
-							point.volume = GetJsonVolume(item, "volume");
-							newPoints.push_back(point);
-						}
-					}
-				}
-				yyjson_doc_free(doc);
-			}
-		}
-		// 仅当新数据非空时才替换旧数据
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearMin5KLineData();
-			for (const auto& pt : newPoints)
-				data->addMin5KLinePoint(pt);
-		}
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadMin5KLineDataByJson(stock_id, &jsonStr);
 	}
-	// 网络异常时不清空已有数据
+	else
+	{
+		LoadMin5KLineDataByJson(stock_id, (const std::string*)nullptr);
+	}
+}
+
+void STOCK::StockMarket::LoadMin30KLineData(std::wstring stock_id, const std::vector<KLinePoint>& newPoints)
+{
+	auto data = g_data.GetStockData(stock_id);
+	if (data && !newPoints.empty())
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		data->clearMin30KLineData();
+		for (const auto& pt : newPoints)
+			data->addMin30KLinePoint(pt);
+	}
 	Stock::Instance().UpdateKLine();
+}
+
+void STOCK::StockMarket::LoadMin30KLineDataByJson(std::wstring stock_id, const std::string* pData)
+{
+	if (pData)
+	{
+		std::vector<KLinePoint> newPoints = ParseKLinePointsFromJson(*pData, stock_id, "m30");
+		LoadMin30KLineData(stock_id, newPoints);
+	}
+	else
+	{
+		Stock::Instance().UpdateKLine();
+	}
 }
 
 void STOCK::StockMarket::LoadMin30KLineDataByJson(std::wstring stock_id, CString* pData)
 {
-	auto data = g_data.GetStockData(stock_id);
 	if (pData)
 	{
-		// 先将新数据解析到临时向量，避免空响应覆盖已有缓存数据
-		std::vector<KLinePoint> newPoints;
-		{
-			std::string _json_data = CCommon::UnicodeToStr(*pData);
-			yyjson_doc* doc = yyjson_read(_json_data.c_str(), _json_data.size(), 0);
-			if (doc != nullptr)
-			{
-				yyjson_val* root = yyjson_doc_get_root(doc);
-				if (root != nullptr && yyjson_is_arr(root))
-				{
-					yyjson_val* item;
-					yyjson_arr_iter iter;
-					yyjson_arr_iter_init(root, &iter);
-					while ((item = yyjson_arr_iter_next(&iter)))
-					{
-						if (item != nullptr && yyjson_is_obj(item))
-						{
-							KLinePoint point;
-							point.day = utilities::JsonHelper::GetJsonString(item, "day");
-							point.open = GetJsonPrice(item, "open");
-							point.high = GetJsonPrice(item, "high");
-							point.low = GetJsonPrice(item, "low");
-							point.close = GetJsonPrice(item, "close");
-							point.volume = GetJsonVolume(item, "volume");
-							newPoints.push_back(point);
-						}
-					}
-				}
-				yyjson_doc_free(doc);
-			}
-		}
-		// 仅当新数据非空时才替换旧数据
-		if (!newPoints.empty())
-		{
-			std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
-			data->clearMin30KLineData();
-			for (const auto& pt : newPoints)
-				data->addMin30KLinePoint(pt);
-		}
+		std::string jsonStr = CCommon::UnicodeToStr(*pData, true);
+		LoadMin30KLineDataByJson(stock_id, &jsonStr);
 	}
-	// 网络异常时不清空已有数据
-	Stock::Instance().UpdateKLine();
+	else
+	{
+		LoadMin30KLineDataByJson(stock_id, (const std::string*)nullptr);
+	}
 }
 
 // ========== KLineData 计算方法实现 ==========

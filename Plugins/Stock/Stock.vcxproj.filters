@@ -57,6 +57,12 @@
     <ClInclude Include="Common.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Icons\Icons.h">
+      <Filter>FloatingWnd</Filter>
+    </ClInclude>
+    <ClInclude Include="Icons\IconsData.h">
+      <Filter>FloatingWnd</Filter>
+    </ClInclude>
     <ClInclude Include="ChartColors.h">
       <Filter>FloatingWnd</Filter>
     </ClInclude>
@@ -175,6 +181,9 @@
     </ClCompile>
     <ClCompile Include="Common.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Icons\Icons.cpp">
+      <Filter>FloatingWnd</Filter>
     </ClCompile>
     <ClCompile Include="NetFetch.cpp">
       <Filter>源文件</Filter>

@@ -91,7 +91,21 @@ static std::vector<std::wstring> GetAllDataCodes()
 		addUnique(code);
 	for (const auto& code : g_data.GetRegisteredStockCodes())
 		addUnique(code);
+	for (const auto& code : g_data.m_setting_data.m_selected_indices)
+		addUnique(code);
 	return codes;
+}
+
+static bool IsPluginTesterHost()
+{
+	wchar_t hostPath[MAX_PATH]{};
+	DWORD pathLength = GetModuleFileNameW(nullptr, hostPath, _countof(hostPath));
+	if (pathLength == 0 || pathLength >= _countof(hostPath))
+		return false;
+
+	const wchar_t* hostName = wcsrchr(hostPath, L'\\');
+	hostName = hostName ? hostName + 1 : hostPath;
+	return _wcsicmp(hostName, L"PluginTester.exe") == 0;
 }
 
 Stock::Stock() : m_pFloatingWnd(NULL)
@@ -203,9 +217,11 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 {
 	switch (index)
 	{
-	case ITMPlugin::EI_CONFIG_DIR:
-		// 从配置文件读取配置
+		case ITMPlugin::EI_CONFIG_DIR:
+			// 从配置文件读取配置
 			g_data.LoadConfig(std::wstring(data));
+			if (IsPluginTesterHost())
+				g_data.ApplyCallAuctionReplayData(GetAllDataCodes());
 			CMarketCenterData::Instance().LoadCachedSnapshots();
 		// 重置价格关注弹窗状态（配置重载后所有弹窗状态清零）
 		{
@@ -217,11 +233,9 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 			CMarketCenterData::Instance().StartExecutor();
 		// 全量预加载（日K/筹码/流通股本）已由 StockFetchThread::QueuePreloadTasks
 		// 拆成后台任务在图表线程空闲时执行，避免占用启动流程、阻塞内容加载。
-		// 启动时获取一次集合竞价数据（非竞价时段也获取，用于展示最新竞价结果）
-		m_instance.m_last_call_auction_time = 0;
-		CStockFetchThread::Instance().PostCallAuctionTask([]() {
-			CStockFetchThread::Instance().FetchCallAuction();
-			});
+			// 集合竞价数据仅在 DataRequired 的竞价时段内采集，避免时段外快照污染竞价走势。
+			m_instance.m_last_call_auction_time = 0;
+
 
 		// 检查是否开启了启动时自动同步 WebDAV 云端备份
 		if (g_data.m_setting_data.m_webdav_auto_sync && !g_data.m_setting_data.m_webdav_url.empty())

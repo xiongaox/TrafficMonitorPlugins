@@ -61,14 +61,7 @@ static bool TryParseDouble(const std::string& value, double& result)
 // 腾讯/新浪无这些市场行情，全部直接走东财，secid 即代码本身
 static bool IsEmSecidCode(const std::wstring& code)
 {
-	size_t dot = code.find(L'.');
-	if (dot == std::wstring::npos || dot == 0 || dot + 1 >= code.size())
-		return false;
-	// 市场号全为数字（sh600519 这类带字母前缀的排除）
-	for (size_t i = 0; i < dot; i++)
-		if (!iswdigit(code[i]))
-			return false;
-	return true;
+	return CCommon::IsEmSecidCode(code);
 }
 
 // 东方财富 secid 转换（sh/sz/bj 前缀去除后按首字母判断市场）
@@ -254,7 +247,7 @@ bool CStockHttpFetcher::FetchSgeKLine(const std::wstring& code, int klt, int lmt
 	{
 		NotifyStatus(code, stage, L"东方财富源", L"拉取失败");
 	}
-	m_eastmoney_fail_until = time(nullptr) + 600;
+	m_eastmoney_fail_until = time(nullptr) + 5;
 	return false;
 }
 
@@ -305,7 +298,7 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 				NotifyStatus(code, L"分时", L"东方财富源", L"拉取成功");
 				return true;
 			}
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 		NotifyStatus(code, L"分时", L"东方财富源", L"拉取失败");
 		return false;
@@ -373,12 +366,12 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 			}
 			else
 			{
-				m_eastmoney_fail_until = time(nullptr) + 600;
+				m_eastmoney_fail_until = time(nullptr) + 5;
 			}
 		}
 		catch (...)
 		{
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 	}
 
@@ -422,13 +415,13 @@ bool CStockHttpFetcher::FetchDayKLine(const std::wstring& code, int days, std::s
 			else
 			{
 				NotifyStatus(code, L"日K线", L"东方财富源", L"拉取失败");
-				m_eastmoney_fail_until = time(nullptr) + 600;
+				m_eastmoney_fail_until = time(nullptr) + 5;
 			}
 		}
 		catch (...)
 		{
 			NotifyStatus(code, L"日K线", L"东方财富源", L"拉取异常");
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 	}
 	if (skip_eastmoney)
@@ -1018,7 +1011,7 @@ bool CStockHttpFetcher::FetchStockBasicCirculating(const std::wstring& stock_id,
 			if (!fetch_ok)
 			{
 				// 东方财富请求失败：缓存失败状态 10 分钟，避免反复尝试
-				m_eastmoney_fail_until = time(nullptr) + 600;
+				m_eastmoney_fail_until = time(nullptr) + 5;
 				CApiHealthManager::Instance().RecordPoint(API_EASTMONEY, latency, 403, LEVEL_FAIL, L"请求失败 / 疑似被 WAF 拦截 (休眠10分钟)");
 			}
 			else if (!response.empty())
@@ -1052,11 +1045,11 @@ bool CStockHttpFetcher::FetchStockBasicCirculating(const std::wstring& stock_id,
 		catch (CInternetException* e)
 		{
 			e->Delete();
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 		catch (...)
 		{
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 	}
 
@@ -1126,7 +1119,7 @@ bool CStockHttpFetcher::FetchChipKLines(const std::wstring& stock_id, STOCK::Vol
 			bool fetch_ok = CCommon::GetURL(url, response, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength());
 			if (!fetch_ok)
 			{
-				m_eastmoney_fail_until = time(nullptr) + 600;
+				m_eastmoney_fail_until = time(nullptr) + 5;
 			}
 			else if (!response.empty())
 			{
@@ -1174,11 +1167,11 @@ bool CStockHttpFetcher::FetchChipKLines(const std::wstring& stock_id, STOCK::Vol
 		catch (CInternetException* e)
 		{
 			e->Delete();
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 		catch (...)
 		{
-			m_eastmoney_fail_until = time(nullptr) + 600;
+			m_eastmoney_fail_until = time(nullptr) + 5;
 		}
 	}
 

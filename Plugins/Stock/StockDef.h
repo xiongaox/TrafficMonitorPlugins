@@ -544,8 +544,9 @@ namespace STOCK
 	// 集合竞价数据（9:15-9:30 期间持续更新）
 	struct CallAuctionData
 	{
-		bool isValid{ false };           // 数据是否有效
-		time_t lastUpdateTime{ 0 };      // 最后更新时间
+			bool isValid{ false };           // 数据是否有效
+			bool isReplay{ false };          // 是否为PluginTester本地回放数据
+			time_t lastUpdateTime{ 0 };      // 最后更新时间
 		Price prevClosePrice{ 0.0 };     // 昨收价
 		Price matchPrice{ 0.0 };         // 当前虚拟撮合价
 		Volume matchVolume{ 0 };         // 当前虚拟撮合量
@@ -560,8 +561,9 @@ namespace STOCK
 
 		void Clear()
 		{
-			isValid = false;
-			lastUpdateTime = 0;
+				isValid = false;
+				isReplay = false;
+				lastUpdateTime = 0;
 			prevClosePrice = 0.0;
 			matchPrice = 0.0;
 			matchVolume = 0;
@@ -758,9 +760,11 @@ namespace STOCK
 		void addTimelinePoint(const TimelinePoint& point);
 
 		void addTimelinePoint(const CString& json_data);
+		void addTimelinePoint(const std::string& json_data);
 
 		// 将JSON解析的分时数据点追加到外部向量（不修改内部数据）
 		void addTimelinePointTo(const CString& json_data, std::vector<TimelinePoint>& outPoints);
+		void addTimelinePointTo(const std::string& json_data, std::vector<TimelinePoint>& outPoints);
 
 		// 获取分时走势数据
 		STOCK::TimelineData* getTimelineData()
@@ -1140,15 +1144,29 @@ namespace STOCK
 
 	public:
 		void LoadRealtimeDataByJson(std::string data, const std::vector<std::wstring>& codes = {});
+		void LoadTimelineData(std::wstring stock_id, const std::vector<TimelinePoint>& points);
+		void LoadTimelineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadTimelineDataByJson(std::wstring stock_id, CString* data);
+		void LoadKLineData(std::wstring stock_id, const std::vector<KLinePoint>& points);
+		void LoadKLineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadKLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadWeekKLineData(std::wstring stock_id, const std::vector<KLinePoint>& points);
+		void LoadWeekKLineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadWeekKLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadMonthKLineData(std::wstring stock_id, const std::vector<KLinePoint>& points);
+		void LoadMonthKLineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadMonthKLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadMin5KLineData(std::wstring stock_id, const std::vector<KLinePoint>& points);
+		void LoadMin5KLineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadMin5KLineDataByJson(std::wstring stock_id, CString* data);
+		void LoadMin30KLineData(std::wstring stock_id, const std::vector<KLinePoint>& points);
+		void LoadMin30KLineDataByJson(std::wstring stock_id, const std::string* data);
 		void LoadMin30KLineDataByJson(std::wstring stock_id, CString* data);
 		void LoadInnerOuterData(std::string data);
+		void LoadFundIOPVData(const std::wstring& key, const std::string& data);
 		void LoadFundIOPVData(const std::wstring& key, const CString& data);
-		void LoadCallAuctionData(std::string data);
+			void LoadCallAuctionData(std::string data);
+			void LoadCallAuctionReplayData(const std::vector<std::wstring>& codes);
 
 		void ClearRealtimeData(const std::vector<std::wstring>& onlyCodes = {})
 		{

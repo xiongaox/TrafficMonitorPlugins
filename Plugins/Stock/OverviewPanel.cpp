@@ -5,6 +5,7 @@
 #include "DataManager.h"
 #include "Stock.h"
 #include "StockFont.h"
+#include "Icons/Icons.h"
 #include <algorithm>
 #include <mutex>
 
@@ -413,12 +414,19 @@ void COverviewPanel::DrawOverviewTable(CDC& memDC, int x, int y, int w, int h, i
 				memDC.FillSolidRect(&btnRc, RGB(30, 34, 45));
 				memDC.Draw3dRect(&btnRc, COLOR_DARK_GRAY_BORDER, COLOR_DARK_GRAY_BORDER);
 
-				// 绘制删除文字
-				CString delText = _T("删除");
-				memDC.SetTextColor(RGB(239, 68, 68));
-				CSize sz = memDC.GetTextExtent(delText);
-				int txtX = currentX + (colWidths[i] - sz.cx) / 2;
-				memDC.TextOut(txtX, rowY + (rowH - sz.cy) / 2, delText);
+					CString delText = _T("删除");
+					memDC.SetTextColor(RGB(239, 68, 68));
+					CSize textSize = memDC.GetTextExtent(delText);
+					const int iconSize = min(g_data.RDPI(14), btnRc.Height() - g_data.RDPI(6));
+					const int gap = g_data.RDPI(4);
+					const int groupWidth = iconSize + gap + textSize.cx;
+					const int groupLeft = btnRc.left + max(0, (btnRc.Width() - groupWidth) / 2);
+					Gdiplus::Graphics graphics(memDC.GetSafeHdc());
+					graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+					Icons::Draw(graphics, Icons::Id::Trash2,
+						Gdiplus::RectF(static_cast<Gdiplus::REAL>(groupLeft), static_cast<Gdiplus::REAL>(btnRc.top + (btnRc.Height() - iconSize) / 2),
+							static_cast<Gdiplus::REAL>(iconSize), static_cast<Gdiplus::REAL>(iconSize)), RGB(239, 68, 68));
+					memDC.TextOut(groupLeft + iconSize + gap, rowY + (rowH - textSize.cy) / 2, delText);
 				currentX += colWidths[i];
 				continue;
 			}

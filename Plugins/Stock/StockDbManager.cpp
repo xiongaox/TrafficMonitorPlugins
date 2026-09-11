@@ -606,6 +606,7 @@ bool CStockDbManager::SaveTimelineCache(const std::wstring& stockCode, const std
 	int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
 	if (rc != SQLITE_OK) return false;
 
+	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
 	std::string tradeDate = GetTodayDateString();
 	time_t now = time(nullptr);
@@ -613,7 +614,7 @@ bool CStockDbManager::SaveTimelineCache(const std::wstring& stockCode, const std
 	for (const auto& item : data)
 	{
 		if (item.time.empty()) continue;
-		if (!CCommon::IsValidTimelineTime(item.time, isHK)) continue;
+		if (!CCommon::IsValidTimelineTime(item.time, isHK, isSecid)) continue;
 		sqlite3_reset(stmt);
 		sqlite3_clear_bindings(stmt);
 		sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
@@ -637,19 +638,20 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadTimelineCache(const std::
 	std::vector<STOCK::TimelinePoint> points;
 	if (m_db == nullptr) return points;
 
-	const char* sql = "SELECT time, volume, price, average_price, amount FROM timeline_cache WHERE stock_code = ? AND trade_date = ? ORDER BY time ASC;";
+	const char* sql = "SELECT time, volume, price, average_price, amount FROM timeline_cache WHERE stock_code = ? AND trade_date = ? ORDER BY rowid ASC;";
 	sqlite3_stmt* stmt = nullptr;
 	if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) return points;
 	sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(stmt, 2, tradeDate.c_str(), -1, SQLITE_TRANSIENT);
 
+	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
-		if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
+		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);
@@ -669,19 +671,20 @@ std::vector<STOCK::TimelinePoint> CStockDbManager::LoadLatestTimelineCache(const
 	// 今天没有缓存时，回退加载最近交易日的分时数据
 	if (m_db == nullptr) return points;
 
-	const char* fallbackSql = "SELECT time, volume, price, average_price, amount FROM timeline_cache WHERE stock_code = ? AND trade_date = (SELECT trade_date FROM timeline_cache WHERE stock_code = ? ORDER BY trade_date DESC LIMIT 1) ORDER BY time ASC;";
+	const char* fallbackSql = "SELECT time, volume, price, average_price, amount FROM timeline_cache WHERE stock_code = ? AND trade_date = (SELECT trade_date FROM timeline_cache WHERE stock_code = ? ORDER BY trade_date DESC LIMIT 1) ORDER BY rowid ASC;";
 	sqlite3_stmt* stmt = nullptr;
 	if (sqlite3_prepare_v2(m_db, fallbackSql, -1, &stmt, nullptr) != SQLITE_OK) return points;
 	sqlite3_bind_text16(stmt, 1, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text16(stmt, 2, stockCode.c_str(), -1, SQLITE_TRANSIENT);
 
+	bool isSecid = CCommon::IsEmSecidCode(stockCode);
 	bool isHK = (stockCode.find(kHK) == 0);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		STOCK::TimelinePoint point;
 		const unsigned char* timeText = sqlite3_column_text(stmt, 0);
 		point.time = timeText ? reinterpret_cast<const char*>(timeText) : "";
-		if (!CCommon::IsValidTimelineTime(point.time, isHK)) continue;
+		if (!CCommon::IsValidTimelineTime(point.time, isHK, isSecid)) continue;
 		point.volume = static_cast<STOCK::Volume>(sqlite3_column_int64(stmt, 1));
 		point.price = sqlite3_column_double(stmt, 2);
 		point.averagePrice = sqlite3_column_double(stmt, 3);
@@ -898,6 +901,8 @@ int CStockDbManager::HealAbnormalDayKLineCache()
 	int healed = 0;
 	for (const auto& code : codes)
 	{
+		if (CCommon::IsEmSecidCode(code))
+			continue;
 		auto points = LoadKLineCache(code, STOCK::Period::DAY);
 		std::string detail;
 		if (!STOCK::HasAbnormalKLineMove(points, &detail))

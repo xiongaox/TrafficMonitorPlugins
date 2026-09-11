@@ -268,6 +268,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Common.h" />
+    <ClInclude Include="Icons\Icons.h" />
+    <ClInclude Include="Icons\IconsData.h" />
     <ClInclude Include="ChartColors.h" />
     <ClInclude Include="ChartContext.h" />
     <ClInclude Include="CallAuctionChart.h" />
@@ -310,6 +312,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp" />
+    <ClCompile Include="Icons\Icons.cpp" />
     <ClCompile Include="CallAuctionChart.cpp" />
     <ClCompile Include="ChipPeakPanel.cpp" />
     <ClCompile Include="EtfHoldingsPanel.cpp" />

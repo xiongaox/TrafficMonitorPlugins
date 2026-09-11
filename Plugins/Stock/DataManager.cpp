@@ -984,6 +984,11 @@ void CDataManager::ApplyCallAuctionData(const std::string& resp)
 	stockMarket.LoadCallAuctionData(resp);
 }
 
+void CDataManager::ApplyCallAuctionReplayData(const std::vector<std::wstring>& codes)
+{
+	stockMarket.LoadCallAuctionReplayData(codes);
+}
+
 // secid 形态代码品种实时快照（东财 stock/get）：118.* 上金所 / 116.* 港股 / 101.* 107.* 美股等
 // f43现价/f44高/f45低/f46开/f47量(手)/f48额/f50量比/f58名称/f60昨收/f116总市值/f117流通市值/f168换手率/f169涨跌/f170涨跌幅
 void CDataManager::ApplySgeSnapshot(const std::wstring& code, const std::string& resp)
@@ -1037,12 +1042,11 @@ void CDataManager::ApplyTimeline(const std::wstring& code, const std::string& re
 {
 	if (!ok)
 	{
-		stockMarket.LoadTimelineDataByJson(code, NULL);
+		stockMarket.LoadTimelineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadTimelineDataByJson(code, &strData);
+	stockMarket.LoadTimelineDataByJson(code, &resp);
 	auto stockData = GetStockData(code);
 	auto timelineData = stockData ? stockData->getTimelineData() : nullptr;
 	if (timelineData && !timelineData->data.empty())
@@ -1134,15 +1138,16 @@ void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& re
 {
 	if (!ok)
 	{
-		stockMarket.LoadKLineDataByJson(code, NULL);
+		stockMarket.LoadKLineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
 	// 口径防护：不复权数据在基金份额折算/除权日会形成巨幅断崖（正常行情单日不可能超过
 	// 涨跌停限制），检测到异常跳变时整批拒绝，保持内存现有（前复权）数据不变，也不写缓存
+	// 注：secid 代码（如上金所黄金、期货指数等）无分红折算概念，不作此过滤
 	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "day");
 	std::string abnormalDetail;
-	if (!newPoints.empty() && STOCK::HasAbnormalKLineMove(newPoints, &abnormalDetail))
+	if (!newPoints.empty() && !CCommon::IsEmSecidCode(code) && STOCK::HasAbnormalKLineMove(newPoints, &abnormalDetail))
 	{
 		std::string log = "[KLine] reject abnormal day kline of " + CCommon::UnicodeToStr(code.c_str())
 			+ ": " + abnormalDetail;
@@ -1150,8 +1155,7 @@ void CDataManager::ApplyDayKLine(const std::wstring& code, const std::string& re
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadKLineDataByJson(code, &strData);
+	stockMarket.LoadKLineData(code, newPoints);
 	auto stockData = GetStockData(code);
 	auto klineData = stockData ? stockData->getKLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
@@ -1162,12 +1166,12 @@ void CDataManager::ApplyWeekKLine(const std::wstring& code, const std::string& r
 {
 	if (!ok)
 	{
-		stockMarket.LoadWeekKLineDataByJson(code, NULL);
+		stockMarket.LoadWeekKLineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadWeekKLineDataByJson(code, &strData);
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "week");
+	stockMarket.LoadWeekKLineData(code, newPoints);
 	auto stockData = GetStockData(code);
 	auto klineData = stockData ? stockData->getWeekKLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
@@ -1178,12 +1182,12 @@ void CDataManager::ApplyMonthKLine(const std::wstring& code, const std::string& 
 {
 	if (!ok)
 	{
-		stockMarket.LoadMonthKLineDataByJson(code, NULL);
+		stockMarket.LoadMonthKLineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadMonthKLineDataByJson(code, &strData);
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "month");
+	stockMarket.LoadMonthKLineData(code, newPoints);
 	auto stockData = GetStockData(code);
 	auto klineData = stockData ? stockData->getMonthKLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
@@ -1194,12 +1198,12 @@ void CDataManager::ApplyMin5KLine(const std::wstring& code, const std::string& r
 {
 	if (!ok)
 	{
-		stockMarket.LoadMin5KLineDataByJson(code, NULL);
+		stockMarket.LoadMin5KLineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadMin5KLineDataByJson(code, &strData);
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "m5");
+	stockMarket.LoadMin5KLineData(code, newPoints);
 	auto stockData = GetStockData(code);
 	auto klineData = stockData ? stockData->getMin5KLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
@@ -1210,12 +1214,12 @@ void CDataManager::ApplyMin30KLine(const std::wstring& code, const std::string& 
 {
 	if (!ok)
 	{
-		stockMarket.LoadMin30KLineDataByJson(code, NULL);
+		stockMarket.LoadMin30KLineDataByJson(code, (const std::string*)nullptr);
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadMin30KLineDataByJson(code, &strData);
+	std::vector<STOCK::KLinePoint> newPoints = STOCK::ParseKLinePointsFromJson(resp, code, "m30");
+	stockMarket.LoadMin30KLineData(code, newPoints);
 	auto stockData = GetStockData(code);
 	auto klineData = stockData ? stockData->getMin30KLineData() : nullptr;
 	if (klineData && !klineData->data.empty())
@@ -1231,8 +1235,7 @@ void CDataManager::ApplyFundIOPV(const std::wstring& code, const std::string& re
 		return;
 	}
 
-	CString strData(resp.c_str());
-	stockMarket.LoadFundIOPVData(code, strData);
+	stockMarket.LoadFundIOPVData(code, resp);
 
 	// 将当前IOPV值按分钟保存到数据库（仅交易时段写入，避免非交易时段写入无效时间戳）
 	auto stockData = GetStockData(code);
@@ -1563,6 +1566,8 @@ std::vector<std::wstring> CDataManager::GetAllKnownStockCodes()
 		for (const auto& code : group.codes)
 			addUnique(code);
 	}
+	for (const auto& code : m_setting_data.m_selected_indices)
+		addUnique(code);
 	return result;
 }
 

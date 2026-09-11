@@ -84,30 +84,6 @@ namespace MC
 		std::wstring time;
 		double inflow{ 0.0 };     // 全市场ETF主力净流入合计(元)
 	};
-
-	// 黄金榜区域（与面板区域 Tab 一一对应）
-	enum GoldRegion
-	{
-		GOLD_REGION_CN = 0,   // 中国大陆（上金所 + 大陆黄金ETF/黄金股）
-		GOLD_REGION_HK = 1,   // 香港（港股黄金股 + 港伦敦金）
-		GOLD_REGION_TW = 2,   // 台湾（东财无黄金品种，占位）
-		GOLD_REGION_US = 3,   // 美国（COMEX + 美股黄金ETF）
-	};
-
-	// 黄金榜品种行情（跨市场统一结构）
-	struct GoldQuote
-	{
-		std::wstring code;        // 品种代码 AUTD / 01818 / GC00Y
-		std::wstring secid;       // 东财完整 secid（118.AUTD / 116.01818 / 101.GC00Y，用于打开K线）
-		std::wstring name;        // 品种名称
-		int region{ 0 };          // GoldRegion
-		bool hasQuote{ false };   // 今日是否有行情（无成交冷门品种 f2 为"-"）
-		bool hasAmount{ false };  // 成交额是否公布（上海金/上海银等净价品种不公布）
-		double price{ 0.0 };      // 最新价（无行情时为昨收参考价）
-		double chg{ 0.0 };        // 涨跌额
-		double pct{ 0.0 };        // 涨跌幅(%)
-		double amount{ 0.0 };     // 成交额(元)
-	};
 }
 
 class CMarketCenterData
@@ -132,7 +108,6 @@ public:
 	double m_turnover_yesterday{ 0.0 };                  // 沪深昨日合计成交额(元)
 	std::vector<MC::TrendSample> m_trend_curve;         // 涨跌家数分时（自积累）
 	std::vector<MC::EtfFlowSample> m_etf_flow_curve;    // ETF累计净流入分时（自积累）
-	std::vector<MC::GoldQuote> m_golds;                 // 上金所品种行情（黄金榜）
 
 	// ===== 各数据集最后成功更新时间（0=从未成功）=====
 	time_t m_sectors_time{ 0 };
@@ -140,13 +115,12 @@ public:
 	time_t m_fflow_time{ 0 };
 	time_t m_dist_time{ 0 };
 	time_t m_turnover_time{ 0 };
-	time_t m_gold_time{ 0 };
 
 	// ===== 失败退避：某数据集连续失败后的一段时间内不再重试 =====
-	time_t m_fail_until[5]{ 0, 0, 0, 0, 0 };            // 对应 DataSet 枚举
-	bool m_inflight[5]{ false, false, false, false, false }; // 后台任务在途标记
-	bool m_last_failed[5]{ false, false, false, false, false }; // 最近一次请求是否失败（供 UI 显示错误态）
-	bool m_premarket_no_data[5]{ false, false, false, false, false }; // 接口可达但资金流字段全为"-"（盘前清库，非网络故障）
+	time_t m_fail_until[4]{ 0, 0, 0, 0 };               // 对应 DataSet 枚举
+	bool m_inflight[4]{ false, false, false, false };    // 后台任务在途标记
+	bool m_last_failed[4]{ false, false, false, false }; // 最近一次请求是否失败（供 UI 显示错误态）
+	bool m_premarket_no_data[4]{ false, false, false, false }; // 接口可达但资金流字段全为"-"（盘前清库，非网络故障）
 	static const int FAIL_BACKOFF_SEC = 15;
 
 	// 数据集枚举（取数任务调度与失败退避共用）
@@ -156,8 +130,7 @@ public:
 		DS_ETFS = 1,      // ETF 全量列表
 		DS_MAINFLOW = 2,  // 主力资金分时（沪深 fflow + 指数 trends2）
 		DS_TREND = 3,     // 涨跌分布 + 涨停/跌停池 + 指数成交额
-		DS_GOLD = 4,      // 上金所品种行情（黄金榜）
-		DS_COUNT = 5
+		DS_COUNT = 4
 	};
 
 	bool IsInBackOff(DataSet ds) const;
@@ -200,7 +173,6 @@ public:
 	bool FetchEtfs();           // ETF 全量分页抓取（pz=100 × N）
 	bool FetchMainFlow();       // 沪深 fflow 分时 + 上证指数 trends2 + ETF曲线采样
 	bool FetchTrendDist();      // 涨跌分布 + 涨停/跌停池 + 沪深成交额
-	bool FetchGold();           // 黄金榜：上金所列表(fs=m:118) + 港/美固定品种快照(stock/get)
 
 	// 按开市时间推进自积累曲线（在 FetchTrendDist/FetchEtfs 成功后调用）
 	void AppendTrendSample();
@@ -233,5 +205,5 @@ private:
 	std::deque<PendingRequest> m_warmup_requests;
 	bool m_executor_started{ false };
 	bool m_executor_stopping{ false };
-	unsigned int m_failure_count[DS_COUNT]{ 0, 0, 0, 0, 0 };
+	unsigned int m_failure_count[DS_COUNT]{ 0, 0, 0, 0 };
 };

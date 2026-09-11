@@ -61,7 +61,6 @@ protected:
 	afx_msg void OnDestroy();
 	LRESULT OnUpdateStatus(WPARAM wParam, LPARAM lParam);
 	LRESULT OnMarketCenterDataUpdated(WPARAM wParam, LPARAM lParam);   // 行情中心数据到达，重绘
-	LRESULT OnMcOpenChart(WPARAM wParam, LPARAM lParam);   // 黄金榜点击品种：退行情中心并打开该品种图表
 	LRESULT OnMcEtfClicked(WPARAM wParam, LPARAM lParam);              // 行情中心点击 ETF，跳转首页 K 线临时查看
 	LRESULT OnCloseWindow(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
@@ -89,6 +88,7 @@ protected:
 private:
 	void EnsureChipPeakData();
 	void EnsureEtfHoldingsData();
+	void EnsureKLineData(STOCK::Period period);
 	void ResetHoverState();           // 重置所有悬停状态
 	void SetTimelineModeDefaults();   // 设置分时模式默认参数
 	void SetDayKLineModeDefaults();   // 设置日K模式默认参数

@@ -427,7 +427,33 @@ int CCommon::GetTradingMinute(time_t t)
 	return GetTradingMinute(tm.tm_hour, tm.tm_min);
 }
 
-bool CCommon::IsValidTimelineTime(const std::string& timeStr, bool isHK)
+bool CCommon::IsEmSecidCode(const std::wstring& code)
+{
+	size_t dot = code.find(L'.');
+	if (dot == std::wstring::npos || dot == 0 || dot + 1 >= code.size())
+		return false;
+	for (size_t i = 0; i < dot; i++)
+	{
+		if (!iswdigit(code[i]))
+			return false;
+	}
+	return true;
+}
+
+bool CCommon::IsEmSecidCode(const std::string& code)
+{
+	size_t dot = code.find('.');
+	if (dot == std::string::npos || dot == 0 || dot + 1 >= code.size())
+		return false;
+	for (size_t i = 0; i < dot; i++)
+	{
+		if (!isdigit(static_cast<unsigned char>(code[i])))
+			return false;
+	}
+	return true;
+}
+
+bool CCommon::IsValidTimelineTime(const std::string& timeStr, bool isHK, bool isFullSession)
 {
 	if (timeStr.size() < 4) return false;
 	int hour = 0, minute = 0;
@@ -443,6 +469,12 @@ bool CCommon::IsValidTimelineTime(const std::string& timeStr, bool isHK)
 	{
 		return false;
 	}
+
+	if (hour < 0 || hour >= 24 || minute < 0 || minute >= 60)
+		return false;
+
+	if (isFullSession)
+		return true;
 
 	int minutes = hour * 60 + minute;
 	if (isHK)

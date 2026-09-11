@@ -4,6 +4,7 @@
 #include "Common.h"
 #include "DataManager.h"
 #include "StockFont.h"
+#include "Icons/Icons.h"
 #include <Stock.h>
 #include <algorithm>
 #include <mutex>
@@ -144,35 +145,15 @@ int CStockListPanel::GetPanelWidth()
 	return g_data.RDPI(114);
 }
 
-// 在按钮矩形内画一个实心三角箭头（up=true 画▲，否则画▼）
-static void DrawSolidArrow(CDC& memDC, const CRect& btnRect, bool up, COLORREF color)
+// Dense list sorting uses a centered, filled triangle for visual weight and hit clarity.
+static void DrawSortTriangle(CDC& memDC, const CRect& btnRect, bool up, COLORREF color)
 {
-	CBrush brush(color);
-	CPen pen(PS_SOLID, 1, color);
-	HGDIOBJ oldBrush = memDC.SelectObject(&brush);
-	HGDIOBJ oldPen = memDC.SelectObject(&pen);
-
-	const int halfW = g_data.RDPI(4);
-	const int halfH = g_data.RDPI(3);
-	const int cx = (btnRect.left + btnRect.right) / 2;
-	const int cy = (btnRect.top + btnRect.bottom) / 2;
-	POINT pts[3];
-	if (up)
-	{
-		pts[0] = { cx, cy - halfH };
-		pts[1] = { cx - halfW, cy + halfH };
-		pts[2] = { cx + halfW, cy + halfH };
-	}
-	else
-	{
-		pts[0] = { cx, cy + halfH };
-		pts[1] = { cx - halfW, cy - halfH };
-		pts[2] = { cx + halfW, cy - halfH };
-	}
-	memDC.Polygon(pts, 3);
-
-	memDC.SelectObject(oldPen);
-	memDC.SelectObject(oldBrush);
+	Gdiplus::Graphics graphics(memDC.GetSafeHdc());
+	graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	const int inset = g_data.RDPI(2);
+	Icons::Draw(graphics, up ? Icons::Id::SolidTriangleUp : Icons::Id::SolidTriangleDown,
+		Gdiplus::RectF(static_cast<Gdiplus::REAL>(btnRect.left + inset), static_cast<Gdiplus::REAL>(btnRect.top + inset),
+			static_cast<Gdiplus::REAL>(btnRect.Width() - inset * 2), static_cast<Gdiplus::REAL>(btnRect.Height() - inset * 2)), color);
 }
 
 void CStockListPanel::DrawGroupTabs(CDC& memDC, const std::vector<FloatingGroupTab>& tabs, int hoverIdx)
@@ -269,8 +250,8 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 			// 当前排序方向亮色高亮：▲涨跌幅降序红色 / ▼升序绿色，其余默色
 			const COLORREF upColor = (sortMode == 1) ? COLOR_RED_UP : (upHover ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED);
 			const COLORREF downColor = (sortMode == 2) ? COLOR_GREEN_DOWN : (downHover ? COLOR_TEXT_PRIMARY : COLOR_TEXT_MUTED);
-			DrawSolidArrow(memDC, upRect, true, upColor);
-			DrawSolidArrow(memDC, downRect, false, downColor);
+			DrawSortTriangle(memDC, upRect, true, upColor);
+			DrawSortTriangle(memDC, downRect, false, downColor);
 		}
 	}
 

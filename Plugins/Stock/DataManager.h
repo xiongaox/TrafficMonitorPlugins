@@ -115,8 +115,10 @@ public:
 	void ApplyRealtimeData(const std::vector<std::wstring>& codes, const std::string& resp);
 	// 内外盘（腾讯）
 	void ApplyInnerOuterData(const std::string& resp);
-	// 集合竞价（腾讯）
-	void ApplyCallAuctionData(const std::string& resp);
+		// 集合竞价（腾讯）
+		void ApplyCallAuctionData(const std::string& resp);
+		// PluginTester本地竞价回放
+		void ApplyCallAuctionReplayData(const std::vector<std::wstring>& codes);
 	// 分时图：ok=true 解析并缓存，ok=false 清空旧数据（请求失败时）
 	void ApplyTimeline(const std::wstring& code, const std::string& resp, bool ok);
 	// 上金所品种（118.*）实时快照（东财 stock/get）：写入 StockInfo 头部行情字段

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ChartContext.h"
 #include <StockDef.h>
@@ -9,5 +9,5 @@
 class CCallAuctionChart
 {
 public:
-	void Draw(CDC& memDC, const TimelineDrawContext& ctx, const STOCK::CallAuctionData& callAuctionData);
+	void Draw(CDC& memDC, const TimelineDrawContext& ctx, const STOCK::CallAuctionData& callAuctionData, const std::wstring& stockId = L"");
 };
