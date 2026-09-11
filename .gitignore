@@ -370,3 +370,20 @@ check_tm_crash.ps1
 # Local tool cache/temp files
 .codegraph/
 .freebuff/
+
+# ---- Repo hygiene: AI assistant / local tooling state (local only) ----
+.workbuddy/
+.workbuddy-ai/
+.zcode/
+.dsh-vision-router/
+.codeartsdoer/
+
+# ---- Repo hygiene: local scratch, session dumps, debug captures ----
+.local/
+_session_data.json
+_session_export.html
+image_swap/
+dbg_*.png
+
+# ---- Repo hygiene: one-off debug probes ----
+tools/debug/
