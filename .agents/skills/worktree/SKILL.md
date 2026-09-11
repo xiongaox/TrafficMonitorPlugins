@@ -1,7 +1,8 @@
 ---
-name: git-worktree
+name: worktree
 description: >-
-  只要用户在对话中提到 "worktree"（或涉及 TrafficMonitorPlugins 的分支隔离、并行开发环境搭建时），必须立即触发本技能。
+  仅在用户在对话框中显式输入 `/worktree` 斜杠命令时触发。
+  日常对话中仅泛泛提及 "worktree" 单词时不要自动激活本技能。
   负责严格的前置未提交代码检查（若工作区有修改则必须阻断）、以 main-<git-id> 规范创建独立工作树目录与分支、
   为新 worktree 的 Release 目录准备 PluginTester.exe 与 Stock.dll 运行环境、并在开发完成时仅执行本地编译 Stock.dll，
   严格禁止自动启动 PluginTester.exe，交由用户手动调试。
@@ -9,7 +10,10 @@ description: >-
 
 # TrafficMonitorPlugins Git Worktree 规范工作流
 
-本技能专为 `TrafficMonitorPlugins` C++ 项目设计，用于在多需求或 Agent 独立任务时安全创建并使用 `git worktree`，实现完全隔离的开发与编译调试环境。
+本技能专为 `TrafficMonitorPlugins` C++ 项目设计。通过用户在对话框中输入 `/worktree` 命令显式调用，用于多需求或 Agent 独立任务时安全创建并使用 `git worktree`，实现完全隔离的开发与编译调试环境。
+
+> [!NOTE]
+> **触发约定**：本技能必须由用户显式输入 `/worktree` 触发。若用户在日常对话或问答中仅仅提及 "worktree" 词汇（无 `/worktree` 命令意图），不要自动执行创建工作树等自动化流程。
 
 ---
 
