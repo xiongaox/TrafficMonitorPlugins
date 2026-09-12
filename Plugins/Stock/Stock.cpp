@@ -296,6 +296,15 @@ void* Stock::GetPluginIcon()
 INT_PTR Stock::ShowStockManageDlg(CWnd* pWnd)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	// 悬浮窗已开启时，“选项设置”直达悬浮窗内嵌设置视图（与行情中心一致的原地体验，不弹独立大窗口）
+	{
+		CFloatingWnd* pFloat = m_pFloatingWnd;
+		if (pFloat != NULL && ::IsWindow(pFloat->GetSafeHwnd()))
+		{
+			pFloat->ShowSettingsView();
+			return IDOK;
+		}
+	}
 	CManagerDialog dlg(pWnd);
 	dlg.m_data = g_data.m_setting_data;
 	m_option_dlg = &dlg;

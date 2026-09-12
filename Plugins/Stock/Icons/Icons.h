@@ -21,6 +21,7 @@ namespace Icons
 		ChevronsDown,
 		PanelLeftOpen,
 		PanelLeftClose,
+		Settings,
 		SolidTriangleUp,
 		SolidTriangleDown,
 	};

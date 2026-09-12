@@ -110,6 +110,7 @@ enum {
 	IDC_CALL_AUCTION_BTN = 1022,
 	IDC_REFRESH_TIMER = 1023,
 	IDC_KLINE_SOURCE_BTN = 1025,
+	IDC_SETTINGS_BTN = 1027,
 	IDC_KLINE_PROGRESS_TIMER = 1026
 };
 
@@ -134,6 +135,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_MESSAGE((WM_USER + 102), OnShowEditDialog)
 	ON_MESSAGE((WM_USER + 103), OnShowAddDialog)
 	ON_MESSAGE((WM_USER + 104), OnShowTradeDialog)
+	ON_MESSAGE(FWND_MSG_SETTINGS_CLOSED, OnSettingsClosed)
 	ON_MESSAGE(IDM_CLOSE_WINDOW, OnCloseWindow)
 	ON_BN_CLICKED(IDC_CALL_AUCTION_BTN, &CFloatingWnd::OnBnClickedCallAuctionBtn)
 	ON_BN_CLICKED(IDC_TIMELINE_BTN, &CFloatingWnd::OnBnClickedTimeLineBtn)
@@ -154,6 +156,7 @@ BEGIN_MESSAGE_MAP(CFloatingWnd, CWnd)
 	ON_BN_CLICKED(IDC_ETF_HOLDINGS_BTN, &CFloatingWnd::OnBnClickedEtfHoldingsBtn)
 	ON_BN_CLICKED(IDC_EXPAND_BTN, &CFloatingWnd::OnBnClickedExpandBtn)
 	ON_BN_CLICKED(IDC_TOGGLE_STOCK_LIST_BTN, &CFloatingWnd::OnBnClickedToggleStockListBtn)
+	ON_BN_CLICKED(IDC_SETTINGS_BTN, &CFloatingWnd::OnBnClickedSettingsBtn)
 END_MESSAGE_MAP()
 
 int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
@@ -198,6 +201,10 @@ int CFloatingWnd::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	const int toggleStockListBtnHeight = closeBtnHeight;
 	CRect toggleStockListBtnRect(expandBtnRect.left - toggleStockListBtnWidth, g_data.RDPI(2), expandBtnRect.left, g_data.RDPI(2) + toggleStockListBtnHeight);
 	m_btnToggleStockList.Create(_T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, toggleStockListBtnRect, this, IDC_TOGGLE_STOCK_LIST_BTN);
+
+	// 设置按钮：收起分组左侧（顶栏第 4 格），点击原地切入内嵌“设置”视图
+	CRect settingsBtnRect(toggleStockListBtnRect.left - toggleStockListBtnWidth, g_data.RDPI(2), toggleStockListBtnRect.left, g_data.RDPI(2) + toggleStockListBtnHeight);
+	m_btnSettings.Create(_T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, settingsBtnRect, this, IDC_SETTINGS_BTN);
 
 	const int rightBtnWidth = g_data.RDPI(32);
 
@@ -472,10 +479,35 @@ void CFloatingWnd::OnPaint()
 		const int mcW = rect.Width(), mcH = rect.Height();
 		memDC.FillSolidRect(0, 0, mcW, mcHeaderH, COLOR_BG_HEADER);
 		memDC.FillSolidRect(0, mcHeaderH, mcW, 1, COLOR_DARK_GRAY_BORDER);
+		// 顶栏仅显示设置+关闭两个按钮：设置紧贴关闭（展开/收起分组按钮在此视图隐藏）
+		{
+			const int mcBtnW = g_data.RDPI(20);
+			const int mcBtnH = g_data.RDPI(18);
+			const int mcBtnTop = g_data.RDPI(2);
+			SafeSetWindowPos(m_btnClose, mcW - mcBtnW, mcBtnTop, mcBtnW, mcBtnH);
+			SafeSetWindowPos(m_btnSettings, mcW - mcBtnW * 2, mcBtnTop, mcBtnW, mcBtnH);
+		}
 		// 标题条中央：开市/休市状态时钟（面板状态，随秒级定时器刷新）
 		m_marketCenterPanel.DrawHeaderClock(memDC, CRect(0, 0, mcW, mcHeaderH));
 		m_marketCenterPanel.Draw(memDC, 0, mcHeaderH, mcW, mcH - mcHeaderH);
 		dc.BitBlt(0, 0, mcW, mcH, &memDC, 0, 0, SRCCOPY);
+		memDC.SelectObject(pOldBitmap);
+		return;
+	}
+
+	// 设置视图：由内嵌子对话框 CManagerDialog（WS_CHILD 铺满窗口）自绘全部内容，
+	// 父窗口仅保留暗色底（WS_CLIPCHILDREN 使父绘制不会冲刷子对话框），右上角保留关闭/设置按钮
+	if (m_settingsMode)
+	{
+		// 顶栏仅显示设置+关闭两个按钮：设置紧贴关闭（展开/收起分组按钮在此视图隐藏）
+		{
+			const int stBtnW = g_data.RDPI(20);
+			const int stBtnH = g_data.RDPI(18);
+			const int stBtnTop = g_data.RDPI(2);
+			SafeSetWindowPos(m_btnClose, rect.Width() - stBtnW, stBtnTop, stBtnW, stBtnH);
+			SafeSetWindowPos(m_btnSettings, rect.Width() - stBtnW * 2, stBtnTop, stBtnW, stBtnH);
+		}
+		dc.BitBlt(0, 0, rect.Width(), rect.Height(), &memDC, 0, 0, SRCCOPY);
 		memDC.SelectObject(pOldBitmap);
 		return;
 	}
@@ -598,6 +630,7 @@ void CFloatingWnd::OnPaint()
 			SafeSetWindowPos(m_btnClose, w - closeBtnW, headerBtnTop, closeBtnW, closeBtnH);
 			SafeSetWindowPos(m_btnExpand, w - closeBtnW * 2, headerBtnTop, closeBtnW, closeBtnH);
 			SafeSetWindowPos(m_btnToggleStockList, w - closeBtnW * 3, headerBtnTop, closeBtnW, closeBtnH);
+			SafeSetWindowPos(m_btnSettings, w - closeBtnW * 4, headerBtnTop, closeBtnW, closeBtnH);
 			// 筹码峰/盘口/持仓按钮定位到盘口标题栏
 			int obTitleH = g_data.RDPI(16);
 			int obBtnW = g_data.RDPI(34);
@@ -1155,6 +1188,7 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnClose, w - closeBtnW, top, closeBtnW, closeBtnH);
 				SafeSetWindowPos(m_btnExpand, w - closeBtnW * 2, top, closeBtnW, closeBtnH);
 				SafeSetWindowPos(m_btnToggleStockList, w - closeBtnW * 3, top, closeBtnW, closeBtnH);
+				SafeSetWindowPos(m_btnSettings, w - closeBtnW * 4, top, closeBtnW, closeBtnH);
 			}
 			// 盘口按钮
 			{
@@ -1582,6 +1616,7 @@ void CFloatingWnd::OnPaint()
 				SafeSetWindowPos(m_btnClose, w - closeBtnW, top, closeBtnW, closeBtnH);
 				SafeSetWindowPos(m_btnExpand, w - closeBtnW * 2, top, closeBtnW, closeBtnH);
 				SafeSetWindowPos(m_btnToggleStockList, w - closeBtnW * 3, top, closeBtnW, closeBtnH);
+				SafeSetWindowPos(m_btnSettings, w - closeBtnW * 4, top, closeBtnW, closeBtnH);
 			}
 
 			// 盘口标题栏右侧按钮定位（筹码峰、盘口、持仓按钮）
@@ -2338,6 +2373,91 @@ void CFloatingWnd::HideChartButtons(bool hide)
 	for (auto* b : btns)
 		if (b->GetSafeHwnd())
 			b->ShowWindow(hide ? SW_HIDE : SW_SHOW);
+}
+
+void CFloatingWnd::OnBnClickedSettingsBtn()
+{
+	ToggleSettingsView();
+}
+
+void CFloatingWnd::ShowSettingsView()
+{
+	if (!m_settingsMode)
+		ToggleSettingsView();
+}
+
+void CFloatingWnd::DestroySettingsDialog()
+{
+	if (m_pSettingsDlg != nullptr)
+	{
+		if (m_pSettingsDlg->GetSafeHwnd() != nullptr)
+			m_pSettingsDlg->DestroyWindow();
+		delete m_pSettingsDlg;
+		m_pSettingsDlg = nullptr;
+	}
+}
+
+// 原地切换内嵌“设置”视图（与行情中心一致的沉浸体验，不弹独立大窗口）：
+// 进入时以 WS_CHILD 子对话框铺满悬浮窗（尺寸保持原走势图尺寸不变），
+// 页面内容超出时由 CManagerDialog 内部的隐藏式滚轮滚动（方案B）适配。
+void CFloatingWnd::ToggleSettingsView()
+{
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+
+	if (m_marketCenterMode)
+	{
+		// 从行情中心直接进入设置：先退出行情中心（恢复图表按钮由退出分支统一处理）
+		ToggleMarketCenter();
+	}
+
+	m_settingsMode = !m_settingsMode;
+	if (m_settingsMode)
+	{
+		// 进入：隐藏图表视图专属按钮（含展开/收起分组按钮），只留关闭与设置
+		HideChartButtons(true);
+
+		// 每次进入都销毁重建子对话框，确保编辑副本与控件值始终来自当前配置
+		DestroySettingsDialog();
+		m_pSettingsDlg = new CManagerDialog(this);
+		m_pSettingsDlg->m_data = g_data.m_setting_data;
+		// 确定(true)/取消或ESC(false) 后由宿主收起设置视图；确定时配置已写回 g_data 并热更新
+		m_pSettingsDlg->m_on_settings_closed = [this](bool /*saved*/) {
+			this->PostMessage(FWND_MSG_SETTINGS_CLOSED, 0, 0);
+		};
+		if (!m_pSettingsDlg->CreateAsChild(this))
+		{
+			DestroySettingsDialog();
+			m_settingsMode = false;
+			HideChartButtons(false);
+			UpdateModeButtons();
+			UpdatePeriodComboVisibility();
+			UpdateIndicatorButtons();
+			Invalidate();
+			return;
+		}
+
+		CRect rcClient;
+		GetClientRect(&rcClient);
+		m_pSettingsDlg->MoveWindow(0, 0, rcClient.Width(), rcClient.Height());
+		// 子对话框置底：顶栏关闭/设置按钮（同为子窗口）浮在其上可继续点击
+		m_pSettingsDlg->SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+		m_pSettingsDlg->ShowWindow(SW_SHOW);
+		m_pSettingsDlg->SetFocus();
+	}
+	else
+	{
+		// 退出：隐藏设置视图并恢复图表按钮（对话框留待下次进入时重建）
+		if (m_pSettingsDlg && m_pSettingsDlg->GetSafeHwnd())
+			m_pSettingsDlg->ShowWindow(SW_HIDE);
+		HideChartButtons(false);
+		UpdateModeButtons();
+		UpdatePeriodComboVisibility();
+		UpdateIndicatorButtons();
+	}
+
+	if (m_btnSettings.GetSafeHwnd())
+		m_btnSettings.Invalidate();
+	Invalidate();
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)
@@ -3576,6 +3696,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 	else if (nID == IDC_ETF_HOLDINGS_BTN) { isActive = m_showEtfHoldings; }
 	else if (nID == IDC_EXPAND_BTN) { isActive = m_expandedMode; }
 	else if (nID == IDC_TOGGLE_STOCK_LIST_BTN) { isActive = m_showStockList; }
+	else if (nID == IDC_SETTINGS_BTN) { isActive = m_settingsMode; }
 	else if (nID == IDC_BOLL_BTN) { signalColor = m_bollSignalColor; isActive = m_showBollBands; }
 	else if (nID == IDC_MA_BTN) { signalColor = m_maSignalColor; isActive = m_showMA; }
 	else if (nID == IDC_INDICATOR_MACD_BTN) { isActive = (m_timelineIndicator == TimelineIndicator::CJL); }
@@ -3645,7 +3766,7 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 
 
 	// 顶栏操作图标由统一 Lucide 模块渲染，避免在窗口内维护自定义几何。
-	if (isCloseBtn || nID == IDC_EXPAND_BTN || nID == IDC_TOGGLE_STOCK_LIST_BTN)
+	if (isCloseBtn || nID == IDC_EXPAND_BTN || nID == IDC_TOGGLE_STOCK_LIST_BTN || nID == IDC_SETTINGS_BTN)
 	{
 		Gdiplus::Graphics graphics(dc.GetSafeHdc());
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
@@ -3656,7 +3777,9 @@ void CFloatingWnd::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 			static_cast<Gdiplus::REAL>(rect.Height()) - inset * 2.0f);
 		const Icons::Id icon = isCloseBtn ? Icons::Id::X :
 			(nID == IDC_EXPAND_BTN ? (m_expandedMode ? Icons::Id::ChevronsUp : Icons::Id::ChevronsDown) :
-				(m_showStockList ? Icons::Id::PanelLeftClose : Icons::Id::PanelLeftOpen));
+				(nID == IDC_TOGGLE_STOCK_LIST_BTN ?
+					(m_showStockList ? Icons::Id::PanelLeftClose : Icons::Id::PanelLeftOpen) :
+					Icons::Id::Settings));
 		Icons::Draw(graphics, icon, iconBounds, textColor);
 
 		dc.Detach();
@@ -4013,6 +4136,17 @@ LRESULT CFloatingWnd::OnCloseWindow(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+LRESULT CFloatingWnd::OnSettingsClosed(WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(wParam);
+	UNREFERENCED_PARAMETER(lParam);
+	// 设置子对话框确定(true)/取消或ESC(false) 后异步收起设置视图
+	//（PostMessage 中转，避免在对话框自身命令处理栈内改其可见性/销毁）
+	if (m_settingsMode)
+		ToggleSettingsView();
+	return 0;
+}
+
 LRESULT CFloatingWnd::OnShowEditDialog(WPARAM wParam, LPARAM lParam)
 {
 	if (m_pendingEditStockCode.empty())
@@ -4073,6 +4207,7 @@ void CFloatingWnd::OnDestroy()
 	KillTimer(IDC_REFRESH_TIMER);
 	KillTimer(IDC_KLINE_PROGRESS_TIMER);
 	m_marketCenterPanel.SetNotifyWnd(nullptr);
+	DestroySettingsDialog();
 
 	CWnd::OnDestroy();
 

@@ -22,6 +22,7 @@ namespace
 		static const Icon chevronsDown = { kChevronsDown, _countof(kChevronsDown), nullptr, 0, nullptr, 0 };
 		static const Icon panelLeftOpen = { kPanelLeftOpen, _countof(kPanelLeftOpen), nullptr, 0, nullptr, 0 };
 		static const Icon panelLeftClose = { kPanelLeftClose, _countof(kPanelLeftClose), nullptr, 0, nullptr, 0 };
+		static const Icon settings = { kSettings, _countof(kSettings), kSettingsCircles, _countof(kSettingsCircles), nullptr, 0 };
 		static const Icon solidTriangleUp = { nullptr, 0, nullptr, 0, kSolidTriangleUp, _countof(kSolidTriangleUp) };
 		static const Icon solidTriangleDown = { nullptr, 0, nullptr, 0, kSolidTriangleDown, _countof(kSolidTriangleDown) };
 
@@ -42,6 +43,7 @@ namespace
 		case Icons::Id::ChevronsDown: return chevronsDown;
 		case Icons::Id::PanelLeftOpen: return panelLeftOpen;
 		case Icons::Id::PanelLeftClose: return panelLeftClose;
+		case Icons::Id::Settings: return settings;
 		case Icons::Id::SolidTriangleUp: return solidTriangleUp;
 		case Icons::Id::SolidTriangleDown: return solidTriangleDown;
 		}

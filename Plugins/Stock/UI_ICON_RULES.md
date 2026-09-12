@@ -76,6 +76,7 @@ Use `g_data.DPI()` or `g_data.RDPI()` for all size and spacing calculations.
 | Move down | `ArrowDown` | `arrow-down.svg` |
 | Sort order | `ArrowUpDown` | `arrow-up-down.svg` |
 | Refresh | `RefreshCw` | `refresh-cw.svg` |
+| Settings / preferences | `Settings` | `settings.svg` |
 | Expand / collapse | `ChevronUp`, `ChevronDown` | matching SVG |
 | Expand / collapse secondary panel | `ChevronsUp`, `ChevronsDown` | matching SVG |
 | Open / close left panel | `PanelLeftOpen`, `PanelLeftClose` | matching SVG |

@@ -222,7 +222,7 @@ void CMarketCenterPanel::DrawHeaderClock(CDC& memDC, const CRect& rc)
 
 	std::wstring status = m_clock_status == 0 ? L"开市" : L"休市";
 	// OnPaint 已将宿主字体选入 memDC，取其 LOGFONT 派生时钟字体（与股票名标题同字号）
-	std::unique_ptr<Gdiplus::Font> fStatus, fTime;
+	std::unique_ptr<Gdiplus::Font> fStatus, fTime, fCache;
 	{
 		HDC hdc = memDC.GetSafeHdc();
 		LOGFONTW lf{};
@@ -239,11 +239,15 @@ void CMarketCenterPanel::DrawHeaderClock(CDC& memDC, const CRect& rc)
 			lfTime.lfWeight = FW_BOLD;
 			lfTime.lfHeight = lfTime.lfHeight * 125 / 100;
 			fTime.reset(new Gdiplus::Font(hdc, &lfTime));
+			// 缓存状态：与首页图表头部缓存文案同款——宿主字体原样（不加粗、不缩放）
+			fCache.reset(new Gdiplus::Font(hdc, &lf));
 		}
 		if (!fStatus || Gdiplus::Ok != fStatus->GetLastStatus())
 			fStatus = MkFont(13);
 		if (!fTime || Gdiplus::Ok != fTime->GetLastStatus())
 			fTime = MkFont(13, true);
+		if (!fCache || Gdiplus::Ok != fCache->GetLastStatus())
+			fCache = MkFont(12);
 	}
 		CSize szStatus = MeasureStr(g, fStatus.get(), status);
 		CSize szTime = MeasureStr(g, fTime.get(), m_clock_time);
@@ -254,10 +258,11 @@ void CMarketCenterPanel::DrawHeaderClock(CDC& memDC, const CRect& rc)
 		else if (state.inflight || state.queued) cacheStatus = state.hasData ? L"后台数据缓存中" : L"正在获取数据";
 		else if (state.hasData) cacheStatus = L"正在使用本地数据";
 		else cacheStatus = L"暂无缓存";
-		CSize szCache = MeasureStr(g, fStatus.get(), cacheStatus);
-		int cacheRight = rc.right - g_data.DPI(22) - g_data.DPI(4);
+		CSize szCache = MeasureStr(g, fCache.get(), cacheStatus);
+		// 缓存状态右边界避开顶栏 2 个图标按钮（设置紧贴关闭，共 2*RDPI(20)）+ 4px 间隙
+		int cacheRight = rc.right - g_data.RDPI(44);
 		int cacheLeft = max(rc.left + g_data.DPI(4), cacheRight - szCache.cx);
-		DrawStrSingle(g, cacheStatus, fStatus.get(), CRect(cacheLeft, rc.top, cacheRight, rc.bottom), RGB(255, 255, 255), 128, Gdiplus::StringAlignmentFar);
+		DrawStrSingle(g, cacheStatus, fCache.get(), CRect(cacheLeft, rc.top, cacheRight, rc.bottom), RGB(255, 255, 255), 128, Gdiplus::StringAlignmentFar);
 	int dotD = g_data.DPI(8);
 	int gap = g_data.DPI(7);
 	int totalW = dotD + gap + szStatus.cx + gap + szTime.cx;
@@ -340,6 +345,7 @@ void CMarketCenterPanel::SwitchPage(McPage page)
 	m_hover_sector_tab = -1;
 	m_hover_timeline_idx = -1;
 	m_hover_timeline_sector = -1;
+	m_hover_timeline_label = -1;
 	m_hover_moneyflow_card = -1;
 	m_hover_moneyflow_idx = -1;
 	m_theme_panel_open = false;
@@ -1140,124 +1146,7 @@ void CMarketCenterPanel::DrawSectorTimelinePage(Gdiplus::Graphics& g, const CRec
 	g.DrawLine(&cutPen, Gdiplus::REAL(plotRc.right), Gdiplus::REAL(plotRc.top),
 		Gdiplus::REAL(plotRc.right), Gdiplus::REAL(plotRc.bottom));
 
-	// 判断当前聚焦/悬停的曲线
-	int focusedTlIdx = -1;
-	float minDistY = static_cast<float>(g_data.DPI(18));
-	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
-	{
-		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
-		{
-			const auto* pTl = visibleTimelines[static_cast<size_t>(i)].pTl;
-			if (m_hover_timeline_idx < static_cast<int>(pTl->points.size()))
-			{
-				float cy = fy(pTl->points[static_cast<size_t>(m_hover_timeline_idx)]);
-				float dist = fabs(cy - static_cast<float>(m_mouse_pos.y));
-				if (dist < minDistY)
-				{
-					minDistY = dist;
-					focusedTlIdx = i;
-				}
-			}
-		}
-	}
-	if (focusedTlIdx < 0 && m_selected_sector >= 0 && m_selected_sector < static_cast<int>(m_sectors_snapshot.size()))
-	{
-		const auto& selCode = m_sectors_snapshot[static_cast<size_t>(m_selected_sector)].code;
-		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
-		{
-			if (visibleTimelines[static_cast<size_t>(i)].pTl->code == selCode)
-			{
-				focusedTlIdx = i;
-				break;
-			}
-		}
-	}
-
-	// 记录当前悬停/聚焦板块在 m_sectors_snapshot 中的下标
-	m_hover_timeline_sector = -1;
-	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
-	{
-		const std::wstring& fCode = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl->code;
-		for (int sIdx = 0; sIdx < static_cast<int>(m_sectors_snapshot.size()); ++sIdx)
-		{
-			if (m_sectors_snapshot[static_cast<size_t>(sIdx)].code == fCode)
-			{
-				m_hover_timeline_sector = sIdx;
-				break;
-			}
-		}
-	}
-
-	// 绘制平滑曲线（启用抗锯齿）
-	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-	for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
-	{
-		const auto& item = visibleTimelines[static_cast<size_t>(i)];
-		const auto* pTl = item.pTl;
-		if (pTl->points.size() < 2) continue;
-		bool isFocused = (i == focusedTlIdx);
-		BYTE alpha = (focusedTlIdx >= 0) ? (isFocused ? 255 : 85) : 225;
-		float width = isFocused ? 2.5f : 1.6f;
-		COLORREF col = item.color;
-
-		std::vector<Gdiplus::PointF> pts;
-		pts.reserve(pTl->points.size());
-		for (size_t k = 0; k < pTl->points.size() && k <= 240; ++k)
-		{
-			pts.push_back(Gdiplus::PointF(fx(static_cast<int>(k)), fy(pTl->points[k])));
-		}
-		if (pts.size() >= 2)
-		{
-			Gdiplus::Pen pen(Gdi(col, alpha), width);
-			g.DrawLines(&pen, pts.data(), static_cast<INT>(pts.size()));
-		}
-	}
-
-	// 垂直虚线十字光标
-	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
-	{
-		float curX = fx(m_hover_timeline_idx);
-		Gdiplus::Pen crossPen(Gdi(RGB(180, 190, 210), 140), 1.0f);
-		crossPen.SetDashStyle(Gdiplus::DashStyleDash);
-		g.DrawLine(&crossPen, curX, static_cast<float>(plotRc.top), curX, static_cast<float>(plotRc.bottom));
-	}
-
-	// 顶部概要栏（当前/悬停时刻流入居首与流出居首）
-	int queryIdx = (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240) ? m_hover_timeline_idx : 240;
-	const MC::SectorTimeline* topInTl = nullptr;
-	const MC::SectorTimeline* topOutTl = nullptr;
-	double maxInVal = -1e9, minOutVal = 1e9;
-
-	for (const auto& item : visibleTimelines)
-	{
-		const auto* pTl = item.pTl;
-		if (pTl->points.empty()) continue;
-		int idx = min(queryIdx, static_cast<int>(pTl->points.size()) - 1);
-		double val = pTl->points[static_cast<size_t>(idx)];
-		if (val > 0 && val > maxInVal) { maxInVal = val; topInTl = pTl; }
-		if (val < 0 && val < minOutVal) { minOutVal = val; topOutTl = pTl; }
-	}
-
-	std::wstring headerStr;
-	const auto& axis = CMarketCenterData::TimeAxis();
-	std::wstring tStr = (queryIdx < static_cast<int>(axis.size())) ? axis[static_cast<size_t>(queryIdx)] : (m_clock_time.empty() ? L"--" : m_clock_time.substr(0, 5));
-	std::wstring modeTitle = (m_treemap_mode == 1 ? L"净流入 Top15" : (m_treemap_mode == 2 ? L"净流出 Top15" : L"代表板块"));
-	headerStr = tStr + L"  主力资金时间走向 (" + modeTitle + L")";
-	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
-	{
-		const auto* fTl = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl;
-		int idx = min(queryIdx, static_cast<int>(fTl->points.size()) - 1);
-		double val = (idx >= 0) ? fTl->points[static_cast<size_t>(idx)] : fTl->finalFlow;
-		headerStr += L"  |  聚焦: " + fTl->name + L" " + FormatYi(val * 1e8, 1);
-	}
-	else if (topInTl || topOutTl)
-	{
-		if (topInTl) headerStr += L"  |  流入首位: " + topInTl->name + L" " + FormatYi(maxInVal * 1e8, 1);
-		if (topOutTl) headerStr += L"  |  流出首位: " + topOutTl->name + L" " + FormatYi(minOutVal * 1e8, 1);
-	}
-	DrawStr(g, headerStr, f11.get(), CRect(plotRc.left, chartRc.top + g_data.DPI(5), plotRc.right + padR, plotRc.top - g_data.DPI(3)), MC_TEXT);
-
-	// 右侧末端标签（只显示板块名称，带防重叠避让算法）
+	// 右侧末端标签（只显示板块名称，带防重叠避让算法，同时构建鼠标悬停热区）
 	struct LabelNode {
 		int tlIdx;
 		float targetY;
@@ -1311,6 +1200,166 @@ void CMarketCenterPanel::DrawSectorTimelinePage(Gdiplus::Graphics& g, const CRec
 		}
 	}
 
+	// 构建右侧名称标签热区列表（覆盖右侧标签列，连续无缝无死区）
+	m_timeline_label_rects.clear();
+	for (size_t i = 0; i < nodes.size(); ++i)
+	{
+		int topY = (i == 0) ? plotRc.top : static_cast<int>(nodes[i - 1].y + nodes[i].y) / 2;
+		int botY = (i + 1 == nodes.size()) ? plotRc.bottom : static_cast<int>(nodes[i].y + nodes[i + 1].y) / 2;
+		CRect hitRc(plotRc.right, topY, chartRc.right, botY);
+		m_timeline_label_rects.push_back({ hitRc, nodes[i].tlIdx });
+	}
+
+	// 判断当前聚焦/悬停的曲线
+	int focusedTlIdx = -1;
+	float minDistY = static_cast<float>(g_data.DPI(18));
+	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
+	{
+		// 鼠标在左侧折线图坐标系内滑动：按最近 Y 距离查找高亮曲线
+		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+		{
+			const auto* pTl = visibleTimelines[static_cast<size_t>(i)].pTl;
+			if (m_hover_timeline_idx < static_cast<int>(pTl->points.size()))
+			{
+				float cy = fy(pTl->points[static_cast<size_t>(m_hover_timeline_idx)]);
+				float dist = fabs(cy - static_cast<float>(m_mouse_pos.y));
+				if (dist < minDistY)
+				{
+					minDistY = dist;
+					focusedTlIdx = i;
+				}
+			}
+		}
+	}
+	else
+	{
+		// 鼠标滑过右侧名称时：通过命中标签热区高亮对应线条
+		for (const auto& lr : m_timeline_label_rects)
+		{
+			if (lr.rect.PtInRect(m_mouse_pos))
+			{
+				focusedTlIdx = lr.tlIdx;
+				break;
+			}
+		}
+	}
+	if (focusedTlIdx < 0 && m_selected_sector >= 0 && m_selected_sector < static_cast<int>(m_sectors_snapshot.size()))
+	{
+		const auto& selCode = m_sectors_snapshot[static_cast<size_t>(m_selected_sector)].code;
+		for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+		{
+			if (visibleTimelines[static_cast<size_t>(i)].pTl->code == selCode)
+			{
+				focusedTlIdx = i;
+				break;
+			}
+		}
+	}
+
+	// 记录当前悬停/聚焦板块在 m_sectors_snapshot 中的下标
+	m_hover_timeline_sector = -1;
+	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
+	{
+		const std::wstring& fCode = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl->code;
+		for (int sIdx = 0; sIdx < static_cast<int>(m_sectors_snapshot.size()); ++sIdx)
+		{
+			if (m_sectors_snapshot[static_cast<size_t>(sIdx)].code == fCode)
+			{
+				m_hover_timeline_sector = sIdx;
+				break;
+			}
+		}
+	}
+
+	// 绘制平滑曲线（启用抗锯齿：先绘制所有非高亮曲线，最后置顶绘制高亮聚焦曲线）
+	g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+	for (int i = 0; i < static_cast<int>(visibleTimelines.size()); i++)
+	{
+		if (i == focusedTlIdx) continue;
+		const auto& item = visibleTimelines[static_cast<size_t>(i)];
+		const auto* pTl = item.pTl;
+		if (pTl->points.size() < 2) continue;
+		BYTE alpha = (focusedTlIdx >= 0) ? 85 : 225;
+		float width = 1.6f;
+		COLORREF col = item.color;
+
+		std::vector<Gdiplus::PointF> pts;
+		pts.reserve(pTl->points.size());
+		for (size_t k = 0; k < pTl->points.size() && k <= 240; ++k)
+		{
+			pts.push_back(Gdiplus::PointF(fx(static_cast<int>(k)), fy(pTl->points[k])));
+		}
+		if (pts.size() >= 2)
+		{
+			Gdiplus::Pen pen(Gdi(col, alpha), width);
+			g.DrawLines(&pen, pts.data(), static_cast<INT>(pts.size()));
+		}
+	}
+	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
+	{
+		const auto& item = visibleTimelines[static_cast<size_t>(focusedTlIdx)];
+		const auto* pTl = item.pTl;
+		if (pTl->points.size() >= 2)
+		{
+			std::vector<Gdiplus::PointF> pts;
+			pts.reserve(pTl->points.size());
+			for (size_t k = 0; k < pTl->points.size() && k <= 240; ++k)
+			{
+				pts.push_back(Gdiplus::PointF(fx(static_cast<int>(k)), fy(pTl->points[k])));
+			}
+			if (pts.size() >= 2)
+			{
+				Gdiplus::Pen pen(Gdi(item.color, 255), 2.5f);
+				g.DrawLines(&pen, pts.data(), static_cast<INT>(pts.size()));
+			}
+		}
+	}
+
+	// 垂直虚线十字光标
+	if (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240 && plotRc.PtInRect(m_mouse_pos))
+	{
+		float curX = fx(m_hover_timeline_idx);
+		Gdiplus::Pen crossPen(Gdi(RGB(180, 190, 210), 140), 1.0f);
+		crossPen.SetDashStyle(Gdiplus::DashStyleDash);
+		g.DrawLine(&crossPen, curX, static_cast<float>(plotRc.top), curX, static_cast<float>(plotRc.bottom));
+	}
+
+	// 顶部概要栏（当前/悬停时刻流入居首与流出居首）
+	int queryIdx = (m_hover_timeline_idx >= 0 && m_hover_timeline_idx <= 240) ? m_hover_timeline_idx : 240;
+	const MC::SectorTimeline* topInTl = nullptr;
+	const MC::SectorTimeline* topOutTl = nullptr;
+	double maxInVal = -1e9, minOutVal = 1e9;
+
+	for (const auto& item : visibleTimelines)
+	{
+		const auto* pTl = item.pTl;
+		if (pTl->points.empty()) continue;
+		int idx = min(queryIdx, static_cast<int>(pTl->points.size()) - 1);
+		double val = pTl->points[static_cast<size_t>(idx)];
+		if (val > 0 && val > maxInVal) { maxInVal = val; topInTl = pTl; }
+		if (val < 0 && val < minOutVal) { minOutVal = val; topOutTl = pTl; }
+	}
+
+	std::wstring headerStr;
+	const auto& axis = CMarketCenterData::TimeAxis();
+	std::wstring tStr = (queryIdx < static_cast<int>(axis.size())) ? axis[static_cast<size_t>(queryIdx)] : (m_clock_time.empty() ? L"--" : m_clock_time.substr(0, 5));
+	std::wstring modeTitle = (m_treemap_mode == 1 ? L"净流入 Top15" : (m_treemap_mode == 2 ? L"净流出 Top15" : L"代表板块"));
+	headerStr = tStr + L"  主力资金时间走向 (" + modeTitle + L")";
+	if (focusedTlIdx >= 0 && focusedTlIdx < static_cast<int>(visibleTimelines.size()))
+	{
+		const auto* fTl = visibleTimelines[static_cast<size_t>(focusedTlIdx)].pTl;
+		int idx = min(queryIdx, static_cast<int>(fTl->points.size()) - 1);
+		double val = (idx >= 0) ? fTl->points[static_cast<size_t>(idx)] : fTl->finalFlow;
+		headerStr += L"  |  聚焦: " + fTl->name + L" " + FormatYi(val * 1e8, 1);
+	}
+	else if (topInTl || topOutTl)
+	{
+		if (topInTl) headerStr += L"  |  流入首位: " + topInTl->name + L" " + FormatYi(maxInVal * 1e8, 1);
+		if (topOutTl) headerStr += L"  |  流出首位: " + topOutTl->name + L" " + FormatYi(minOutVal * 1e8, 1);
+	}
+	DrawStr(g, headerStr, f11.get(), CRect(plotRc.left, chartRc.top + g_data.DPI(5), plotRc.right + padR, plotRc.top - g_data.DPI(3)), MC_TEXT);
+
+	// 绘制右侧末端名称标签
 	for (const auto& node : nodes)
 	{
 		bool isFocused = (node.tlIdx == focusedTlIdx);
@@ -2522,26 +2571,39 @@ bool CMarketCenterPanel::HandleMouseMove(CPoint point)
 					changed = true;
 				}
 			}
-			else
-			{
-				int hovIdx = -1;
-				if (!m_sector_timeline_inner_rect.IsRectEmpty() && m_sector_timeline_inner_rect.PtInRect(point))
+				else
 				{
-					float mouseX = static_cast<float>(point.x);
-					hovIdx = static_cast<int>(round((mouseX - m_sector_timeline_inner_rect.left) * 240.0f / m_sector_timeline_inner_rect.Width()));
-					if (hovIdx < 0) hovIdx = 0;
-					if (hovIdx > 240) hovIdx = 240;
+					int hovIdx = -1;
+					int hovLbl = -1;
+					if (!m_sector_timeline_inner_rect.IsRectEmpty() && m_sector_timeline_inner_rect.PtInRect(point))
+					{
+						float mouseX = static_cast<float>(point.x);
+						hovIdx = static_cast<int>(round((mouseX - m_sector_timeline_inner_rect.left) * 240.0f / m_sector_timeline_inner_rect.Width()));
+						if (hovIdx < 0) hovIdx = 0;
+						if (hovIdx > 240) hovIdx = 240;
+					}
+					else
+					{
+						for (const auto& lr : m_timeline_label_rects)
+						{
+							if (lr.rect.PtInRect(point))
+							{
+								hovLbl = lr.tlIdx;
+								break;
+							}
+						}
+					}
+					if (hovIdx != m_hover_timeline_idx || hovLbl != m_hover_timeline_label)
+					{
+						m_hover_timeline_idx = hovIdx;
+						m_hover_timeline_label = hovLbl;
+						changed = true;
+					}
+					if (m_bubble_chart_rect.PtInRect(point))
+					{
+						changed = true;
+					}
 				}
-				if (hovIdx != m_hover_timeline_idx)
-				{
-					m_hover_timeline_idx = hovIdx;
-					changed = true;
-				}
-				if (m_bubble_chart_rect.PtInRect(point))
-				{
-					changed = true;
-				}
-			}
 			break;
 		}
 		case PAGE_ETF_INFLOW:
@@ -2743,6 +2805,8 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 				if (m_sector_view_mode != i)
 				{
 					m_sector_view_mode = i;
+					m_hover_timeline_idx = -1;
+					m_hover_timeline_label = -1;
 					RequestData();
 				}
 				return;
@@ -2756,6 +2820,8 @@ void CMarketCenterPanel::HandleLButtonDown(CPoint point)
 			{
 				m_treemap_mode = (m_treemap_mode == i + 1) ? 0 : i + 1;
 				m_bubble_layout_dirty = true;
+				m_hover_timeline_idx = -1;
+				m_hover_timeline_label = -1;
 				return;
 			}
 		}

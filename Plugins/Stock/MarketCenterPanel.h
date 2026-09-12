@@ -171,6 +171,9 @@ private:
 	CRect m_sector_timeline_inner_rect; // 时间走向图内部坐标系矩形
 	int m_hover_timeline_idx{ -1 };     // 悬停的分时分钟 (0~240)
 	int m_hover_timeline_sector{ -1 };  // 悬停/聚焦的代表板块下标
+	struct TimelineLabelRect { CRect rect; int tlIdx{ -1 }; };
+	std::vector<TimelineLabelRect> m_timeline_label_rects; // 时间走向图右侧末端标签热区
+	int m_hover_timeline_label{ -1 };   // 悬停的右侧代表板块标签下标
 
 	// ===== ETF净流入页 =====
 	std::vector<ThemeInflow> m_theme_inflow;

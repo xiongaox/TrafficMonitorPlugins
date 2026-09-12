@@ -21,11 +21,14 @@
 #include "TimelineChart.h"
 #include "MarketCenterPanel.h"
 
+class CManagerDialog;   // 内嵌设置子对话框（FloatingWnd.cpp 中包含完整定义）
+
 // 定义自定义消息
 #define FWND_MSG_UPDATE_STATUS (WM_USER + 100)
 #define FWND_MSG_SHOW_EDIT_DLG (WM_USER + 102)
 #define FWND_MSG_SHOW_ADD_DLG (WM_USER + 103)
 #define FWND_MSG_SHOW_TRADE_DLG (WM_USER + 104)
+#define FWND_MSG_SETTINGS_CLOSED (WM_USER + 105)  // 内嵌设置视图确定/取消/ESC 后收起设置视图
 
 // 定义时间线可见点数常量
 #define TIME_LINE_VISIBLE_COUNT_1MIN 30
@@ -46,7 +49,10 @@ public:
 	void ToggleKLineMode(); // 切换分时/日K模式
 	// 行情中心内嵌视图：右键在悬浮窗内原地切换；进入时临时放大窗口，退出还原
 	void ToggleMarketCenter();   // 右键切换行情中心视图模式（悬浮窗内原地切换，不建子窗口/不改尺寸）
-	void HideChartButtons(bool hide);   // 行情中心视图下隐藏/恢复图表视图专属按钮
+	void HideChartButtons(bool hide);   // 行情中心/设置视图下隐藏/恢复图表视图专属按钮
+	// 内嵌“设置”视图：与行情中心一致的原地切换体验（入口=顶栏设置图标）
+	void ShowSettingsView();     // 打开设置视图（悬浮窗已开启时供外部入口直达）
+	void ToggleSettingsView();   // 在悬浮窗内原地切换设置视图/图表视图
 	// 鼠标移出图表区超过2秒时自动清除悬停信息卡，避免长期遮挡图表
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
@@ -67,6 +73,7 @@ protected:
 	LRESULT OnShowEditDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowAddDialog(WPARAM wParam, LPARAM lParam);
 	LRESULT OnShowTradeDialog(WPARAM wParam, LPARAM lParam);
+	LRESULT OnSettingsClosed(WPARAM wParam, LPARAM lParam);   // 内嵌设置视图关闭，收起设置视图
 	afx_msg void OnBnClickedTimeLineBtn();
 	afx_msg void OnBnClickedKLineBtn();
 	afx_msg void OnBnClickedWeekKLineBtn();
@@ -84,6 +91,7 @@ protected:
 	afx_msg void OnBnClickedEtfHoldingsBtn();
 	afx_msg void OnBnClickedExpandBtn();
 	afx_msg void OnBnClickedToggleStockListBtn();
+	afx_msg void OnBnClickedSettingsBtn();
 	afx_msg void OnBnClickedCallAuctionBtn();
 	afx_msg void OnBnClickedKLineSourceBtn();
 
@@ -126,6 +134,9 @@ private:
 	CTransparentWnd m_CTransparentWnd;
 	CMarketCenterPanel m_marketCenterPanel;            // 行情中心面板（视图模式，悬浮窗 OnPaint 里绘制）
 	bool m_marketCenterMode{ false };                  // 是否处于行情中心视图
+	bool m_settingsMode{ false };                      // 是否处于内嵌设置视图
+	CManagerDialog* m_pSettingsDlg{ nullptr };         // 设置子对话框（WS_CHILD 内嵌铺满悬浮窗）
+	void DestroySettingsDialog();                      // 安全销毁设置子对话框
 	CStockListPanel m_stockListPanel;
 	CCallAuctionChart m_callAuctionChart;
 	CChipPeakPanel m_chipPeakPanel;
@@ -146,6 +157,7 @@ private:
 	CButton m_btnClose;
 	CButton m_btnExpand;      // 放大按钮（隐藏副图，走势图占3/4）
 	CButton m_btnToggleStockList;  // 股票列表显示/隐藏按钮
+	CButton m_btnSettings;        // 设置按钮（收起分组左侧，点击原地切入内嵌设置视图）
 	CButton m_btnCallAuction;     // 集合竞价按钮
 	CButton m_btnIndicatorCJL;  // CJL指标按钮
 	CButton m_btnIndicatorMACD;  // MACD信号按钮
