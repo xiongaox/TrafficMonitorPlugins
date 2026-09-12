@@ -1,37 +1,23 @@
-# TrafficMonitorPlugins
-这是用于[TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor)的插件。
+﻿# Stock++
 
-## 插件下载
+这是用于 [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor) 的股票自选、行情与量化监控插件项目（原 TrafficMonitorPlugins 精简重构版）。
 
-请点击以下链接转到插件下载页面：
+## 功能介绍
 
-[TrafficMonitor 插件下载](./download/plugin_download.md)
+- 支持 A 股、ETF、港股、美股实时行情展示与持仓监控
+- 支持自定义股票代码、自选列表及智能换手/振幅等统计
+- 内置独立插件测试器（PluginTester），方便脱离主程序实时调试验证
 
-## 插件使用说明
+## 项目结构
 
-根据TrafficMonitor的版本（x86为32位，x64为64位）选择对应版本的插件，下载后解压可得到dll文件，下载后将插件dll放到TrafficMonitor程序所在目录下的`plugins`目录下：
+- Plugins/Stock/: 股票插件核心源码
+- utilities/: 基础公共依赖库与 JSON 解析支持
+- PluginTester/: 独立插件测试器（MFC 调试台）
+- include/: TrafficMonitor 插件接口规范头文件
+- Stock++.sln: 仅保留 Stock 相关项目的 Visual Studio 解决方案
 
-![image-20221013203124953](images/image-20221013203124953.png)
+## 编译与调试
 
-重新启动TrafficMonitor后可以在“选项”——“常规设置”——“插件管理”中看到所有的插件：
-
-![image-20221013203353499](images/image-20221013203353499.png)
-
-要使插件项目显示到任务栏中，请在任务栏窗口上点击鼠标右键，选择“显示设置”。
-
-![image-20221013203527593](images/image-20221013203527593.png)
-
-![image-20221013203621714](images/image-20221013203621714.png)
-
-此时，“显示设置”中会显示已加载的插件项目，勾选你希望显示在任务栏上的项目，点击确定即可。
-
-关于更多插件使用的详细说明，请参考以下链接：
-
-[插件功能 · zhongyang219/TrafficMonitor Wiki (github.com)](https://github.com/zhongyang219/TrafficMonitor/wiki/插件功能)
-
-## 如何开发插件
-
-关于如何开发TrafficMonitor，请参考以下链接：
-
-[插件开发指南 · zhongyang219/TrafficMonitor Wiki (github.com)](https://github.com/zhongyang219/TrafficMonitor/wiki/插件开发指南)
-
+1. 使用 Visual Studio 2022 打开根目录下的 Stock++.sln。
+2. 选择 Release 与 x64 平台进行编译。
+3. 编译生成的 Stock.dll 可在根目录双击 启动测试器.lnk 直接进行实时功能测试。
