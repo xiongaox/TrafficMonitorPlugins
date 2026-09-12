@@ -1,4 +1,4 @@
-﻿# tools/release.ps1
+# tools/release.ps1
 param (
     [string]$Version = ""
 )
@@ -84,6 +84,9 @@ if ($LASTEXITCODE -ne 0) { throw "x86 编译失败！" }
 
 # 4. 打包输出至 download 目录
 Write-Host ">>> [4/5] 正在打包发布产物到 download 目录..." -ForegroundColor Cyan
+# 清理历史旧版本 zip 包
+Get-ChildItem -Path "$root\download" -Filter "Stock_V*_x64.zip" | Remove-Item -Force
+Get-ChildItem -Path "$root\download" -Filter "Stock_V*_x86.zip" | Remove-Item -Force
 $x64Zip = "$root\download\Stock_V${cleanVer}_x64.zip"
 $x86Zip = "$root\download\Stock_V${cleanVer}_x86.zip"
 Compress-Archive -Path "$root\bin\x64\Release\Stock.dll" -DestinationPath $x64Zip -Force
