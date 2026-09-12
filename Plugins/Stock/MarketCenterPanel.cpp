@@ -481,7 +481,7 @@ void CMarketCenterPanel::DrawSidebar(Gdiplus::Graphics& g, const CRect& rc)
 {
 	// 菜单第一项直接贴住顶部标题条（无上边距）
 	// 菜单项
-	const wchar_t* titles[PAGE_COUNT] = { L"板块资金流", L"ETF申购净流入", L"资金流向", L"主力资金", L"涨跌趋势", L"ETF涨跌榜" };
+	const wchar_t* titles[PAGE_COUNT] = { L"板块资金流", L"资金净申购", L"资金流向", L"主力资金", L"涨跌趋势", L"ETF涨跌榜" };
 	int itemH = g_data.DPI(34);
 	int top = rc.top;
 	for (int i = 0; i < PAGE_COUNT; i++)

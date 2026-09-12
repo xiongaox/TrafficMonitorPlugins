@@ -37,7 +37,7 @@ struct CustomGroup
 
 struct SettingData
 {
-	vector<std::wstring> m_stock_codes; // 代码
+	vector<std::wstring> m_stock_codes{ L"sz300750", L"rt_hk01810", L"gb_nvda", L"gb_tsla" }; // 代码
 	bool m_full_day{};                  // 全天更新
 	bool m_show_stock_name{ true };     // 显示股票名称（默认开启）
 	bool m_show_fluctuation{};          // 显示涨跌幅
@@ -46,11 +46,12 @@ struct SettingData
 	unsigned m_kline_width{ 800 };      // 走势图宽度
 	unsigned m_kline_height{ 480 };     // 走势图高度
 	int m_display_area{ AREA_RIGHT_BOTTOM }; // 悬浮窗显示区域（默认右下角）
+	int m_window_opacity{ 97 };         // 悬浮窗背景不透明度 (30 ~ 100，默认 97%)
 	bool m_use_socks5_proxy{};          // 是否启用 SOCKS5 代理
 	std::wstring m_socks5_proxy;        // SOCKS5 代理地址，如 127.0.0.1:1080
 	std::vector<std::wstring> m_selected_indices; // 选中的指数列表
 	int m_index_display_mode{ INDEX_DISP_ALL };   // 指数状态栏显示模式 (0:全显, 1:数字, 2:百分比)
-	std::vector<int> m_ma_days;         // 均线日列表，例如 {5, 17, 60}
+	std::vector<int> m_ma_days{ 5, 20, 60 };      // 均线日列表，例如 {5, 20, 60}
 	// 分时图布林带三轨显隐（缺省全部显示；键名 boll_upper_visible/boll_mid_visible/boll_lower_visible）
 	bool m_boll_upper_visible{ true };  // 布林上轨（红虚线）显示
 	bool m_boll_mid_visible{ true };    // 布林中轨（蓝虚线）显示
@@ -58,7 +59,7 @@ struct SettingData
 	std::vector<std::wstring> m_position_codes; // 持仓分组代码列表（独立于自选股）
 	std::vector<std::wstring> m_custom_group_codes; // 自定义分组代码列表(向后兼容)
 	std::vector<CustomGroup> m_custom_groups; // 多自定义分组列表
-	int m_group_default_tab{ 1 };       // 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)
+	int m_group_default_tab{ 0 };       // 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)
 	std::vector<std::wstring> m_header_metrics{ L"总市值", L"成交额", L"成交量", L"量比" }; // 顶部指标栏指标列表（最多4个）
 
 	// WebDAV 云端备份配置

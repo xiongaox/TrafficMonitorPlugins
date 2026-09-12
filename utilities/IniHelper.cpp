@@ -1,4 +1,5 @@
-﻿#include "IniHelper.h"
+#include "IniHelper.h"
+#include <windows.h>
 #include <fstream>
 #include "Common.h"
 #include <tchar.h>
@@ -23,7 +24,7 @@ namespace utilities
         if (!ini_str.empty() && ini_str.back() != L'\n')        //确保文件末尾有回车符
             ini_str.push_back(L'\n');
         //判断文件是否是utf8编码
-        bool is_utf8;
+        bool is_utf8 = false;
         if (ini_str.size() >= 3 && ini_str[0] == -17 && ini_str[1] == -69 && ini_str[2] == -65)
         {
             //如果有UTF8的BOM，则删除BOM
@@ -32,8 +33,21 @@ namespace utilities
         }
         else
         {
-            is_utf8 = false;
+            // 无 BOM 时，检测是否为有效的 UTF-8 编码文本
+            int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, ini_str.c_str(), -1, NULL, 0);
+            if (wideLen > 0)
+            {
+                for (unsigned char c : ini_str)
+                {
+                    if (c >= 0x80)
+                    {
+                        is_utf8 = true;
+                        break;
+                    }
+                }
+            }
         }
+        m_save_as_utf8 = is_utf8;
         //转换成Unicode
         m_ini_str = StringHelper::StrToUnicode(ini_str.c_str(), is_utf8);
     }

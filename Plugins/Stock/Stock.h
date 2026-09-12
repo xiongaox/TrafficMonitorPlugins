@@ -66,6 +66,7 @@ public:
 	// 通知浮动窗口刷新显示（线程安全，可从工作线程调用）
 	void NotifyFloatingWndUpdate();
 	void NotifyFloatingWndOrderBookUpdate();  // 通知盘口数据更新
+	CFloatingWnd* GetFloatingWnd() const { return m_pFloatingWnd; }
 
 public:
 	std::mutex m_stockDataMutex;
@@ -77,7 +78,6 @@ private:
 	static Stock m_instance;
 	vector<StockItem> m_items;
 
-	CManagerDialog* m_option_dlg{};         // 保存选项设置对话框的句柄
 	unsigned __int64 m_last_request_time{}; // 上次请求的时间
 	unsigned __int64 m_last_call_auction_time{}; // 上次集合竞价请求的时间
 	CMenu m_menu;

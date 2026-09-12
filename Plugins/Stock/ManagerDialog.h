@@ -184,6 +184,13 @@ private:
 	CRect m_index_mode_rects[3];
 	CRect m_display_area_rects[5];
 	int m_hover_display_area{ -1 };
+	CRect m_opacity_slider_rect;
+	CRect m_opacity_presets_rects[5];
+	bool m_is_dragging_opacity{ false };
+	int m_hover_opacity_preset{ -1 };
+	bool m_hover_opacity_slider{ false };
+	CRect m_reset_btn_rect;
+	bool m_hover_reset_btn{ false };
 	int m_index_scroll_y{ 0 };
 	int m_page_scroll_y{ 0 };           // 方案B：右侧内容区隐藏式滚动偏移（滚轮驱动，不绘制滚动条）
 	bool m_as_child{ false };           // 内嵌子窗口模式：作为悬浮窗“设置”视图的 WS_CHILD 子对话框
@@ -211,7 +218,6 @@ private:
 	CButton m_mgr_down_btn;
 	CButton m_mgr_del_group_btn;
 	CButton m_group_sort_btn;   // 分组管理页右上角「分组排序」入口
-	CButton m_reset_btn;        // 基础设置页「重置所有数据」按钮
 	CDarkComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
@@ -255,6 +261,7 @@ private:
 	int MeasureMetricCard2Height(int rightWidth);        // 指标页候选库自然高度（与绘制排布一致）
 	int ContentBottomPad() const;                        // 内容区底部留白（内嵌无按钮条时收窄，分组页仍留操作按钮行）
 	void ApplyIfEmbedded();                              // 内嵌模式即时提交设置（模态模式等「确定」）
+	void ApplyOpacity(int opacityPercent);               // 实时应用并推送背景透明度到宿主与当前窗口
 
 	// ===== 暗色主题自绘辅助 =====
 	bool IsChecked(UINT nID) const;
@@ -309,6 +316,7 @@ public:
 	afx_msg BOOL OnNcActivate(BOOL bActive);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
 	afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
 	afx_msg void OnMouseLeave();

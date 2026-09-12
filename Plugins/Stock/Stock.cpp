@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "Stock.h"
+#include "Version.h"
 #include "MarketCenterData.h"
 #include "DataManager.h"
 #include "OptionsDlg.h"
@@ -212,7 +213,7 @@ const wchar_t* Stock::GetInfo(PluginInfoIndex index)
 	case ITMPlugin::TMI_URL:
 		return L"https://github.com/zhongyang219/TrafficMonitorPlugins";
 	case TMI_VERSION:
-		return L"1.14";
+		return STOCK_VERSION_STR;
 	default:
 		break;
 	}
@@ -298,7 +299,7 @@ void* Stock::GetPluginIcon()
 INT_PTR Stock::ShowStockManageDlg(CWnd* pWnd)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	// 悬浮窗已开启时，“选项设置”直达悬浮窗内嵌设置视图（与行情中心一致的原地体验，不弹独立大窗口）
+	// 悬浮窗已开启时，“选项设置”直达悬浮窗内嵌设置视图（原地沉浸体验，不再弹独立大窗口）
 	{
 		CFloatingWnd* pFloat = m_pFloatingWnd;
 		if (pFloat != NULL && ::IsWindow(pFloat->GetSafeHwnd()))
@@ -307,17 +308,34 @@ INT_PTR Stock::ShowStockManageDlg(CWnd* pWnd)
 			return IDOK;
 		}
 	}
-	CManagerDialog dlg(pWnd);
-	dlg.m_data = g_data.m_setting_data;
-	m_option_dlg = &dlg;
-	INT_PTR rtn = dlg.DoModal();
-	m_option_dlg = nullptr;
-	if (rtn == IDOK)
+	// 悬浮窗未开启时，在当前位置唤起悬浮窗并直达内嵌设置视图，彻底废弃旧版独立大弹窗
+	CPoint pt(100, 100);
+	if (pWnd && ::IsWindow(pWnd->GetSafeHwnd()))
 	{
-		g_data.m_setting_data = dlg.m_data;
-		g_data.SaveConfig();
+		CRect rc;
+		pWnd->GetWindowRect(&rc);
+		pt = rc.TopLeft();
 	}
-	return rtn;
+	else
+	{
+		GetCursorPos(&pt);
+	}
+	std::wstring firstCode;
+	auto codes = g_data.m_setting_data.m_stock_codes;
+	if (!codes.empty())
+		firstCode = codes[0];
+	else
+		firstCode = L"sh000001";
+	HWND hTargetWnd = (pWnd && ::IsWindow(pWnd->GetSafeHwnd())) ? pWnd->GetSafeHwnd() : ::GetDesktopWindow();
+	CPoint clientPt = pt;
+	::ScreenToClient(hTargetWnd, &clientPt);
+	ShowFloatingWnd(hTargetWnd, clientPt, firstCode);
+	if (m_pFloatingWnd != NULL && ::IsWindow(m_pFloatingWnd->GetSafeHwnd()))
+	{
+		m_pFloatingWnd->ShowSettingsView();
+		return IDOK;
+	}
+	return IDCANCEL;
 }
 
 void Stock::SendStockInfoRequest()
@@ -358,13 +376,8 @@ void Stock::ShowContextMenu(CWnd* pWnd)
 		CPoint point1;
 		GetCursorPos(&point1);
 		DWORD id = context_menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, point1.x, point1.y, pWnd);
-		// 点击了“管理”
-		if (id == ID_OPTIONS)
-		{
-			ShowStockManageDlg(pWnd);
-		}
-		// 点击了“更新”
-		else if (id == ID_UPDATE)
+		// 点击了“刷新/更新股票信息”
+		if (id == ID_UPDATE)
 		{
 			SendStockInfoRequest();
 		}

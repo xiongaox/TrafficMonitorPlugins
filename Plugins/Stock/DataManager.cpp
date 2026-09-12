@@ -161,14 +161,16 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	utilities::CIniHelper ini(m_config_path);
 	const bool isNewConfig = ini.IsEmpty();
 	const std::vector<std::wstring> firstRunWatchlist = {
-		L"sz300750", // 宁德时代
-		L"sz300308", // 中际旭创
-		L"sz300502", // 新易盛
-		L"sz300394", // 天孚通信
-		L"sh688825", // 长鑫科技
+		L"sz300750",  // 宁德时代
+		L"rt_hk01810", // 小米集团
+		L"gb_nvda",   // 英伟达
+		L"gb_tsla",   // 特斯拉
 	};
 	ini.GetStringList(L"config", L"stock_code", m_setting_data.m_stock_codes, std::vector<std::wstring>{});
-	if (isNewConfig)
+	const std::vector<std::wstring> legacyDefaultWatchlist = {
+		L"sz300750", L"sz300308", L"sz300502", L"sz300394", L"sh688825"
+	};
+	if (isNewConfig || m_setting_data.m_stock_codes.empty() || m_setting_data.m_stock_codes == legacyDefaultWatchlist)
 	{
 		m_setting_data.m_stock_codes = firstRunWatchlist;
 	}
@@ -182,6 +184,9 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	m_setting_data.m_display_area = ini.GetInt(L"config", L"display_area", AREA_RIGHT_BOTTOM);
 	if (m_setting_data.m_display_area < AREA_LEFT_TOP || m_setting_data.m_display_area > AREA_CENTER)
 		m_setting_data.m_display_area = AREA_RIGHT_BOTTOM;
+	m_setting_data.m_window_opacity = ini.GetInt(L"config", L"window_opacity", 97);
+	if (m_setting_data.m_window_opacity < 30 || m_setting_data.m_window_opacity > 100)
+		m_setting_data.m_window_opacity = 97;
 	m_setting_data.m_use_socks5_proxy = ini.GetBool(L"config", L"use_socks5_proxy", false);
 	m_setting_data.m_socks5_proxy = ini.GetString(L"config", L"socks5_proxy", L"");
 	ini.GetStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices, std::vector<std::wstring>{
@@ -189,16 +194,19 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	});
 	m_setting_data.m_index_display_mode = ini.GetInt(L"config", L"index_display_mode", INDEX_DISP_ALL);
 	std::vector<std::wstring> ma_str_list;
-	ini.GetStringList(L"config", L"ma_days", ma_str_list, std::vector<std::wstring>{ L"5", L"17", L"60" });
+	ini.GetStringList(L"config", L"ma_days", ma_str_list, std::vector<std::wstring>{ L"5", L"20", L"60" });
 	m_setting_data.m_ma_days.clear();
 	for (const auto& s : ma_str_list)
 	{
 		int v = _wtoi(s.c_str());
+		if (v == 17) v = 20; // 自动将历史默认值 17 升级为 20
 		if (v > 0)
 			m_setting_data.m_ma_days.push_back(v);
 	}
+	std::sort(m_setting_data.m_ma_days.begin(), m_setting_data.m_ma_days.end());
+	m_setting_data.m_ma_days.erase(std::unique(m_setting_data.m_ma_days.begin(), m_setting_data.m_ma_days.end()), m_setting_data.m_ma_days.end());
 	if (m_setting_data.m_ma_days.empty())
-		m_setting_data.m_ma_days = { 5, 17, 60 };
+		m_setting_data.m_ma_days = { 5, 20, 60 };
 
 	// 分时图布林带三轨显隐（缺省全部显示；旧配置/云端旧备份无键时自动回退）
 	m_setting_data.m_boll_upper_visible = ini.GetBool(L"config", L"boll_upper_visible", true);
@@ -209,7 +217,19 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	ini.GetStringList(L"config", L"header_metrics", m_setting_data.m_header_metrics, std::vector<std::wstring>{
 		L"总市值", L"成交额", L"成交量", L"量比"
 	});
-	if (m_setting_data.m_header_metrics.empty())
+	// 校验并清洗指标列表（防乱码/异常字符）
+	bool has_corrupted_metric = false;
+	for (const auto& metric : m_setting_data.m_header_metrics)
+	{
+		if (metric.empty() || metric.find(L'?') != std::wstring::npos ||
+			metric.find(L',') != std::wstring::npos || metric.find(L'\"') != std::wstring::npos ||
+			metric.size() > 10)
+		{
+			has_corrupted_metric = true;
+			break;
+		}
+	}
+	if (has_corrupted_metric || m_setting_data.m_header_metrics.empty())
 	{
 		m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 	}
@@ -243,9 +263,11 @@ void CDataManager::LoadConfig(const std::wstring& config_dir)
 	ini.GetStringList(L"config", L"position_codes", m_setting_data.m_position_codes, std::vector<std::wstring>{});
 
 	// 悬浮窗列表默认分组 (0:自选股优先, 1:持仓优先)。首次启动默认自选，避免落在空持仓分组。
-	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", isNewConfig ? 0 : 1);
+	m_setting_data.m_group_default_tab = ini.GetInt(L"config", L"group_default_tab", 0);
 	if (m_setting_data.m_group_default_tab != 0 && m_setting_data.m_group_default_tab != 1)
-		m_setting_data.m_group_default_tab = 1;
+		m_setting_data.m_group_default_tab = 0;
+	if (m_setting_data.m_position_codes.empty())
+		m_setting_data.m_group_default_tab = 0; // 无持仓记录时一律默认落在自选股
 
 	// WebDAV 云端备份配置
 	m_setting_data.m_webdav_url = ini.GetString(L"webdav", L"url", L"https://dav.jianguoyun.com/dav/");
@@ -704,6 +726,7 @@ void CDataManager::SaveConfig()
 	if (!m_config_path.empty())
 	{
 		utilities::CIniHelper ini(m_config_path);
+		ini.SetSaveAsUTF8(true);
 		ini.WriteStringList(L"config", L"stock_code", m_setting_data.m_stock_codes);
 		ini.WriteBool(L"config", L"full_day", m_setting_data.m_full_day);
 		ini.WriteBool(L"config", L"show_stock_name", m_setting_data.m_show_stock_name);
@@ -713,6 +736,7 @@ void CDataManager::SaveConfig()
 		ini.WriteInt(L"config", L"kline_width", m_setting_data.m_kline_width);
 		ini.WriteInt(L"config", L"kline_height", m_setting_data.m_kline_height);
 		ini.WriteInt(L"config", L"display_area", m_setting_data.m_display_area);
+		ini.WriteInt(L"config", L"window_opacity", m_setting_data.m_window_opacity);
 		ini.WriteBool(L"config", L"use_socks5_proxy", m_setting_data.m_use_socks5_proxy);
 		ini.WriteString(L"config", L"socks5_proxy", m_setting_data.m_socks5_proxy);
 		ini.WriteStringList(L"config", L"selected_indices", m_setting_data.m_selected_indices);
@@ -844,16 +868,16 @@ void CDataManager::ResetToDefault()
 	// 4. 重置 SettingData 为默认状态
 	m_setting_data = SettingData();
 	m_setting_data.m_stock_codes = {
-		L"sz300750", // 宁德时代
-		L"sz300308", // 中际旭创
-		L"sz300502", // 新易盛
-		L"sz300394", // 天孚通信
-		L"sh688825", // 长鑫科技
+		L"sz300750",  // 宁德时代
+		L"rt_hk01810", // 小米集团
+		L"gb_nvda",   // 英伟达
+		L"gb_tsla",   // 特斯拉
 	};
 	m_setting_data.m_selected_indices = {
 		L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300"
 	};
-	m_setting_data.m_ma_days = { 5, 17, 60 };
+	m_setting_data.m_ma_days = { 5, 20, 60 };
+	m_setting_data.m_group_default_tab = 0;
 	m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
 	m_setting_data.m_full_day = true;
 	m_setting_data.m_show_stock_name = true;
@@ -863,6 +887,7 @@ void CDataManager::ResetToDefault()
 	m_setting_data.m_kline_width = 800;
 	m_setting_data.m_kline_height = 480;
 	m_setting_data.m_display_area = AREA_RIGHT_BOTTOM;
+	m_setting_data.m_window_opacity = 97;
 
 	// 5. 初始化状态栏显示映射
 	m_stock_statusbar.clear();

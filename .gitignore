@@ -61,3 +61,4 @@ webdav_log.txt
 *.out.txt
 _session_data.json
 _session_export.html
+*.lnk

@@ -3,8 +3,10 @@
 
 #include "pch.h"
 #include "Stock.h"
+#include "Version.h"
 #include "afxdialogex.h"
 #include "ManagerDialog.h"
+#include "FloatingWnd.h"
 #include "Common.h"
 #include "StockFetchThread.h"
 #include "OptionsDlg.h"
@@ -1640,6 +1642,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_WM_NCACTIVATE()
 	ON_WM_MOUSEMOVE()
 	ON_WM_LBUTTONDOWN()
+	ON_WM_LBUTTONUP()
 	ON_WM_RBUTTONUP()
 	ON_WM_MOUSELEAVE()
 	ON_WM_SETCURSOR()
@@ -1820,10 +1823,6 @@ BOOL CManagerDialog::OnInitDialog()
 			SetWindowTheme(pBtn->GetSafeHwnd(), L"", L"");
 		}
 	}
-
-	// 初始化基础设置页「重置所有数据」按钮
-	m_reset_btn.Create(_T("重置所有数据"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_RESET_DATA_BTN);
-	m_reset_btn.SetFont(&m_font);
 
 	// 初始化搜索输入框与下拉结果弹窗
 	m_search_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, CRect(0, 0, 0, 0), this, IDC_STOCK_SEARCH_EDIT);
@@ -2015,7 +2014,7 @@ BOOL CManagerDialog::OnInitDialog()
 	SetCheck(IDC_WEBDAV_AUTO_BACKUP_CHECK, m_data.m_webdav_auto_backup);
 
 	if (m_data.m_ma_days.empty())
-		m_data.m_ma_days = { 5, 17, 60 };
+		m_data.m_ma_days = { 5, 20, 60 };
 
 	if (m_data.m_header_metrics.empty())
 		m_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
@@ -2320,6 +2319,10 @@ void CManagerDialog::SwitchPage(PageIndex page)
 	if (m_search_dropdown.GetSafeHwnd())
 		m_search_dropdown.HidePopup();
 	m_current_page = page;
+	if (m_current_page == PAGE_GROUPS)
+	{
+		m_current_group_tab = 0; // 进入分组管理时，默认切到自选股
+	}
 	m_index_scroll_y = 0;
 	m_page_scroll_y = 0;
 	UpdateControlsLayout();
@@ -2398,8 +2401,8 @@ int CManagerDialog::CalcPageContentHeight()
 	switch (m_current_page)
 	{
 	case PAGE_BASIC:
-		// 卡片1(100) + 卡片2顶110(110) → 卡片3顶230(72) → 卡片4顶312(76)，加底边距
-		return g_data.DPI(312 + 76) + g_data.DPI(10);
+		// 卡片1(100) + 卡片2(110) → 卡片3透明度(72) → 卡片4SOCKS5(72) → 卡片5重置(76)，加底边距与滚动余量
+		return g_data.DPI(394 + 76) + g_data.DPI(40);
 	case PAGE_MA:
 		return g_data.DPI(MA_CARD1_H + MA_CARD_GAP + MA_CARD2_H + MA_CARD_GAP + MA_CARD3_H + MA_CARD_GAP + MA_CARD4_H) + g_data.DPI(10);
 	case PAGE_WEBDAV:
@@ -2415,7 +2418,7 @@ int CManagerDialog::CalcPageContentHeight()
 		return g_data.DPI(86 + 10) + MeasureMetricCard2Height(rightWidth) + g_data.DPI(8);
 	}
 	case PAGE_ABOUT:
-		return g_data.DPI(960);
+		return g_data.DPI(1100);
 	default:
 		return 0;
 	}
@@ -2484,6 +2487,39 @@ void CManagerDialog::ApplyIfEmbedded()
 		ApplySettings();
 }
 
+void CManagerDialog::ApplyOpacity(int opacityPercent)
+{
+	int pct = opacityPercent;
+	if (pct < 30) pct = 30; else if (pct > 100) pct = 100;
+	m_data.m_window_opacity = pct;
+	BYTE alpha = static_cast<BYTE>((pct * 255 + 50) / 100);
+
+	// 1. 通过 Stock 单例通知悬浮窗
+	CFloatingWnd* pFloat = Stock::Instance().GetFloatingWnd();
+	if (pFloat != nullptr && ::IsWindow(pFloat->GetSafeHwnd()))
+	{
+		pFloat->UpdateOpacity(pct);
+	}
+
+	// 2. 通过系统 API 直接作用于宿主/顶层窗口句柄，双重保障即时生效
+	HWND hParent = ::GetParent(m_hWnd);
+	if (hParent != NULL && ::IsWindow(hParent))
+	{
+		::SetWindowLongPtr(hParent, GWL_EXSTYLE, ::GetWindowLongPtr(hParent, GWL_EXSTYLE) | WS_EX_LAYERED);
+		::SetLayeredWindowAttributes(hParent, 0, alpha, LWA_ALPHA);
+		::RedrawWindow(hParent, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	}
+	else if (m_hWnd != NULL && ::IsWindow(m_hWnd))
+	{
+		::SetWindowLongPtr(m_hWnd, GWL_EXSTYLE, ::GetWindowLongPtr(m_hWnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+		::SetLayeredWindowAttributes(m_hWnd, 0, alpha, LWA_ALPHA);
+		::RedrawWindow(m_hWnd, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+	}
+
+	// 3. 同步写回共享配置
+	g_data.m_setting_data.m_window_opacity = pct;
+}
+
 void CManagerDialog::UpdateControlsLayout()
 {
 	CRect clientRect;
@@ -2504,8 +2540,7 @@ void CManagerDialog::UpdateControlsLayout()
 		IDC_SOCKS5_PROXY_STATIC, IDC_SOCKS5_PROXY_EDIT,
 		IDC_KLINE_WIDTH_STATIC, IDC_KLINE_WIDTH_EDIT,
 		IDC_KLINE_HEIGHT_STATIC, IDC_KLINE_HEIGHT_EDIT,
-		IDC_DISPLAY_AREA_STATIC, IDC_DISPLAY_AREA_COMBO,
-		IDC_RESET_DATA_BTN
+		IDC_DISPLAY_AREA_STATIC, IDC_DISPLAY_AREA_COMBO
 	};
 
 	bool isBasic = (m_current_page == PAGE_BASIC);
@@ -2559,26 +2594,19 @@ void CManagerDialog::UpdateControlsLayout()
 			m_display_area_combo.ShowWindow(SW_HIDE);
 		}
 
-		// 卡片 3: SOCKS5 代理网络
-		int card3Top = card1Top + g_data.DPI(230);
+		// 卡片 3: 背景透明度调节（自绘，无原生子控件）
+
+		// 卡片 4: SOCKS5 代理网络
+		int card4Top = card1Top + g_data.DPI(312);
 		CWnd* pProxyChk = GetDlgItem(IDC_USE_SOCKS5_PROXY_CHECK);
 		CWnd* pProxyLbl = GetDlgItem(IDC_SOCKS5_PROXY_STATIC);
 
-		int row3Top = card3Top + g_data.DPI(38);
-		int lbl3Y = row3Top + (rowH - lblH) / 2;
+		int row4Top = card4Top + g_data.DPI(38);
+		int lbl4Y = row4Top + (rowH - lblH) / 2;
 
-		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), lbl3Y, g_data.DPI(135), lblH);
-		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(160), lbl3Y, g_data.DPI(65), lblH);
-		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(227), row3Top, rightLeft + g_data.DPI(227) + min(g_data.DPI(220), rightWidth - g_data.DPI(245)), row3Top + rowH));
-
-		// 卡片 4: 数据重置
-		int card4Top = card1Top + g_data.DPI(312);
-		int btnH = g_data.DPI(26);
-		int btnW = g_data.DPI(110);
-		if (m_reset_btn.GetSafeHwnd())
-		{
-			m_reset_btn.MoveWindow(rightLeft + g_data.DPI(18), card4Top + g_data.DPI(36), btnW, btnH);
-		}
+		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), lbl4Y, g_data.DPI(135), lblH);
+		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(160), lbl4Y, g_data.DPI(65), lblH);
+		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(227), row4Top, rightLeft + g_data.DPI(227) + min(g_data.DPI(220), rightWidth - g_data.DPI(245)), row4Top + rowH));
 	}
 
 	// 分组管理控件布局
@@ -2990,7 +3018,7 @@ void CManagerDialog::DrawSidebar(Gdiplus::Graphics& g, const CRect& clientRect)
 	// 侧边栏底部版本信息
 	Gdiplus::Font verFont(L"Segoe UI", static_cast<Gdiplus::REAL>(g_data.DPI(9.5)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush verBrush(Gdiplus::Color(255, 100, 116, 139));
-	g.DrawString(L"Stock Plugin v1.15", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(14)), static_cast<Gdiplus::REAL>(clientRect.Height() - g_data.DPI(28))), &verBrush);
+	g.DrawString(L"Stock Plugin v" STOCK_VERSION_STR, -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(g_data.DPI(14)), static_cast<Gdiplus::REAL>(clientRect.Height() - g_data.DPI(28))), &verBrush);
 }
 
 // 计算与 DrawString 文字墨迹垂直居中的标题竖条 top。
@@ -3154,8 +3182,9 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	int card1Top = contentRect.top;
 	drawCard(card1Top, g_data.DPI(100), L"行情与走势图展示");
 	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(110), L"走势图尺寸与显示位置");
-	drawCard(contentRect.top + g_data.DPI(230), g_data.DPI(72), L"SOCKS5 代理网络");
-	drawCard(contentRect.top + g_data.DPI(312), g_data.DPI(76), L"数据重置");
+	drawCard(contentRect.top + g_data.DPI(230), g_data.DPI(72), L"背景透明度调节");
+	drawCard(contentRect.top + g_data.DPI(312), g_data.DPI(72), L"SOCKS5 代理网络");
+	drawCard(contentRect.top + g_data.DPI(394), g_data.DPI(76), L"数据重置");
 
 	// 显示位置按钮与第二行控件对齐：左侧标签后平铺五个固定尺寸选项。
 	const wchar_t* displayAreas[] = { L"左上角", L"右上角", L"左下角", L"右下角", L"居中" };
@@ -3198,9 +3227,123 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	g.DrawString(L"（填写持仓后显示当天收益，未填写仍显示涨跌幅）", -1, &tipFont,
 		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(72))), &tipBrush);
 
-	// 绘制「数据重置」说明文案
+	// 绘制「背景透明度调节」卡片控件：标签 + 数值徽章 + 滑块 + 5个预设按钮
+	int card3Top = contentRect.top + g_data.DPI(230);
+	int opRowTop = card3Top + g_data.DPI(36);
+	int opRowH = g_data.DPI(26);
+
+	// 标签 "透明度:"
+	Gdiplus::Font opLabelFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush opLabelBrush(Gdiplus::Color(255, 148, 163, 184));
+	g.DrawString(L"透明度:", -1, &opLabelFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(18)), static_cast<Gdiplus::REAL>(opRowTop + g_data.DPI(5))), &opLabelBrush);
+
+	// 当前数值徽章 [ 97% ]
+	int badgeX = rightLeft + g_data.DPI(68);
+	int badgeW = g_data.DPI(42);
+	int badgeH = opRowH;
+	Gdiplus::RectF badgeRf(static_cast<Gdiplus::REAL>(badgeX), static_cast<Gdiplus::REAL>(opRowTop), static_cast<Gdiplus::REAL>(badgeW), static_cast<Gdiplus::REAL>(badgeH));
+	Gdiplus::SolidBrush badgeBg(Gdiplus::Color(255, 20, 24, 33));
+	Gdiplus::Pen badgeBorder(Gdiplus::Color(255, 38, 42, 54), 1.0f);
+	g.FillRectangle(&badgeBg, badgeRf);
+	g.DrawRectangle(&badgeBorder, badgeRf);
+
+	CString opValStr;
+	opValStr.Format(L"%d%%", m_data.m_window_opacity);
+	Gdiplus::Font badgeFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush badgeText(Gdiplus::Color(255, 56, 189, 248)); // #38BDF8
+	g.DrawString(opValStr, -1, &badgeFont, badgeRf, &areaFormat, &badgeText);
+
+	// 滑块轨道与滑块
+	int sliderLeft = badgeX + badgeW + g_data.DPI(12);
+	int sliderW = g_data.DPI(135);
+	int sliderH = opRowH;
+	m_opacity_slider_rect = CRect(sliderLeft, opRowTop, sliderLeft + sliderW, opRowTop + sliderH);
+
+	int trackY = opRowTop + sliderH / 2;
+	int trackH = g_data.DPI(4);
+	int curPct = m_data.m_window_opacity;
+	if (curPct < 30) curPct = 30; else if (curPct > 100) curPct = 100;
+	int thumbX = sliderLeft + (curPct - 30) * sliderW / 70;
+
+	// 轨道底色 (深灰)
+	Gdiplus::SolidBrush trackBg(Gdiplus::Color(255, 38, 42, 54));
+	g.FillRectangle(&trackBg, static_cast<Gdiplus::REAL>(sliderLeft), static_cast<Gdiplus::REAL>(trackY - trackH / 2),
+		static_cast<Gdiplus::REAL>(sliderW), static_cast<Gdiplus::REAL>(trackH));
+
+	// 已选进度 (高亮蓝)
+	if (thumbX > sliderLeft)
+	{
+		Gdiplus::SolidBrush trackActive(Gdiplus::Color(255, 37, 99, 235));
+		g.FillRectangle(&trackActive, static_cast<Gdiplus::REAL>(sliderLeft), static_cast<Gdiplus::REAL>(trackY - trackH / 2),
+			static_cast<Gdiplus::REAL>(thumbX - sliderLeft), static_cast<Gdiplus::REAL>(trackH));
+	}
+
+	// 滑块圆点
+	int thumbR = g_data.DPI(6);
+	Gdiplus::RectF thumbRf(static_cast<Gdiplus::REAL>(thumbX - thumbR), static_cast<Gdiplus::REAL>(trackY - thumbR),
+		static_cast<Gdiplus::REAL>(thumbR * 2), static_cast<Gdiplus::REAL>(thumbR * 2));
+	Gdiplus::SolidBrush thumbBg(Gdiplus::Color(255, 255, 255, 255));
+	Gdiplus::Pen thumbBorder(m_hover_opacity_slider || m_is_dragging_opacity ? Gdiplus::Color(255, 96, 165, 250) : Gdiplus::Color(255, 37, 99, 235), 2.0f);
+	g.FillEllipse(&thumbBg, thumbRf);
+	g.DrawEllipse(&thumbBorder, thumbRf);
+
+	// 5 个快捷预设按钮: 100%, 90%, 80%, 70%, 60%
+	const int opPresets[5] = { 100, 90, 80, 70, 60 };
+	const wchar_t* opPresetNames[5] = { L"100%", L"90%", L"80%", L"70%", L"60%" };
+	int presetBtnW = g_data.DPI(46);
+	int presetBtnH = opRowH;
+	int presetGap = g_data.DPI(6);
+	int presetStartLeft = sliderLeft + sliderW + g_data.DPI(14);
+
+	for (int i = 0; i < 5; ++i)
+	{
+		int px = presetStartLeft + i * (presetBtnW + presetGap);
+		CRect prc(px, opRowTop, px + presetBtnW, opRowTop + presetBtnH);
+		m_opacity_presets_rects[i] = prc;
+		Gdiplus::RectF prf(static_cast<Gdiplus::REAL>(px), static_cast<Gdiplus::REAL>(opRowTop),
+			static_cast<Gdiplus::REAL>(presetBtnW), static_cast<Gdiplus::REAL>(presetBtnH));
+
+		const bool isSel = (m_data.m_window_opacity == opPresets[i]);
+		const bool isHov = (m_hover_opacity_preset == i);
+		Gdiplus::SolidBrush pBg(isSel ? Gdiplus::Color(255, 37, 99, 235) :
+			(isHov ? Gdiplus::Color(255, 30, 41, 59) : Gdiplus::Color(255, 13, 15, 21)));
+		Gdiplus::Pen pBorder(isSel || isHov ? Gdiplus::Color(255, 37, 99, 235) : Gdiplus::Color(255, 38, 42, 54), 1.0f);
+		Gdiplus::SolidBrush pText(isSel || isHov ? Gdiplus::Color(255, 255, 255, 255) : Gdiplus::Color(255, 148, 163, 184));
+
+		g.FillRectangle(&pBg, prf);
+		g.DrawRectangle(&pBorder, prf);
+		g.DrawString(opPresetNames[i], -1, isSel ? &areaBoldFont : &areaFont, prf, &areaFormat, &pText);
+	}
+
+	// 绘制「数据重置」卡片控件：深色警示扁平按钮 + 说明文案
+	int resetCardTop = contentRect.top + g_data.DPI(394);
+	int resetBtnW = g_data.DPI(110);
+	int resetBtnH = g_data.DPI(26);
+	int resetBtnLeft = rightLeft + g_data.DPI(18);
+	int resetBtnTop = resetCardTop + g_data.DPI(36);
+	m_reset_btn_rect = CRect(resetBtnLeft, resetBtnTop, resetBtnLeft + resetBtnW, resetBtnTop + resetBtnH);
+
+	Gdiplus::RectF resetRf(static_cast<Gdiplus::REAL>(resetBtnLeft), static_cast<Gdiplus::REAL>(resetBtnTop),
+		static_cast<Gdiplus::REAL>(resetBtnW), static_cast<Gdiplus::REAL>(resetBtnH));
+
+	const bool isResetHovered = m_hover_reset_btn;
+	Gdiplus::SolidBrush resetBg(isResetHovered ? Gdiplus::Color(255, 48, 25, 33) : Gdiplus::Color(255, 24, 27, 34));
+	Gdiplus::Pen resetBorder(isResetHovered ? Gdiplus::Color(255, 180, 50, 65) : Gdiplus::Color(255, 56, 62, 78), 1.0f);
+	Gdiplus::SolidBrush resetText(isResetHovered ? Gdiplus::Color(255, 255, 100, 100) : Gdiplus::Color(255, 239, 68, 68));
+
+	g.FillRectangle(&resetBg, resetRf);
+	g.DrawRectangle(&resetBorder, resetRf);
+
+	Gdiplus::Font resetFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::StringFormat resetFormat(Gdiplus::StringFormat::GenericTypographic());
+	resetFormat.SetAlignment(Gdiplus::StringAlignmentCenter);
+	resetFormat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+	resetFormat.SetFormatFlags(Gdiplus::StringFormatFlagsNoClip | Gdiplus::StringFormatFlagsNoWrap);
+	g.DrawString(L"重置所有数据", -1, &resetFont, resetRf, &resetFormat, &resetText);
+
+	// 绘制「数据重置」说明文案（紧随按钮右侧，垂直居中对齐）
 	g.DrawString(L"（清空所有自选股、持仓记录及本地数据库，恢复初始默认配置）", -1, &tipFont,
-		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(312) + g_data.DPI(42))), &tipBrush);
+		Gdiplus::PointF(static_cast<Gdiplus::REAL>(resetBtnLeft + resetBtnW + g_data.DPI(12)), static_cast<Gdiplus::REAL>(resetBtnTop + g_data.DPI(6))), &tipBrush);
 }
 
 namespace
@@ -4392,8 +4535,8 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	Gdiplus::PointF curPt(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY));
 	Gdiplus::RectF boundRect;
 
-	// 1. "版本：v1.15   |   作者："
-	const wchar_t* partVer = L"版本：v1.15   |   作者：";
+	// 1. "版本：v" STOCK_VERSION_STR "   |   作者："
+	const wchar_t* partVer = L"版本：v" STOCK_VERSION_STR L"   |   作者：";
 	g.DrawString(partVer, -1, &verFont, curPt, &strFmt, &verBrush);
 	g.MeasureString(partVer, -1, &verFont, curPt, &strFmt, &boundRect);
 	curPt.X += boundRect.Width;
@@ -4435,9 +4578,11 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	};
 
 	const wchar_t* items_0912[] = {
-		L"•  【新增】 悬浮窗内嵌设置视图，支持无边框隐藏式滚轮滚动与即时配置生效",
-		L"•  【优化】 分时走势曲线铺满边缘自绘，重构集合竞价 62:38 黄金分割比例与走势回放",
-		L"•  【优化】 重构「关于插件」为时间轴更新日志流，支持隐藏式滚轮滚动与大字号排版"
+		L"•  【新增】 悬浮窗内嵌设置视图，彻底废弃旧版独立大弹窗，支持无边框平滑滚动与配置即时生效",
+		L"•  【优化】 右键快捷菜单精炼简化，仅保留一键快速刷新股票行情",
+		L"•  【优化】 分时走势曲线铺满边缘自绘，重构集合竞价 62:38 黄金分割比例与盘前走势回放",
+		L"•  【修复】 彻底解决顶部状态栏指标多语言 UTF-8 BOM 乱码问题，增强配置文件读写兼容性",
+		L"•  【优化】 重构「关于插件」为时间轴版本日志流，支持平滑滚轮浏览与大字号排版"
 	};
 	const wchar_t* items_0911[] = {
 		L"•  【新增】 行情中心增加资金流向全景监控页、板块分时走势图与领涨股看板",
@@ -4466,19 +4611,20 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 		L"•  【优化】 顶部状态栏指标配置重构为扁平自绘按钮组，支持零盈亏中性橙色提示"
 	};
 	const wchar_t* items_0831[] = {
+		L"•  【重大】 Stock 股票行情插件全面升级重构为 v2.0 架构，开启现代暗黑视觉体系",
 		L"•  【新增】 WebDAV 云端备份与历史备份选择器，支持云端自动备份与多端同步",
 		L"•  【新增】 股票代码全局拼音/代码联想搜索与多自定义分组管理",
-		L"•  【优化】 全面重构设置管理器为现代暗黑主题，采用卡片化容器与无边框扁平控件",
+		L"•  【优化】 全面重构设置管理器为卡片化容器与无边框扁平自绘控件",
 		L"•  【优化】 动态精确计算任务栏项目渲染宽度，彻底消除右侧多余空白"
 	};
 
 	LogGroup groups[] = {
-		{ L"2026-09-12", items_0912, _countof(items_0912) },
-		{ L"2026-09-11", items_0911, _countof(items_0911) },
-		{ L"2026-09-10", items_0910, _countof(items_0910) },
-		{ L"2026-09-09", items_0909, _countof(items_0909) },
-		{ L"2026-09-03", items_0903, _countof(items_0903) },
-		{ L"2026-08-31", items_0831, _countof(items_0831) }
+		{ L"2026-09-12 (v2.0.5)", items_0912, _countof(items_0912) },
+		{ L"2026-09-11 (v2.0.4)", items_0911, _countof(items_0911) },
+		{ L"2026-09-10 (v2.0.3)", items_0910, _countof(items_0910) },
+		{ L"2026-09-09 (v2.0.2)", items_0909, _countof(items_0909) },
+		{ L"2026-09-03 (v2.0.1)", items_0903, _countof(items_0903) },
+		{ L"2026-08-31 (v2.0.0)", items_0831, _countof(items_0831) }
 	};
 
 	for (size_t gIdx = 0; gIdx < _countof(groups); ++gIdx)
@@ -4524,6 +4670,26 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	int oldHoverTab = m_hover_group_tab;
 	int oldHoverMode = m_hover_index_mode;
 	int oldHoverDisplayArea = m_hover_display_area;
+	int oldHoverOpacityPreset = m_hover_opacity_preset;
+	bool oldHoverOpacitySlider = m_hover_opacity_slider;
+	bool oldHoverReset = m_hover_reset_btn;
+
+	// 透明度滑块拖动
+	if (m_is_dragging_opacity)
+	{
+		int trackLeft = m_opacity_slider_rect.left;
+		int trackW = m_opacity_slider_rect.Width();
+		if (trackW > 0)
+		{
+			int pct = 30 + (point.x - trackLeft) * 70 / trackW;
+			if (pct < 30) pct = 30; else if (pct > 100) pct = 100;
+			if (m_data.m_window_opacity != pct)
+			{
+				ApplyOpacity(pct);
+				Invalidate(FALSE);
+			}
+		}
+	}
 
 	m_hover_menu = -1;
 	for (size_t i = 0; i < m_menu_rects.size(); ++i)
@@ -4538,6 +4704,9 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 	m_hover_index_card = -1;
 	m_hover_index_mode = -1;
 	m_hover_display_area = -1;
+	m_hover_opacity_preset = -1;
+	m_hover_opacity_slider = false;
+	m_hover_reset_btn = false;
 	if (m_current_page == PAGE_INDEX)
 	{
 		for (int i = 0; i < 3; ++i)
@@ -4558,14 +4727,36 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 			}
 		}
 	}
-	else if (m_current_page == PAGE_BASIC && InScrollContent(point))
+	else if (m_current_page == PAGE_BASIC)
 	{
+		if (m_reset_btn_rect.PtInRect(point))
+		{
+			m_hover_reset_btn = true;
+		}
+
+		if (m_opacity_slider_rect.PtInRect(point))
+		{
+			m_hover_opacity_slider = true;
+		}
+
 		for (int i = 0; i < 5; ++i)
 		{
-			if (m_display_area_rects[i].PtInRect(point))
+			if (m_opacity_presets_rects[i].PtInRect(point))
 			{
-				m_hover_display_area = i;
+				m_hover_opacity_preset = i;
 				break;
+			}
+		}
+
+		if (InScrollContent(point))
+		{
+			for (int i = 0; i < 5; ++i)
+			{
+				if (m_display_area_rects[i].PtInRect(point))
+				{
+					m_hover_display_area = i;
+					break;
+				}
 			}
 		}
 	}
@@ -4658,7 +4849,10 @@ void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
 		oldHoverMetricDel != m_hover_metric_tag_del || oldHoverMetricSlot != m_hover_metric_slot ||
 		oldHoverMetricPreset != m_hover_metric_preset ||
 		oldHoverTab != m_hover_group_tab || oldHoverMode != m_hover_index_mode ||
-		oldHoverDisplayArea != m_hover_display_area)
+		oldHoverDisplayArea != m_hover_display_area ||
+		oldHoverOpacityPreset != m_hover_opacity_preset ||
+		oldHoverOpacitySlider != m_hover_opacity_slider ||
+		oldHoverReset != m_hover_reset_btn)
 	{
 		Invalidate(FALSE);
 	}
@@ -4680,6 +4874,9 @@ void CManagerDialog::OnMouseLeave()
 	m_hover_group_tab = -1;
 	m_hover_index_mode = -1;
 	m_hover_display_area = -1;
+	m_hover_opacity_preset = -1;
+	m_hover_opacity_slider = false;
+	m_hover_reset_btn = false;
 	Invalidate(FALSE);
 	CDialog::OnMouseLeave();
 }
@@ -4694,6 +4891,8 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
 		m_hover_metric_tag_del >= 0 || m_hover_metric_slot >= 0 || m_hover_metric_preset >= 0 ||
 		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || m_hover_display_area >= 0 ||
+		m_hover_opacity_preset >= 0 || m_hover_opacity_slider || m_is_dragging_opacity ||
+		m_hover_reset_btn ||
 		(m_current_page == PAGE_ABOUT && InScrollContent(pt) &&
 			(m_about_author_rect.PtInRect(pt) || m_about_repo_rect.PtInRect(pt))))
 	{
@@ -4715,18 +4914,55 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	if (m_current_page == PAGE_BASIC && InScrollContent(point))
+	if (m_current_page == PAGE_BASIC)
 	{
+		if (m_reset_btn_rect.PtInRect(point))
+		{
+			OnBnClickedResetData();
+			return;
+		}
+
 		for (int i = 0; i < 5; ++i)
 		{
-			if (m_display_area_rects[i].PtInRect(point))
+			if (m_opacity_presets_rects[i].PtInRect(point))
 			{
-				m_data.m_display_area = i;
-				if (m_display_area_combo.GetSafeHwnd())
-					m_display_area_combo.SetCurSel(i);
+				const int opPresets[5] = { 100, 90, 80, 70, 60 };
+				ApplyOpacity(opPresets[i]);
 				ApplyIfEmbedded();
 				Invalidate(FALSE);
 				return;
+			}
+		}
+
+		if (m_opacity_slider_rect.PtInRect(point))
+		{
+			m_is_dragging_opacity = true;
+			SetCapture();
+			int trackLeft = m_opacity_slider_rect.left;
+			int trackW = m_opacity_slider_rect.Width();
+			if (trackW > 0)
+			{
+				int pct = 30 + (point.x - trackLeft) * 70 / trackW;
+				if (pct < 30) pct = 30; else if (pct > 100) pct = 100;
+				ApplyOpacity(pct);
+				Invalidate(FALSE);
+			}
+			return;
+		}
+
+		if (InScrollContent(point))
+		{
+			for (int i = 0; i < 5; ++i)
+			{
+				if (m_display_area_rects[i].PtInRect(point))
+				{
+					m_data.m_display_area = i;
+					if (m_display_area_combo.GetSafeHwnd())
+						m_display_area_combo.SetCurSel(i);
+					ApplyIfEmbedded();
+					Invalidate(FALSE);
+					return;
+				}
 			}
 		}
 	}
@@ -4988,6 +5224,19 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 	}
 
 	CDialog::OnLButtonDown(nFlags, point);
+}
+
+void CManagerDialog::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	if (m_is_dragging_opacity)
+	{
+		m_is_dragging_opacity = false;
+		ReleaseCapture();
+		ApplyIfEmbedded();
+		Invalidate(FALSE);
+		return;
+	}
+	CDialog::OnLButtonUp(nFlags, point);
 }
 
 void CManagerDialog::OnRButtonUp(UINT nFlags, CPoint point)
@@ -5734,12 +5983,22 @@ void CManagerDialog::OnBnClickedResetData()
 	SetCheck(IDC_WEBDAV_AUTO_SYNC_CHECK, m_data.m_webdav_auto_sync);
 	SetCheck(IDC_WEBDAV_AUTO_BACKUP_CHECK, m_data.m_webdav_auto_backup);
 
-	// 5. 刷新各列表
+	// 5. 刷新各列表并默认切回自选股 Tab
+	m_current_group_tab = 0;
 	RefreshStockList();
 	RefreshPositionList();
 	RefreshCustomList();
+	ApplyIfEmbedded();
 
-	// 6. 重绘并弹窗提示
+	// 6. 若处于悬浮窗内嵌模式，同步通知宿主悬浮窗全量热重置
+	CFloatingWnd* pParentFloat = Stock::Instance().GetFloatingWnd();
+	if (pParentFloat != nullptr && ::IsWindow(pParentFloat->GetSafeHwnd()))
+	{
+		pParentFloat->OnDataReset();
+	}
+	ApplyOpacity(97);
+
+	// 7. 重绘并弹窗提示
 	Invalidate();
 	MessageBox(_T("所有数据已成功重置为默认状态！"), _T("提示"), MB_ICONINFORMATION | MB_OK);
 }
@@ -6091,6 +6350,8 @@ void CManagerDialog::ApplySettings()
 
 	Stock::Instance().NotifyFloatingWndUpdate();
 	Stock::Instance().NotifyFloatingWndOrderBookUpdate();
+
+	ApplyOpacity(m_data.m_window_opacity);
 }
 
 void CManagerDialog::OnBnClickedOk()

@@ -395,8 +395,10 @@ int StockItem::OnMouseEvent(MouseEventType type, int x, int y, void* hWnd, int f
 		if (hit_code.empty())
 			return 0;
 
-		// 点击A股股票时打开对应悬浮窗
-		if (hit_code.find(kSZ) == 0 || hit_code.find(kBJ) == 0 || hit_code.find(kSH) == 0)
+		// 点击股票时打开对应悬浮窗（支持A股、港股、美股）
+		if (hit_code.find(kSZ) == 0 || hit_code.find(kBJ) == 0 || hit_code.find(kSH) == 0 ||
+			hit_code.find(L"rt_hk") == 0 || hit_code.find(L"hk") == 0 ||
+			hit_code.find(L"gb_") == 0 || hit_code.find(L"us") == 0)
 		{
 			CPoint ptScreen = CPoint(x, y);
 			Stock::Instance().ShowFloatingWnd(hWnd, ptScreen, hit_code);

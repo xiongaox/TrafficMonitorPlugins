@@ -49,7 +49,7 @@ private:
 	enum McPage
 	{
 		PAGE_BUBBLE = 0,     // 基金气泡图
-		PAGE_ETF_INFLOW = 1, // ETF申购净流入
+		PAGE_ETF_INFLOW = 1, // 资金净申购
 		PAGE_MONEY_FLOW = 2, // 资金流向
 		PAGE_MAINFLOW = 3,   // 主力资金
 		PAGE_TREND = 4,      // 涨跌趋势

@@ -1,0 +1,95 @@
+name: Build and Release Stock Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            sln_platform: x64
+            archive_name: Stock_x64
+          - platform: x86
+            sln_platform: x86
+            archive_name: Stock_x86
+          - platform: ARM64EC
+            sln_platform: ARM64EC
+            archive_name: Stock_arm64ec
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Stock Plugin
+        shell: cmd
+        run: |
+          msbuild Stock++.sln /p:Configuration=Release /p:Platform=${{ matrix.sln_platform }} /t:Stock /m /v:m
+
+      - name: Package Stock.dll
+        shell: pwsh
+        run: |
+          # Locate built Stock.dll
+          $dll = Get-ChildItem -Path . -Filter "Stock.dll" -Recurse | Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "Stock.dll not found!"
+            exit 1
+          }
+          Write-Host "Found DLL: $($dll.FullName)"
+
+          # Extract version from tag or default to v2.0
+          $ver = "V2.0"
+          if ($env:GITHUB_REF -match "refs/tags/v?(.*)") {
+            $ver = "V" + $Matches[1]
+          }
+
+          $zipName = "${{ matrix.archive_name }}.zip"
+          if ($zipName -match "Stock_(.*)\.zip") {
+            $zipName = "Stock_${ver}_" + $Matches[1] + ".zip"
+          }
+
+          Compress-Archive -Path $dll.FullName -DestinationPath $zipName -Force
+          Write-Host "Created archive: $zipName"
+
+          # Write out filename for upload step
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: ${{ env.ZIP_NAME }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*.zip
+          generate_release_notes: true

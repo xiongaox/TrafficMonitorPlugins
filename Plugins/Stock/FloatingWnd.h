@@ -57,6 +57,10 @@ public:
 	void CheckHoverCardAutoHide();
 	// 右侧信息面板（盘口/筹码峰）当前是否可见：隐藏后宽度全部让给图表
 	bool IsInfoPanelVisible(bool isIndexKLine) const;
+	// 重置所有数据联动（切换至自选股、更新当前关注股票、清空图表缓存并重绘）
+	void OnDataReset();
+	// 动态更新背景透明度
+	void UpdateOpacity(int opacityPercent);
 
 protected:
 	DECLARE_MESSAGE_MAP()
@@ -241,7 +245,7 @@ private:
 	bool m_expandedMode{ false };  // 放大模式：隐藏副图，走势图3/4+成交量1/4
 	bool m_showStockList{ true };  // 是否显示左侧股票列表面板
 	bool m_showPositionSummaryPercent{ false };  // 持仓汇总栏是否显示盈亏百分比
-	int m_activeGroupTab{ 1 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
+	int m_activeGroupTab{ 0 };     // 左侧列表当前分组：0=自选股, 1=持仓, >=2 为自定义分组
 	std::vector<FloatingGroupTab> m_groupTabs;  // 顶部分组标签布局（绘制时计算，供点击命中）
 	int m_hoverGroupTab{ -1 };     // 悬停的分组标签下标（m_groupTabs 下标，-1 无）
 	int m_groupListSort{ 0 };      // 左侧列表排序：0=默认顺序, 1=涨跌幅降序(涨最多在上), 2=涨跌幅升序(跌最多在上)

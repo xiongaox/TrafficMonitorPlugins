@@ -438,7 +438,10 @@ BOOL CFloatingWnd::Create(CFont* font, CPoint pt, std::wstring stock_id)
 	// 设置弹出窗口半透明/暗黑质感底色
 	HWND hWnd = this->m_hWnd;
 	::SetWindowLongPtr(hWnd, GWL_EXSTYLE, ::GetWindowLongPtr(hWnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-	::SetLayeredWindowAttributes(hWnd, 0, 248, LWA_ALPHA);
+	int op = g_data.m_setting_data.m_window_opacity;
+	if (op < 30) op = 30; else if (op > 100) op = 100;
+	BYTE alpha = static_cast<BYTE>((op * 255 + 50) / 100);
+	::SetLayeredWindowAttributes(hWnd, 0, alpha, LWA_ALPHA);
 
 	// 设置父窗口完全透明
 	m_CTransparentWnd.SetLayeredWindowAttributes(0, 0, LWA_ALPHA);
@@ -2463,11 +2466,54 @@ void CFloatingWnd::ToggleSettingsView()
 		UpdateModeButtons();
 		UpdatePeriodComboVisibility();
 		UpdateIndicatorButtons();
+		// 退出设置后，确保当前选中的分组与股票仍然有效（若被删除或重置）
+		m_activeGroupTab = CStockListPanel::ClampGroupTab(g_data.m_setting_data.m_group_default_tab);
+		auto curCodes = CStockListPanel::GetStockListCodes(m_activeGroupTab);
+		if (std::find(curCodes.begin(), curCodes.end(), m_stock_id) == curCodes.end())
+		{
+			if (!curCodes.empty())
+				SetStockId(curCodes[0]);
+			else if (!g_data.m_setting_data.m_stock_codes.empty())
+				SetStockId(g_data.m_setting_data.m_stock_codes[0]);
+		}
 	}
 
 	if (m_btnSettings.GetSafeHwnd())
 		m_btnSettings.Invalidate();
 	Invalidate();
+}
+
+void CFloatingWnd::OnDataReset()
+{
+	m_activeGroupTab = 0; // 重置后强制切到自选股
+	m_stockListScrollOffset = 0;
+	m_vScrollOffset = 0;
+	std::wstring firstCode;
+	if (!g_data.m_setting_data.m_stock_codes.empty())
+	{
+		firstCode = g_data.m_setting_data.m_stock_codes[0];
+	}
+	m_stock_id.clear();
+	if (!firstCode.empty())
+	{
+		SetStockId(firstCode);
+	}
+	m_chartDirty = true;
+	EnsureStockListVisible();
+	UpdateOpacity(g_data.m_setting_data.m_window_opacity);
+	Stock::Instance().SendStockInfoRequest();
+	Invalidate(TRUE);
+}
+
+void CFloatingWnd::UpdateOpacity(int opacityPercent)
+{
+	if (m_hWnd && ::IsWindow(m_hWnd))
+	{
+		int pct = opacityPercent;
+		if (pct < 30) pct = 30; else if (pct > 100) pct = 100;
+		BYTE alpha = static_cast<BYTE>((pct * 255 + 50) / 100);
+		::SetLayeredWindowAttributes(m_hWnd, 0, alpha, LWA_ALPHA);
+	}
 }
 
 void CFloatingWnd::OnMouseMove(UINT nFlags, CPoint point)

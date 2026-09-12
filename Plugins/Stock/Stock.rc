@@ -1,6 +1,7 @@
 // Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
+#include "Version.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -200,8 +201,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1, 4, 1, 1
-PRODUCTVERSION 1, 4, 1, 1
+FILEVERSION STOCK_VERSION_MAJOR, STOCK_VERSION_MINOR, STOCK_VERSION_PATCH, STOCK_VERSION_BUILD
+PRODUCTVERSION STOCK_VERSION_MAJOR, STOCK_VERSION_MINOR, STOCK_VERSION_PATCH, STOCK_VERSION_BUILD
 FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
 FILEFLAGS 0x1L
@@ -217,12 +218,12 @@ BEGIN
         BLOCK "080404b0"
         BEGIN
             VALUE "CompanyName", "By CListery"
-            VALUE "FileVersion", "1.4.1.1"
+            VALUE "FileVersion", STOCK_VERSION_RC_STR
             VALUE "InternalName", "Stock.dll"
             VALUE "LegalCopyright", "Copyright (C) By CListery. All rights reserved."
             VALUE "OriginalFilename", "Stock.dll"
             VALUE "ProductName", "Stock Plugin for TrafficMonitor"
-            VALUE "ProductVersion", "1.4.1.1"
+            VALUE "ProductVersion", STOCK_VERSION_RC_STR
         END
     END
     BLOCK "VarFileInfo"
