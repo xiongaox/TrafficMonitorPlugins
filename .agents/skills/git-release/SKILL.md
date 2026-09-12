@@ -67,7 +67,7 @@ flowchart TD
    - 项目的 GitHub Actions 工作流（`.github/workflows/build-and-release.yml`）仅监听 `tags: ['v*']`，普通分支推送绝对不会触发任何云端构建或 Release 发布；
    - 确认推送成功后，明确告知用户：**代码与更新日志已同步上传，云端编译发包已安全跳过**。
 
----
+
 
 ### 模式三：当用户说【打包上传git】
 
@@ -76,8 +76,16 @@ flowchart TD
 #### 执行步骤：
 1. **确定目标版本号**：
    - 用户命令中若包含版本号（如 `打包上传git 2.1`），则采用用户指定的版本号；
-   - 若用户未显式指定，读取 `Plugins/Stock/Version.h`，将修订号（PATCH）自动 +1（例如从 `2.0.5` -> `2.0.6`）；
-2. **运行发包脚本**：
+   - 若用户未显式指定，读取 `Plugins/Stock/Version.h`，将修订号（PATCH）自动 +1（例如从 `2.0.6` -> `2.0.7`）；
+2. **日志闭环与前置更新（核心保障）**：
+   - 检查 `Plugins/Stock/ManagerDialog.cpp` 中 `groups[]` 顶部条目的版本号；
+   - 若顶部条目版本**落后于目标版本**（或自上一 Tag 以来有新提交/当前工作区有未写入日志的改动）：
+     - 自动执行 `git log $(git describe --tags --abbrev=0 2>$null)..HEAD` 分析所有改动；
+     - 提炼 1~4 条规范条目（`•  【新增】...`、`•  【优化】...`、`•  【修复】...`）；
+     - 在 `ManagerDialog.cpp` 的 `DrawAboutPage` 顶部创建全新的 `items_MMDD_v<新版本>` 数组，并将其作为首个元素插入 `groups[]`（格式为 `L"YYYY-MM-DD (v<新版本>)"`）；
+     - 同步适度调大 `CalcPageContentHeight()` 中的 `PAGE_ABOUT` 滚动高度，防止文字截断；
+   - **严格确保在调用 `release.ps1` 之前，`ManagerDialog.cpp` 的更新日志已经是最新版本的！**
+3. **运行发包脚本**：
    - 调用发包脚本：
      ```powershell
      powershell -ExecutionPolicy Bypass -File "tools/release.ps1" -Version <目标版本号>
@@ -85,20 +93,20 @@ flowchart TD
    - 脚本将自动完成：
      - 覆写 `Plugins/Stock/Version.h` 为全新版本宏；
      - 关闭运行中的测试器释放文件占用；
-     - MSBuild 编译 x64 和 x86 Release 动态库；
+     - MSBuild 编译 x64 和 x86 Release 动态库（包含最新内置更新日志）；
      - 自动清理历史 zip，打包至 `download/Stock_V<版本>_x64.zip` 与 `download/Stock_V<版本>_x86.zip`；
      - 同步更新 `download/plugin_download.md` 下载列表；
      - 自动提取 `ManagerDialog.cpp` 最新更新日志并生成 `RELEASE_NOTES.md`；
-3. **提交发包改动**：
+4. **提交发包改动**：
    - `git add -A`
    - `git commit -m "chore(release): bump version to v<目标版本号>"`
-4. **创建并推送 Git Tag**：
+5. **创建并推送 Git Tag**：
    - 打上 Git Tag：`git tag v<目标版本号>`
    - 推送代码与 Tag：
      ```powershell
      git push origin <当前分支>
      git push origin v<目标版本号>
      ```
-5. **云端 Actions 自动联动**：
+6. **云端 Actions 自动联动**：
    - GitHub Actions 感应到 `v*` 标签，自动创建 GitHub Release，将 `RELEASE_NOTES.md` 作为正文发布，并挂载全架构 zip 安装包供用户一键点击下载；
-6. **向用户交付**：汇报新版本号、本地生成的 zip 产物，以及 GitHub Release 下载链接。
+7. **向用户交付**：汇报新版本号、本地生成的 zip 产物，以及 GitHub Release 下载链接。
