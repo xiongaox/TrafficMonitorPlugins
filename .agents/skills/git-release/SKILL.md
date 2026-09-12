@@ -1,13 +1,13 @@
----
+---
 name: git-release
 description: >-
-  控制 TrafficMonitorPlugins 项目的代码提炼、更新日志同步、免构建推送以及一键版本打包发布。
+  控制 StockPlusPlus 项目的代码提炼、更新日志同步、免构建推送以及一键版本打包发布。
   当用户输入“git描述”、“git描述并上传”、“打包上传git”时精准触发对应流程。
 ---
 
-# TrafficMonitorPlugins Git 描述与版本发布工作流
+# StockPlusPlus Git 描述与版本发布工作流
 
-本技能专为 `TrafficMonitorPlugins` 股票行情插件设计，用于智能化提炼代码改动、自动维护「关于插件」页面的更新日志，并管理本地提交、免构建上传与云端 CI/CD 发包全生命周期。
+本技能专为 `StockPlusPlus` 股票行情插件设计，用于智能化提炼代码改动、自动维护「关于插件」页面的更新日志，并管理本地提交、免构建上传与云端 CI/CD 发包全生命周期。
 
 ---
 

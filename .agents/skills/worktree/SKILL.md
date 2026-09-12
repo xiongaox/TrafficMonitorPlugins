@@ -8,9 +8,9 @@ description: >-
   严格禁止自动启动 PluginTester.exe，交由用户手动调试。
 ---
 
-# TrafficMonitorPlugins Git Worktree 规范工作流
+# StockPlusPlus Git Worktree 规范工作流
 
-本技能专为 `TrafficMonitorPlugins` C++ 项目设计。通过用户在对话框中输入 `/worktree` 命令显式调用，用于多需求或 Agent 独立任务时安全创建并使用 `git worktree`，实现完全隔离的开发与编译调试环境。
+本技能专为 `StockPlusPlus` C++ 项目设计。通过用户在对话框中输入 `/worktree` 命令显式调用，用于多需求或 Agent 独立任务时安全创建并使用 `git worktree`，实现完全隔离的开发与编译调试环境。
 
 > [!NOTE]
 > **触发约定**：本技能必须由用户显式输入 `/worktree` 触发。若用户在日常对话或问答中仅仅提及 "worktree" 词汇（无 `/worktree` 命令意图），不要自动执行创建工作树等自动化流程。
@@ -23,7 +23,7 @@ description: >-
    在执行任何 worktree 操作前，必须先执行 `git status --porcelain`。若存在任何未提交的代码变更或未暂存文件，**必须立即终止流程**，提示用户完成提交后再继续。
 2. **分支与路径规范**：
    - 根目录：`D:\Program Files (x86)\NIR\worktree`
-   - 目标路径：`D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins\main-<git-id>`
+   - 目标路径：`D:\Program Files (x86)\NIR\worktree\StockPlusPlus\main-<git-id>`
    - 分支名称：`main-<git-id>`（其中 `<git-id>` 为当前 commit 的 8 位短 ID，例如 `main-02491967`）。
    - ⚠️ **严格禁止在分支名中使用斜杠 `/`**（如 `fix/xxx`、`worktree/xxx`）。本机 Git 存在已知缺陷，带斜杠分支操作会静默删除 `.git/refs/heads/` 下的子目录，导致分支丢失！
 3. **Release 环境与插件精简（仅限 Stock）**：
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\create
 
 该脚本将自动完成：
 1. 取 HEAD 的 8 位短提交号（如 `02491967`），若存在同名分支/目录则生成唯一 8 位标识。
-2. 在 `D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins` 下创建 `main-<git-id>`。
+2. 在 `D:\Program Files (x86)\NIR\worktree\StockPlusPlus` 下创建 `main-<git-id>`。
 3. 创建并检出无斜杠的独立分支 `main-<git-id>`。
 4. 将主仓库已编译好的 `bin\x64\Release` 中仅与 Stock 和测试器相关的产物（`PluginTester.exe`、`Stock.dll`、`Stock.ini`、db 等）以及 `lib\x64\Release\utilities.lib` 同步到新工作树，严禁带入其他无关插件。
 5. 自动写入 `git_id` 分支标识到测试器配置中，确保界面与标题栏显示具体分支名称。
@@ -72,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\create
 
 ### 第三阶段：在 Worktree 中进行需求开发
 
-后续所有代码查看、编辑与改动操作，均在新建的 worktree 目录（即 `D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins\main-<git-id>`）中进行，保持主仓库和其他分支干净无干扰。
+后续所有代码查看、编辑与改动操作，均在新建的 worktree 目录（即 `D:\Program Files (x86)\NIR\worktree\StockPlusPlus\main-<git-id>`）中进行，保持主仓库和其他分支干净无干扰。
 
 ---
 
@@ -80,7 +80,7 @@ powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\create
 
 需求编码与自检完成后，执行编译脚本：
 ```powershell
-powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\build-worktree-stock.ps1" -WorktreePath "D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins\main-<git-id>"
+powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\build-worktree-stock.ps1" -WorktreePath "D:\Program Files (x86)\NIR\worktree\StockPlusPlus\main-<git-id>"
 ```
 
 该脚本将自动执行：
@@ -92,5 +92,5 @@ powershell -ExecutionPolicy Bypass -File ".agents\skills\worktree\scripts\build-
 #### 交付回复规范
 编译成功后，Agent 必须向用户明确说明：
 1. 需求改动已完成，且 `Stock.dll` 已在 Worktree 下编译成功。
-2. 明确给出产物路径（例如 `D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins\main-<git-id>\bin\x64\Release\Stock.dll`）。
+2. 明确给出产物路径（例如 `D:\Program Files (x86)\NIR\worktree\StockPlusPlus\main-<git-id>\bin\x64\Release\Stock.dll`）。
 3. 明确提示用户：**根据项目规范，Agent 不会自动启动测试器，请您在需要时手动启动 `PluginTester.exe` 进行调试和测试**。

@@ -1,10 +1,10 @@
-﻿<#
+<#
 .SYNOPSIS
-    为 TrafficMonitorPlugins 创建独立的 git worktree 开发环境。
+    为 StockPlusPlus 创建独立的 git worktree 开发环境。
 
 .DESCRIPTION
     1. 检查主仓库是否有未提交的代码变更（如果脏则中止）。
-    2. 生成规范的 8 位 git-id，并在 "D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins" 下创建 "main-<git-id>" 目录。
+    2. 生成规范的 8 位 git-id，并在 "D:\Program Files (x86)\NIR\worktree\StockPlusPlus" 下创建 "main-<git-id>" 目录。
     3. 创建并检出无斜杠的分支 "main-<git-id>"（严格避免 Windows Git 缺陷）。
     4. 仅复制 Stock.dll、PluginTester.exe 及相关配置到 bin\x64\Release（不引入其他插件）。
     5. 在 Release 写入 git_id 标识供测试器界面与标题展示。
@@ -14,7 +14,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$WorktreeBase = "D:\Program Files (x86)\NIR\worktree\TrafficMonitorPlugins",
+    [string]$WorktreeBase = "D:\Program Files (x86)\NIR\worktree\StockPlusPlus",
     [string]$GitId = ""
 )
 
@@ -23,7 +23,7 @@ $ErrorActionPreference = 'Stop'
 # 1. 定位主仓库根目录
 $repoRoot = (git rev-parse --show-toplevel 2>$null)
 if (-not $repoRoot) {
-    throw "当前目录不是 git 仓库！请在 TrafficMonitorPlugins 项目目录下运行本脚本。"
+    throw "当前目录不是 git 仓库！请在 StockPlusPlus 项目目录下运行本脚本。"
 }
 $repoRoot = [System.IO.Path]::GetFullPath($repoRoot)
 
@@ -64,7 +64,7 @@ if ($branchName -match '/') {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  TrafficMonitorPlugins Worktree Setup" -ForegroundColor Cyan
+Write-Host "  StockPlusPlus Worktree Setup" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host "[*] 仓库根目录: $repoRoot" -ForegroundColor Gray
 Write-Host "[*] 目标分支  : $branchName" -ForegroundColor Gray
