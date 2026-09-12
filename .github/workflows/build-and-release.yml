@@ -22,6 +22,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Stock Plugin ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
           files: |
             download/Stock_V*.zip
-          generate_release_notes: true
+          generate_release_notes: false

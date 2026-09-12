@@ -102,7 +102,7 @@ if ($armOld) {
 }
 
 # 5. 更新 download/plugin_download.md
-Write-Host ">>> [5/5] 同步更新 download/plugin_download.md 下载链接..." -ForegroundColor Cyan
+Write-Host ">>> [5/6] 同步更新 download/plugin_download.md 下载链接..." -ForegroundColor Cyan
 $dlDocPath = "$root\download\plugin_download.md"
 if (Test-Path $dlDocPath) {
     (Get-Content $dlDocPath -Raw -Encoding UTF8) `
@@ -112,6 +112,37 @@ if (Test-Path $dlDocPath) {
         Set-Content $dlDocPath -Encoding UTF8
 }
 
+# 6. 提取更新日志并生成 RELEASE_NOTES.md
+Write-Host ">>> [6/6] 正在提取更新日志并生成 RELEASE_NOTES.md..." -ForegroundColor Cyan
+$mgrPath = "$root\Plugins\Stock\ManagerDialog.cpp"
+$bullets = @()
+if (Test-Path $mgrPath) {
+    $mgrContent = Get-Content $mgrPath -Raw -Encoding UTF8
+    if ($mgrContent -match 'const wchar_t\*\s+items_\w+\[\]\s*=\s*\{([\s\S]*?)\};') {
+        $rawItems = $Matches[1]
+        $bullets = [regex]::Matches($rawItems, 'L"([^"]+)"') | ForEach-Object {
+            "- " + $_.Groups[1].Value.Trim()
+        }
+    }
+}
+
+$bulletText = if ($bullets.Count -gt 0) { $bullets -join "`n" } else { "- •  【更新】 版本常规功能优化与性能提升" }
+
+$releaseNotes = @"
+### 🚀 Stock Plugin v$cleanVer 更新日志
+
+$bulletText
+
+---
+### 📦 安装包说明
+- **x64 推荐版**：适用于绝大多数 64 位 Windows 系统及 64 位 TrafficMonitor
+- **x86 兼容版**：适用于 32 位系统环境
+- **ARM64EC 原生版**：适用于高通骁龙芯片 / Surface Pro X 等 ARM 架构设备
+"@
+
+$releaseNotesPath = "$root\RELEASE_NOTES.md"
+Set-Content -Path $releaseNotesPath -Value $releaseNotes -Encoding UTF8
+
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Green
 Write-Host "🎉 Stock 插件 Release v$cleanVer 打包完成！" -ForegroundColor Green
@@ -119,3 +150,4 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host "产物文件：" -ForegroundColor Green
 Write-Host "  - $x64Zip"
 Write-Host "  - $x86Zip"
+Write-Host "  - $releaseNotesPath"

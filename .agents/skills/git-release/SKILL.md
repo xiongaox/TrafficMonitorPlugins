@@ -1,4 +1,4 @@
-﻿---
+---
 name: git-release
 description: >-
   控制 TrafficMonitorPlugins 项目的代码提炼、更新日志同步、免构建推送以及一键版本打包发布。
@@ -86,8 +86,9 @@ flowchart TD
      - 覆写 `Plugins/Stock/Version.h` 为全新版本宏；
      - 关闭运行中的测试器释放文件占用；
      - MSBuild 编译 x64 和 x86 Release 动态库；
-     - 自动打包至 `download/Stock_V<版本>_x64.zip` 与 `download/Stock_V<版本>_x86.zip`；
+     - 自动清理历史 zip，打包至 `download/Stock_V<版本>_x64.zip` 与 `download/Stock_V<版本>_x86.zip`；
      - 同步更新 `download/plugin_download.md` 下载列表；
+     - 自动提取 `ManagerDialog.cpp` 最新更新日志并生成 `RELEASE_NOTES.md`；
 3. **提交发包改动**：
    - `git add -A`
    - `git commit -m "chore(release): bump version to v<目标版本号>"`
@@ -99,5 +100,5 @@ flowchart TD
      git push origin v<目标版本号>
      ```
 5. **云端 Actions 自动联动**：
-   - GitHub Actions 感应到 `v*` 标签，立即自动在云端执行 Windows 最新环境的 x64、x86、ARM64EC 全矩阵编译，并自动创建 GitHub Release 上传三架构安装包；
-6. **向用户交付**：汇报新版本号、本地生成的 zip 产物，以及 GitHub Actions 正在进行的云端发包流水线。
+   - GitHub Actions 感应到 `v*` 标签，自动创建 GitHub Release，将 `RELEASE_NOTES.md` 作为正文发布，并挂载全架构 zip 安装包供用户一键点击下载；
+6. **向用户交付**：汇报新版本号、本地生成的 zip 产物，以及 GitHub Release 下载链接。
