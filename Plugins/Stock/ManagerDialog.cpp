@@ -2409,7 +2409,7 @@ int CManagerDialog::CalcPageContentHeight()
 		return g_data.DPI(86 + 10) + MeasureMetricCard2Height(rightWidth) + g_data.DPI(8);
 	}
 	case PAGE_ABOUT:
-		return g_data.DPI(330);
+		return g_data.DPI(1050);
 	default:
 		return 0;
 	}
@@ -2853,7 +2853,7 @@ void CManagerDialog::OnPaint()
 
 	// 方案B：隐藏式滚动 —— 内容整体上移 m_page_scroll_y 并裁剪在内容可视区内（不绘制滚动条）
 	CRect drawRect = contentRect;
-	const bool scrolled = (m_page_scroll_y > 0);
+	const bool scrolled = (m_page_scroll_y > 0) || (CalcPageContentHeight() > contentRect.Height());
 	if (scrolled)
 	{
 		drawRect.top = contentRect.top - m_page_scroll_y;
@@ -4347,50 +4347,120 @@ LRESULT CManagerDialog::OnApiProbeFinished(WPARAM, LPARAM)
 
 void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRect)
 {
-	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(contentRect.Height()));
+	int panelH = max(contentRect.Height(), CalcPageContentHeight());
+	Gdiplus::RectF panelRf(static_cast<Gdiplus::REAL>(contentRect.left), static_cast<Gdiplus::REAL>(contentRect.top), static_cast<Gdiplus::REAL>(contentRect.Width()), static_cast<Gdiplus::REAL>(panelH));
 	Gdiplus::SolidBrush panelBg(Gdiplus::Color(255, 24, 27, 34));
 	g.FillRectangle(&panelBg, panelRf);
 	Gdiplus::Pen panelPen(Gdiplus::Color(255, 38, 42, 54), 1.0f);
 	g.DrawRectangle(&panelPen, panelRf);
 
 	int textX = contentRect.left + g_data.DPI(24);
-	int textY = contentRect.top + g_data.DPI(24);
+	int textY = contentRect.top + g_data.DPI(22);
+	int rightX = contentRect.right - g_data.DPI(24);
 
-	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(14)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::Font nameFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(15)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush nameBrush(Gdiplus::Color(255, 241, 245, 249));
 	g.DrawString(L"TrafficMonitor 股票行情插件 (Stock Plugin)", -1, &nameFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &nameBrush);
 
-	textY += g_data.DPI(32);
-	Gdiplus::Font infoFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(10)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-	Gdiplus::SolidBrush infoBrush(Gdiplus::Color(255, 148, 163, 184));
-	g.DrawString(L"版本: v1.15   |   原作者: CListery   |   开发贡献: TrafficMonitor Community", -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
+	textY += g_data.DPI(28);
+	Gdiplus::Font verFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush verBrush(Gdiplus::Color(255, 148, 163, 184));
+	g.DrawString(L"版本: v1.15   |   原作者: CListery   |   开发贡献: TrafficMonitor Community", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &verBrush);
 
-	textY += g_data.DPI(26);
-	const wchar_t* features[] = {
-		L"• 全景行情中心：内置大盘趋势、资金流向、板块分时走势、ETF排行与现货黄金监控",
-		L"• 多市场全品种支持：全面覆盖 A股、港股、美股、场内基金及黄金现货行情与检索",
-		L"• 专业自绘图表引擎：高清抗锯齿分时走势（含集合竞价）、多周期K线与智能复权校验",
-		L"• 丰富技术指标系统：自定义均线叠加 (MA5/17/60等)、布林线与 VOL/MACD/KDJ 指标栏",
-		L"• 多源容灾与手动刷新：多数据源自动降级，支持一键强制刷新与加载进度实时反馈",
-		L"• 资产核算与隐私模式：支持自选多分组、持仓浮动盈亏核算与一键金额脱敏遮罩",
-		L"• 现代暗黑沉浸体验：悬浮窗内嵌即时设置、任务栏自适应宽度计算与高DPI矢量精绘",
-		L"• 云端备份与接口诊断：WebDAV 云端自动备份/历史恢复选择器、SOCKS5 代理与接口健康检测"
+	textY += g_data.DPI(24);
+	Gdiplus::Font dateFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush dateBrush(Gdiplus::Color(255, 248, 250, 252));
+
+	Gdiplus::Font logFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+	Gdiplus::SolidBrush logBrush(Gdiplus::Color(255, 203, 213, 225));
+
+	Gdiplus::Pen sepPen(Gdiplus::Color(255, 42, 47, 60), 1.0f);
+
+	struct LogGroup {
+		const wchar_t* date;
+		const wchar_t* const* items;
+		int count;
 	};
-	for (const auto* feat : features)
+
+	const wchar_t* items_0912[] = {
+		L"•  【新增】 悬浮窗内嵌设置视图，支持无边框隐藏式滚轮滚动与即时配置生效",
+		L"•  【优化】 分时走势曲线铺满边缘自绘，重构集合竞价 62:38 黄金分割比例与走势回放",
+		L"•  【优化】 重构「关于插件」为时间轴更新日志流，支持隐藏式滚轮滚动与大字号排版"
+	};
+	const wchar_t* items_0911[] = {
+		L"•  【新增】 行情中心增加资金流向全景监控页、板块分时走势图与领涨股看板",
+		L"•  【新增】 支持全市场港股 (HK)、美股 (US) 行情、分时图、K线及自选分组拉取",
+		L"•  【新增】 K线数据源即时切换按钮，支持带进度条的手动强制刷新与状态反馈",
+		L"•  【新增】 行情中心集成一键隐私模式遮罩，支持敏感资产与金额脱敏显示",
+		L"•  【优化】 全市场总成交额纳入北交所成交统计，全面统一列表排序三角矢量图标",
+		L"•  【修复】 修复美股分时数据拉取及东财成交量解析，修复搜索下拉列表换行问题"
+	};
+	const wchar_t* items_0910[] = {
+		L"•  【新增】 图表标题栏增加数据缓存状态指示，延后行情中心预热加速启动响应",
+		L"•  【优化】 隔离行情中心缓存与网络请求，优化前台可见数据优先级与预加载限流",
+		L"•  【优化】 新安装首次运行图表默认尺寸优化设定为 800x480 黄金分辨率",
+		L"•  【修复】 消除行情中心调度器并发死锁隐患，强化东财K线写入前有效性校验",
+		L"•  【修复】 修复上海黄金交易所 (SGE) 现货金价名称显示与图表缓存水合问题"
+	};
+	const wchar_t* items_0909[] = {
+		L"•  【新增】 指数编辑支持添加上海黄金交易所金价指标，分组管理增加默认标签页单选",
+		L"•  【新增】 行情中心 ETF 榜单点击直达对应日K线走势，支持右键一键快速返回",
+		L"•  【优化】 首次运行自动预置精选自选股清单并持久化状态栏注册项",
+		L"•  【优化】 收盘后保持展示全天最终成交额，优化持仓汇总居中与紧凑列表行高"
+	};
+	const wchar_t* items_0903[] = {
+		L"•  【新增】 设置界面新增接口检测 (API Health) 诊断页与 ETF 重仓持股面板",
+		L"•  【新增】 持仓汇总栏增加个股当日盈亏列与金额/比例一键切换模式",
+		L"•  【优化】 顶部状态栏指标配置重构为扁平自绘按钮组，支持零盈亏中性橙色提示"
+	};
+	const wchar_t* items_0831[] = {
+		L"•  【新增】 WebDAV 云端备份与历史备份选择器，支持云端自动备份与多端同步",
+		L"•  【新增】 股票代码全局拼音/代码联想搜索与多自定义分组管理",
+		L"•  【优化】 全面重构设置管理器为现代暗黑主题，采用卡片化容器与无边框扁平控件",
+		L"•  【优化】 动态精确计算任务栏项目渲染宽度，彻底消除右侧多余空白"
+	};
+
+	LogGroup groups[] = {
+		{ L"2026-09-12", items_0912, _countof(items_0912) },
+		{ L"2026-09-11", items_0911, _countof(items_0911) },
+		{ L"2026-09-10", items_0910, _countof(items_0910) },
+		{ L"2026-09-09", items_0909, _countof(items_0909) },
+		{ L"2026-09-03", items_0903, _countof(items_0903) },
+		{ L"2026-08-31", items_0831, _countof(items_0831) }
+	};
+
+	for (size_t gIdx = 0; gIdx < _countof(groups); ++gIdx)
 	{
-		g.DrawString(feat, -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
-		textY += g_data.DPI(22);
+		const auto& grp = groups[gIdx];
+		if (gIdx > 0)
+		{
+			textY += g_data.DPI(12);
+			g.DrawLine(&sepPen, textX, textY, rightX, textY);
+			textY += g_data.DPI(14);
+		}
+
+		g.DrawString(grp.date, -1, &dateFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &dateBrush);
+		textY += g_data.DPI(24);
+
+		for (int it = 0; it < grp.count; ++it)
+		{
+			g.DrawString(grp.items[it], -1, &logFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &logBrush);
+			textY += g_data.DPI(22);
+		}
 	}
 
-	textY += g_data.DPI(18);
-	g.DrawString(L"项目开源主页 (点击访问)：", -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
+	textY += g_data.DPI(14);
+	g.DrawLine(&sepPen, textX, textY, rightX, textY);
+	textY += g_data.DPI(14);
 
-	textY += g_data.DPI(22);
+	g.DrawString(L"项目开源主页 (点击访问)：", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &verBrush);
+	textY += g_data.DPI(20);
+
 	const wchar_t* url = L"https://github.com/zhongyang219/TrafficMonitorPlugins";
 	Gdiplus::SolidBrush linkBrush(Gdiplus::Color(255, 56, 189, 248));
-	g.DrawString(url, -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &linkBrush);
+	g.DrawString(url, -1, &logFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &linkBrush);
 
-	m_about_link_rect = CRect(textX, textY, textX + g_data.DPI(340), textY + g_data.DPI(22));
+	m_about_link_rect = CRect(textX, textY, textX + g_data.DPI(380), textY + g_data.DPI(22));
 }
 
 void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
@@ -4583,7 +4653,7 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
 		m_hover_metric_tag_del >= 0 || m_hover_metric_slot >= 0 || m_hover_metric_preset >= 0 ||
 		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || m_hover_display_area >= 0 ||
-		(m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(pt)))
+		(m_current_page == PAGE_ABOUT && InScrollContent(pt) && m_about_link_rect.PtInRect(pt)))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
 		return TRUE;
@@ -4850,7 +4920,7 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	if (m_current_page == PAGE_ABOUT && m_about_link_rect.PtInRect(point))
+	if (m_current_page == PAGE_ABOUT && InScrollContent(point) && m_about_link_rect.PtInRect(point))
 	{
 		ShellExecute(nullptr, L"open", L"https://github.com/zhongyang219/TrafficMonitorPlugins", nullptr, nullptr, SW_SHOWNORMAL);
 		return;
@@ -5012,9 +5082,10 @@ BOOL CManagerDialog::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
 		}
 	}
 
-	// 方案B：基础设置/均线/指标/云端备份页 —— 右侧内容区隐藏式滚动（无滚动条）
+	// 方案B：基础设置/均线/指标/云端备份/关于插件页 —— 右侧内容区隐藏式滚动（无滚动条）
 	if (m_current_page == PAGE_BASIC || m_current_page == PAGE_MA ||
-		m_current_page == PAGE_METRICS || m_current_page == PAGE_WEBDAV)
+		m_current_page == PAGE_METRICS || m_current_page == PAGE_WEBDAV ||
+		m_current_page == PAGE_ABOUT)
 	{
 		CPoint clientPt = pt;
 		ScreenToClient(&clientPt);
