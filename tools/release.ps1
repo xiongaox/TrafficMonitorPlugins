@@ -1,4 +1,4 @@
-# tools/release.ps1
+﻿# tools/release.ps1
 param (
     [string]$Version = ""
 )
