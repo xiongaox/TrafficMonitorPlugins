@@ -823,6 +823,59 @@ void CDataManager::SaveConfig()
 	}
 }
 
+void CDataManager::ResetToDefault()
+{
+	// 1. 重置 SQLite 数据库（清空交易记录、快照与各级K线缓存表）
+	m_db_mgr.ResetAllData();
+
+	// 2. 清空内存中持仓、预警与关联映射
+	m_stock_positions.clear();
+	m_stock_alert_prices.clear();
+	m_stock_related.clear();
+	m_avg_diff_stats.clear();
+	m_avg_diff_history.clear();
+
+	// 3. 删除原有 ini 配置文件，彻底清除历史无效项
+	if (!m_config_path.empty())
+	{
+		DeleteFileW(m_config_path.c_str());
+	}
+
+	// 4. 重置 SettingData 为默认状态
+	m_setting_data = SettingData();
+	m_setting_data.m_stock_codes = {
+		L"sz300750", // 宁德时代
+		L"sz300308", // 中际旭创
+		L"sz300502", // 新易盛
+		L"sz300394", // 天孚通信
+		L"sh688825", // 长鑫科技
+	};
+	m_setting_data.m_selected_indices = {
+		L"sh000001", L"sz399001", L"sz399006", L"sh000688", L"sh000300"
+	};
+	m_setting_data.m_ma_days = { 5, 17, 60 };
+	m_setting_data.m_header_metrics = { L"总市值", L"成交额", L"成交量", L"量比" };
+	m_setting_data.m_full_day = true;
+	m_setting_data.m_show_stock_name = true;
+	m_setting_data.m_show_fluctuation = true;
+	m_setting_data.m_show_today_profit = false;
+	m_setting_data.m_color_with_price = true;
+	m_setting_data.m_kline_width = 800;
+	m_setting_data.m_kline_height = 480;
+	m_setting_data.m_display_area = AREA_RIGHT_BOTTOM;
+
+	// 5. 初始化状态栏显示映射
+	m_stock_statusbar.clear();
+	for (const auto& code : m_setting_data.m_stock_codes)
+		m_stock_statusbar[code] = true;
+
+	// 6. 保存干净的默认配置至 ini
+	SaveConfig();
+
+	// 7. 清空实时行情数据缓存
+	stockMarket.ClearRealtimeData();
+}
+
 const CString& CDataManager::StringRes(UINT id)
 {
 	auto iter = m_string_table.find(id);

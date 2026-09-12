@@ -211,6 +211,7 @@ private:
 	CButton m_mgr_down_btn;
 	CButton m_mgr_del_group_btn;
 	CButton m_group_sort_btn;   // 分组管理页右上角「分组排序」入口
+	CButton m_reset_btn;        // 基础设置页「重置所有数据」按钮
 	CDarkComboBox m_display_area_combo;
 
 	// 深色主题 GDI 资源
@@ -334,6 +335,7 @@ public:
 	afx_msg void OnBnClickedShowFluctuationCheck();
 	afx_msg void OnBnClickedShowTodayProfitCheck();
 	afx_msg void OnBnClickedUseSocks5ProxyCheck();
+	afx_msg void OnBnClickedResetData();
 
 	// 云端备份事件
 	afx_msg void OnBnClickedWebDavTestBtn();

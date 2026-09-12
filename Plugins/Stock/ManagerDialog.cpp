@@ -1666,6 +1666,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_BN_CLICKED(IDC_SHOW_FLUCTUATION_CHECK, &CManagerDialog::OnBnClickedShowFluctuationCheck)
 	ON_BN_CLICKED(IDC_SHOW_TODAY_PROFIT_CHECK, &CManagerDialog::OnBnClickedShowTodayProfitCheck)
 	ON_BN_CLICKED(IDC_USE_SOCKS5_PROXY_CHECK, &CManagerDialog::OnBnClickedUseSocks5ProxyCheck)
+	ON_BN_CLICKED(IDC_RESET_DATA_BTN, &CManagerDialog::OnBnClickedResetData)
 
 	ON_BN_CLICKED(IDC_WEBDAV_TEST_BTN, &CManagerDialog::OnBnClickedWebDavTestBtn)
 	ON_BN_CLICKED(IDC_WEBDAV_UPLOAD_BTN, &CManagerDialog::OnBnClickedWebDavUploadBtn)
@@ -1819,6 +1820,10 @@ BOOL CManagerDialog::OnInitDialog()
 			SetWindowTheme(pBtn->GetSafeHwnd(), L"", L"");
 		}
 	}
+
+	// 初始化基础设置页「重置所有数据」按钮
+	m_reset_btn.Create(_T("重置所有数据"), WS_CHILD | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_RESET_DATA_BTN);
+	m_reset_btn.SetFont(&m_font);
 
 	// 初始化搜索输入框与下拉结果弹窗
 	m_search_edit.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, CRect(0, 0, 0, 0), this, IDC_STOCK_SEARCH_EDIT);
@@ -2393,8 +2398,8 @@ int CManagerDialog::CalcPageContentHeight()
 	switch (m_current_page)
 	{
 	case PAGE_BASIC:
-		// 卡片1(100) + 卡片2顶110 + 卡片2高110 → 卡片3顶230 + 卡片3高72，加底边距
-		return g_data.DPI(302) + g_data.DPI(10);
+		// 卡片1(100) + 卡片2顶110(110) → 卡片3顶230(72) → 卡片4顶312(76)，加底边距
+		return g_data.DPI(312 + 76) + g_data.DPI(10);
 	case PAGE_MA:
 		return g_data.DPI(MA_CARD1_H + MA_CARD_GAP + MA_CARD2_H + MA_CARD_GAP + MA_CARD3_H + MA_CARD_GAP + MA_CARD4_H) + g_data.DPI(10);
 	case PAGE_WEBDAV:
@@ -2499,7 +2504,8 @@ void CManagerDialog::UpdateControlsLayout()
 		IDC_SOCKS5_PROXY_STATIC, IDC_SOCKS5_PROXY_EDIT,
 		IDC_KLINE_WIDTH_STATIC, IDC_KLINE_WIDTH_EDIT,
 		IDC_KLINE_HEIGHT_STATIC, IDC_KLINE_HEIGHT_EDIT,
-		IDC_DISPLAY_AREA_STATIC, IDC_DISPLAY_AREA_COMBO
+		IDC_DISPLAY_AREA_STATIC, IDC_DISPLAY_AREA_COMBO,
+		IDC_RESET_DATA_BTN
 	};
 
 	bool isBasic = (m_current_page == PAGE_BASIC);
@@ -2564,6 +2570,15 @@ void CManagerDialog::UpdateControlsLayout()
 		if (pProxyChk && pProxyChk->GetSafeHwnd()) pProxyChk->MoveWindow(rightLeft + g_data.DPI(18), lbl3Y, g_data.DPI(135), lblH);
 		if (pProxyLbl && pProxyLbl->GetSafeHwnd()) pProxyLbl->MoveWindow(rightLeft + g_data.DPI(160), lbl3Y, g_data.DPI(65), lblH);
 		PlaceEditInField(IDC_SOCKS5_PROXY_EDIT, CRect(rightLeft + g_data.DPI(227), row3Top, rightLeft + g_data.DPI(227) + min(g_data.DPI(220), rightWidth - g_data.DPI(245)), row3Top + rowH));
+
+		// 卡片 4: 数据重置
+		int card4Top = card1Top + g_data.DPI(312);
+		int btnH = g_data.DPI(26);
+		int btnW = g_data.DPI(110);
+		if (m_reset_btn.GetSafeHwnd())
+		{
+			m_reset_btn.MoveWindow(rightLeft + g_data.DPI(18), card4Top + g_data.DPI(36), btnW, btnH);
+		}
 	}
 
 	// 分组管理控件布局
@@ -3140,6 +3155,7 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	drawCard(card1Top, g_data.DPI(100), L"行情与走势图展示");
 	drawCard(contentRect.top + g_data.DPI(110), g_data.DPI(110), L"走势图尺寸与显示位置");
 	drawCard(contentRect.top + g_data.DPI(230), g_data.DPI(72), L"SOCKS5 代理网络");
+	drawCard(contentRect.top + g_data.DPI(312), g_data.DPI(76), L"数据重置");
 
 	// 显示位置按钮与第二行控件对齐：左侧标签后平铺五个固定尺寸选项。
 	const wchar_t* displayAreas[] = { L"左上角", L"右上角", L"左下角", L"右下角", L"居中" };
@@ -3181,6 +3197,10 @@ void CManagerDialog::DrawBasicPage(Gdiplus::Graphics& g, const CRect& contentRec
 	Gdiplus::SolidBrush tipBrush(Gdiplus::Color(255, 148, 163, 184)); // #94A3B8
 	g.DrawString(L"（填写持仓后显示当天收益，未填写仍显示涨跌幅）", -1, &tipFont,
 		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(card1Top + g_data.DPI(72))), &tipBrush);
+
+	// 绘制「数据重置」说明文案
+	g.DrawString(L"（清空所有自选股、持仓记录及本地数据库，恢复初始默认配置）", -1, &tipFont,
+		Gdiplus::PointF(static_cast<Gdiplus::REAL>(rightLeft + g_data.DPI(135)), static_cast<Gdiplus::REAL>(contentRect.top + g_data.DPI(312) + g_data.DPI(42))), &tipBrush);
 }
 
 namespace
@@ -5673,6 +5693,57 @@ void CManagerDialog::OnBnClickedUseSocks5ProxyCheck()
 	ApplyIfEmbedded();
 }
 
+void CManagerDialog::OnBnClickedResetData()
+{
+	CString msg = _T("确定要重置所有数据并清空用户数据吗？\n\n")
+		_T("此操作将恢复所有插件配置至初始默认状态，并彻底清空所有自选股、持仓记录、自定义分组与本地缓存数据库。\n\n")
+		_T("该操作不可撤销，是否继续？");
+	if (MessageBox(msg, _T("警告 - 重置所有数据"), MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+		return;
+
+	// 1. 调用底层重置逻辑（清库、删ini、写默认配置）
+	g_data.ResetToDefault();
+	Stock::Instance().SendStockInfoRequest();
+
+	// 2. 同步更新当前对话框内部数据
+	m_data = g_data.m_setting_data;
+
+	// 3. 刷新基础设置页的复选框与输入框
+	SetCheck(IDC_FULL_DAY_CHECK, m_data.m_full_day);
+	SetCheck(IDC_SHOW_FLUCTUATION_CHECK, m_data.m_show_fluctuation);
+	SetCheck(IDC_SHOW_TODAY_PROFIT_CHECK, m_data.m_show_today_profit);
+	SetCheck(IDC_USE_SOCKS5_PROXY_CHECK, m_data.m_use_socks5_proxy);
+	SetDlgItemText(IDC_SOCKS5_PROXY_EDIT, m_data.m_socks5_proxy.c_str());
+
+	CString strKlineW, strKlineH;
+	strKlineW.Format(_T("%d"), static_cast<int>(m_data.m_kline_width));
+	SetDlgItemText(IDC_KLINE_WIDTH_EDIT, strKlineW);
+	strKlineH.Format(_T("%d"), static_cast<int>(m_data.m_kline_height));
+	SetDlgItemText(IDC_KLINE_HEIGHT_EDIT, strKlineH);
+
+	int selArea = m_data.m_display_area;
+	if (selArea < AREA_LEFT_TOP || selArea > AREA_CENTER)
+		selArea = AREA_RIGHT_BOTTOM;
+	m_display_area_combo.SetCurSel(selArea);
+
+	// 4. 刷新云端备份页面控件
+	SetDlgItemText(IDC_WEBDAV_URL_EDIT, m_data.m_webdav_url.c_str());
+	SetDlgItemText(IDC_WEBDAV_USER_EDIT, m_data.m_webdav_username.c_str());
+	SetDlgItemText(IDC_WEBDAV_PWD_EDIT, m_data.m_webdav_password.c_str());
+	SetDlgItemText(IDC_WEBDAV_DIR_EDIT, m_data.m_webdav_dir.c_str());
+	SetCheck(IDC_WEBDAV_AUTO_SYNC_CHECK, m_data.m_webdav_auto_sync);
+	SetCheck(IDC_WEBDAV_AUTO_BACKUP_CHECK, m_data.m_webdav_auto_backup);
+
+	// 5. 刷新各列表
+	RefreshStockList();
+	RefreshPositionList();
+	RefreshCustomList();
+
+	// 6. 重绘并弹窗提示
+	Invalidate();
+	MessageBox(_T("所有数据已成功重置为默认状态！"), _T("提示"), MB_ICONINFORMATION | MB_OK);
+}
+
 void CManagerDialog::OnBnClickedWebDavAutoSyncCheck()
 {
 	SetCheck(IDC_WEBDAV_AUTO_SYNC_CHECK, !IsChecked(IDC_WEBDAV_AUTO_SYNC_CHECK));
@@ -7093,7 +7164,7 @@ bool CManagerDialog::IsPrimaryBtn(UINT nID) const
 
 bool CManagerDialog::IsDestructiveBtn(UINT nID) const
 {
-	return nID == IDC_MGR_DEL_BTN || nID == 1199;
+	return nID == IDC_MGR_DEL_BTN || nID == 1199 || nID == IDC_RESET_DATA_BTN;
 }
 
 // 与浮动窗按钮同款：直角 + 1px 细边框 + 悬停/按下反馈；主操作品牌蓝，删除操作警示红

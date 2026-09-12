@@ -120,6 +120,7 @@
 #define IDC_KLINE_HEIGHT_STATIC         1084
 #define IDC_DISPLAY_AREA_STATIC         1086
 #define IDC_DISPLAY_AREA_COMBO          1087
+#define IDC_RESET_DATA_BTN              1090
 
 // Next default values for new objects
 //

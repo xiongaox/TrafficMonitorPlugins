@@ -113,6 +113,7 @@ bool CStockDbManager::Init(const std::wstring& config_path)
 	if (m_db != nullptr) return true;
 
 	if (config_path.empty()) return false;
+	m_config_path = config_path;
 	size_t pos = config_path.find_last_of(L"\\/");
 	if (pos == std::wstring::npos) return false;
 	m_db_path = config_path.substr(0, pos + 1) + L"stock_trades.db";
@@ -372,6 +373,20 @@ void CStockDbManager::Close()
 		m_db = nullptr;
 	}
 	m_db_path.clear();
+}
+
+bool CStockDbManager::ResetAllData()
+{
+	std::wstring dbPath = m_db_path;
+	std::wstring cfgPath = m_config_path;
+	Close();
+	if (!dbPath.empty())
+	{
+		DeleteFileW(dbPath.c_str());
+		DeleteFileW((dbPath + L"-wal").c_str());
+		DeleteFileW((dbPath + L"-shm").c_str());
+	}
+	return Init(cfgPath);
 }
 
 void CStockDbManager::CleanExpiredData()

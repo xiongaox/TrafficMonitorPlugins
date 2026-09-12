@@ -33,6 +33,8 @@ public:
 	bool Init(const std::wstring& config_path);
 	void Close();
 	bool IsOpen() const { return m_db != nullptr; }
+	// 清空并重置所有数据库数据，重新生成空表
+	bool ResetAllData();
 	// 清理超过7天的快照、K线和筹码峰缓存
 	void CleanExpiredData();
 
@@ -107,4 +109,5 @@ public:
 private:
 	sqlite3* m_db{ nullptr };
 	std::wstring m_db_path;
+	std::wstring m_config_path;
 };
