@@ -92,7 +92,8 @@ void CTimelineChart::DrawTimelineHeader(CDC& memDC, const TimelineDrawContext& c
 
 	CString cacheStatus = (ctx.klineData && !ctx.klineData->empty()) || (ctx.timelinePoint && !ctx.timelinePoint->empty())
 		? _T("正在使用本地数据") : _T("正在获取数据");
-	const int buttonReserve = g_data.RDPI(64);
+	// 顶栏右侧 4 个图标按钮（设置/收起分组/展开/关闭，各 RDPI(20)）+ 4px 间隙
+	const int buttonReserve = g_data.RDPI(84);
 	const int cacheRight = ctx.windowWidth - buttonReserve;
 
 	// 标题始终保持全窗口居中；缓存状态只使用标题右边界到按钮区之间的真实空白。

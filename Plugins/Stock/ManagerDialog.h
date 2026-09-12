@@ -154,6 +154,14 @@ public:
 
 	SettingData m_data;
 
+	// ===== 内嵌子窗口模式（悬浮窗设置视图） =====
+	// 加载 IDD_MANAGER_DIALOG 模板副本并剥除弹出/标题栏样式后 CreateIndirect 为 WS_CHILD
+	bool CreateAsChild(CWnd* pParent);
+	// 内嵌模式确定(true)/取消或ESC(false) 后由宿主悬浮窗接管收起；模态模式保持 EndDialog
+	std::function<void(bool)> m_on_settings_closed;
+	// 即时生效：读取全部控件值写入 g_data 并保存/热更新（原「确定」按钮的提交逻辑）
+	void ApplySettings();
+
 	// 对话框数据
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_MANAGER_DIALOG };
@@ -177,6 +185,8 @@ private:
 	CRect m_display_area_rects[5];
 	int m_hover_display_area{ -1 };
 	int m_index_scroll_y{ 0 };
+	int m_page_scroll_y{ 0 };           // 方案B：右侧内容区隐藏式滚动偏移（滚轮驱动，不绘制滚动条）
+	bool m_as_child{ false };           // 内嵌子窗口模式：作为悬浮窗“设置”视图的 WS_CHILD 子对话框
 	bool m_tracking_mouse{ false };
 
 	// ===== 暗色主题自绘状态 =====
@@ -234,6 +244,15 @@ private:
 
 	// 内部辅助方法
 	std::wstring GetStockName(const std::wstring& code);
+
+	// ===== 方案B：右侧内容区隐藏式滚动（无滚动条，滚轮驱动） =====
+	void GetScrollContentRect(CRect& contentRect) const; // 右侧内容可视区（未含滚动偏移）
+	bool InScrollContent(CPoint point);                  // 点是否在右侧内容可视区内
+	void SetPageScroll(int scrollY);                     // 钳制滚动偏移并联动控件布局与重绘
+	int CalcPageContentHeight();                         // 当前页内容自然总高（0 = 不启用通用滚动）
+	int MeasureMetricCard2Height(int rightWidth);        // 指标页候选库自然高度（与绘制排布一致）
+	int ContentBottomPad() const;                        // 内容区底部留白（内嵌无按钮条时收窄，分组页仍留操作按钮行）
+	void ApplyIfEmbedded();                              // 内嵌模式即时提交设置（模态模式等「确定」）
 
 	// ===== 暗色主题自绘辅助 =====
 	bool IsChecked(UINT nID) const;
@@ -330,6 +349,7 @@ public:
 	void StartWebDavAsync(int op);            // 投递 WebDAV 操作到取数线程
 	void ApplyWebDavRestore(const std::string& data, const std::wstring& backupName = L""); // 将云端备份内容应用到本地配置与界面
 	afx_msg void OnEditFocusChanged();
+	afx_msg void OnEditFocusLost();   // 输入框失焦：内嵌模式即时提交字段值
 	afx_msg void OnListCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 
 	afx_msg void OnBnClickedOk();
