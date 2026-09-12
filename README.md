@@ -101,7 +101,7 @@
 
 ### 本地编译
 
-1. 使用 Visual Studio 2022 打开根目录下的 `TrafficMonitorPlugins.sln`。
+1. 使用 Visual Studio 2022 打开根目录下的 `Stock++.sln`。
 2. 将构建配置切换为 **Release | x64**。
 3. 编译 `utilities` 基础库工程，然后编译 `Stock` 工程。
 4. 编译输出产物位于 `bin/x64/Release/Stock.dll`。

@@ -2420,7 +2420,7 @@ int CManagerDialog::CalcPageContentHeight()
 		return g_data.DPI(86 + 10) + MeasureMetricCard2Height(rightWidth) + g_data.DPI(8);
 	}
 	case PAGE_ABOUT:
-		return g_data.DPI(1100);
+		return g_data.DPI(1250);
 	default:
 		return 0;
 	}
@@ -4579,6 +4579,12 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 		int count;
 	};
 
+	const wchar_t* items_0912_v207[] = {
+		L"•  【优化】 裁剪 SQLite 未使用模块与调试符号，大幅压缩 Stock.dll 二进制体积",
+		L"•  【优化】 新增股票切换焦点任务高优先级队列，彻底消除港美股切换卡顿与界面冻结",
+		L"•  【优化】 完善港美股新浪与东财代码双向转换映射，增强跨市场分时数据稳定性",
+		L"•  【修复】 强化 K 线多周期数据并发安全读写互斥锁，彻底消除多线程并发偶发崩溃"
+	};
 	const wchar_t* items_0912[] = {
 		L"•  【新增】 悬浮窗内嵌设置视图，彻底废弃旧版独立大弹窗，支持无边框平滑滚动与配置即时生效",
 		L"•  【优化】 右键快捷菜单精炼简化，仅保留一键快速刷新股票行情",
@@ -4621,6 +4627,7 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	};
 
 	LogGroup groups[] = {
+		{ L"2026-09-12 (v2.0.7)", items_0912_v207, _countof(items_0912_v207) },
 		{ L"2026-09-12 (v2.0.6)", items_0912, _countof(items_0912) },
 		{ L"2026-09-11 (v2.0.4)", items_0911, _countof(items_0911) },
 		{ L"2026-09-10 (v2.0.3)", items_0910, _countof(items_0910) },
