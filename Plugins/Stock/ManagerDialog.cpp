@@ -2409,7 +2409,7 @@ int CManagerDialog::CalcPageContentHeight()
 		return g_data.DPI(86 + 10) + MeasureMetricCard2Height(rightWidth) + g_data.DPI(8);
 	}
 	case PAGE_ABOUT:
-		return g_data.DPI(1050);
+		return g_data.DPI(960);
 	default:
 		return 0;
 	}
@@ -4365,7 +4365,38 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	textY += g_data.DPI(28);
 	Gdiplus::Font verFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(11)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 	Gdiplus::SolidBrush verBrush(Gdiplus::Color(255, 148, 163, 184));
-	g.DrawString(L"版本: v1.15   |   原作者: CListery   |   开发贡献: TrafficMonitor Community", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &verBrush);
+	Gdiplus::SolidBrush linkBrush(Gdiplus::Color(255, 56, 189, 248));
+
+	Gdiplus::StringFormat strFmt(Gdiplus::StringFormat::GenericTypographic());
+	Gdiplus::PointF curPt(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY));
+	Gdiplus::RectF boundRect;
+
+	// 1. "版本：v1.15   |   作者："
+	const wchar_t* partVer = L"版本：v1.15   |   作者：";
+	g.DrawString(partVer, -1, &verFont, curPt, &strFmt, &verBrush);
+	g.MeasureString(partVer, -1, &verFont, curPt, &strFmt, &boundRect);
+	curPt.X += boundRect.Width;
+
+	// 2. "xiongaox" (点击跳转主页)
+	const wchar_t* partAuthor = L"xiongaox";
+	g.DrawString(partAuthor, -1, &verFont, curPt, &strFmt, &linkBrush);
+	g.MeasureString(partAuthor, -1, &verFont, curPt, &strFmt, &boundRect);
+	m_about_author_rect = CRect(static_cast<int>(curPt.X), textY - g_data.DPI(2),
+		static_cast<int>(curPt.X + boundRect.Width), textY + g_data.DPI(18));
+	curPt.X += boundRect.Width;
+
+	// 3. "   |   项目地址："
+	const wchar_t* partMid = L"   |   项目地址：";
+	g.DrawString(partMid, -1, &verFont, curPt, &strFmt, &verBrush);
+	g.MeasureString(partMid, -1, &verFont, curPt, &strFmt, &boundRect);
+	curPt.X += boundRect.Width;
+
+	// 4. "点击跳转" (点击跳转仓库)
+	const wchar_t* partRepo = L"点击跳转";
+	g.DrawString(partRepo, -1, &verFont, curPt, &strFmt, &linkBrush);
+	g.MeasureString(partRepo, -1, &verFont, curPt, &strFmt, &boundRect);
+	m_about_repo_rect = CRect(static_cast<int>(curPt.X), textY - g_data.DPI(2),
+		static_cast<int>(curPt.X + boundRect.Width), textY + g_data.DPI(18));
 
 	textY += g_data.DPI(24);
 	Gdiplus::Font dateFont(L"微软雅黑", static_cast<Gdiplus::REAL>(g_data.DPI(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
@@ -4449,18 +4480,7 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 		}
 	}
 
-	textY += g_data.DPI(14);
-	g.DrawLine(&sepPen, textX, textY, rightX, textY);
-	textY += g_data.DPI(14);
-
-	g.DrawString(L"项目开源主页 (点击访问)：", -1, &verFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &verBrush);
-	textY += g_data.DPI(20);
-
-	const wchar_t* url = L"https://github.com/zhongyang219/TrafficMonitorPlugins";
-	Gdiplus::SolidBrush linkBrush(Gdiplus::Color(255, 56, 189, 248));
-	g.DrawString(url, -1, &logFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &linkBrush);
-
-	m_about_link_rect = CRect(textX, textY, textX + g_data.DPI(380), textY + g_data.DPI(22));
+	textY += g_data.DPI(24);
 }
 
 void CManagerDialog::OnMouseMove(UINT nFlags, CPoint point)
@@ -4653,7 +4673,8 @@ BOOL CManagerDialog::OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message)
 		m_hover_ma_slot >= 0 || m_hover_ma_preset >= 0 ||
 		m_hover_metric_tag_del >= 0 || m_hover_metric_slot >= 0 || m_hover_metric_preset >= 0 ||
 		m_hover_group_tab >= 0 || m_hover_index_mode >= 0 || m_hover_display_area >= 0 ||
-		(m_current_page == PAGE_ABOUT && InScrollContent(pt) && m_about_link_rect.PtInRect(pt)))
+		(m_current_page == PAGE_ABOUT && InScrollContent(pt) &&
+			(m_about_author_rect.PtInRect(pt) || m_about_repo_rect.PtInRect(pt))))
 	{
 		SetCursor(LoadCursor(nullptr, IDC_HAND));
 		return TRUE;
@@ -4920,10 +4941,18 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 	}
 
-	if (m_current_page == PAGE_ABOUT && InScrollContent(point) && m_about_link_rect.PtInRect(point))
+	if (m_current_page == PAGE_ABOUT && InScrollContent(point))
 	{
-		ShellExecute(nullptr, L"open", L"https://github.com/zhongyang219/TrafficMonitorPlugins", nullptr, nullptr, SW_SHOWNORMAL);
-		return;
+		if (m_about_author_rect.PtInRect(point))
+		{
+			ShellExecute(nullptr, L"open", L"https://github.com/xiongaox", nullptr, nullptr, SW_SHOWNORMAL);
+			return;
+		}
+		if (m_about_repo_rect.PtInRect(point))
+		{
+			ShellExecute(nullptr, L"open", L"https://github.com/xiongaox/TrafficMonitorPlugins", nullptr, nullptr, SW_SHOWNORMAL);
+			return;
+		}
 	}
 
 	// 点击输入框字段上下留白区时，把焦点交给对应的编辑控件
