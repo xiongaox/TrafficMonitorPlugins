@@ -374,6 +374,20 @@ void CStockFetchThread::PostHighPriorityBackgroundTask(Task task)
 	m_cv.notify_one();
 }
 
+void CStockFetchThread::PostFocusTask(Task task)
+{
+	if (!m_started.load() || m_stopping.load())
+		return;
+
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (m_stopping.load())
+			return;
+		m_focus_tasks.push_back(std::move(task));
+	}
+	m_cv.notify_one();
+}
+
 void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 {
 	bool changed = false;
@@ -382,15 +396,17 @@ void CStockFetchThread::SetFocusStockId(const std::wstring& stockId)
 		if (m_focus_stock_id == stockId)
 			return;
 		m_focus_stock_id = stockId;
-		// 重置图表计时器，使线程立即获取新股数据
-		memset(m_chart_last_fetch, 0, sizeof(m_chart_last_fetch));
+		// 丢弃旧股票未执行完的焦点任务，只服务最新点击的股票
+		m_focus_tasks.clear();
+		// 只重置分时图计时器，使新股分时第一时间触发，避免5分/30分K线网络请求堆叠阻塞
+		m_chart_last_fetch[CHART_TIMELINE] = 0;
 		changed = true;
 	}
 	if (changed)
 	{
 		m_cv.notify_one();
-		// K线数据每日更新，切换股票时获取一次；改用 PostHighPriorityBackgroundTask 确保任务不被丢弃
-		PostHighPriorityBackgroundTask([stockId]() {
+		// 使用专用的 PostFocusTask，确保日K线和快照在图表线程中优先执行
+		PostFocusTask([stockId]() {
 			// 东财 secid（118.* / 116.* / 101.* 等）不在腾讯/新浪实时接口中，
 			// 必须首屏直接走 stock/get，否则 K线已到而标题/现价长期为空。
 			if (CCommon::IsEmSecidCode(stockId))
@@ -494,6 +510,37 @@ void CStockFetchThread::Run()
 			else
 				m_busy = false;
 			// UI刷新由1秒定时器检查dirty标识驱动，此处仅更新数据
+			continue;
+		}
+
+		// 1.5 检查焦点股票切换即时任务（优先级高于图表定时任务，确保新切换股票立即加载）
+		Task focusTask;
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (m_stopping.load())
+				return;
+			if (!m_focus_tasks.empty())
+			{
+				focusTask = std::move(m_focus_tasks.front());
+				m_focus_tasks.pop_front();
+			}
+		}
+
+		if (focusTask)
+		{
+			if (m_stopping.load())
+				return;
+			try
+			{
+				focusTask();
+			}
+			catch (CInternetException* e)
+			{
+				e->Delete();
+			}
+			catch (...)
+			{
+			}
 			continue;
 		}
 

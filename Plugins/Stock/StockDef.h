@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <chrono>
+#include <mutex>
 #include <iostream>
 #include <limits>
 #include <ctime>
@@ -1141,6 +1142,7 @@ namespace STOCK
 	class StockMarket
 	{
 	private:
+		mutable std::recursive_mutex m_mutex;
 		std::map<std::wstring, std::shared_ptr<StockData>> stocks; // 以股票代码为键的股票数据映射
 
 	public:
@@ -1166,11 +1168,12 @@ namespace STOCK
 		void LoadInnerOuterData(std::string data);
 		void LoadFundIOPVData(const std::wstring& key, const std::string& data);
 		void LoadFundIOPVData(const std::wstring& key, const CString& data);
-			void LoadCallAuctionData(std::string data);
-			void LoadCallAuctionReplayData(const std::vector<std::wstring>& codes);
+		void LoadCallAuctionData(std::string data);
+		void LoadCallAuctionReplayData(const std::vector<std::wstring>& codes);
 
 		void ClearRealtimeData(const std::vector<std::wstring>& onlyCodes = {})
 		{
+			std::lock_guard<std::recursive_mutex> lock(m_mutex);
 			for (const auto& it : stocks)
 			{
 				// 如果指定了只清空的代码列表，则跳过不在列表中的股票
@@ -1220,6 +1223,7 @@ namespace STOCK
 		// 添加股票
 		std::shared_ptr<StockData> addStock(const std::wstring& code)
 		{
+			std::lock_guard<std::recursive_mutex> lock(m_mutex);
 			StockData stock;
 			stock.info.code = code;
 			stock.InitVolumePools();

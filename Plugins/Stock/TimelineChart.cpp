@@ -9,6 +9,7 @@
 #include "IndicatorChart.h"
 #include "StatusBarPanel.h"
 #include "StockFont.h"
+#include "Stock.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -685,14 +686,19 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		auto stockData = g_data.GetStockData(hover.stockId);
 		if (stockData)
 		{
-			auto min30KLineObj = stockData->getMin30KLineData();
-
-			if (min30KLineObj && min30KLineObj->data.size() >= 22)
+			std::vector<STOCK::Bar> bars30;
 			{
-				std::vector<STOCK::Bar> bars30;
-				bars30.reserve(min30KLineObj->data.size());
-				for (const auto& kp : min30KLineObj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
+				std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+				auto min30KLineObj = stockData->getMin30KLineData();
+				if (min30KLineObj && min30KLineObj->data.size() >= 22)
+				{
+					bars30.reserve(min30KLineObj->data.size());
+					for (const auto& kp : min30KLineObj->data) bars30.push_back(STOCK::Bar::FromKLinePoint(kp));
+				}
+			}
 
+			if (bars30.size() >= 22)
+			{
 				auto buySignals = std::vector<bool>(totalPoints, false);
 				auto sellSignals = std::vector<bool>(totalPoints, false);
 				auto forbidSignals = std::vector<bool>(totalPoints, false);
@@ -766,27 +772,39 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 				}
 				else if (hover.viewMode >= UI_VIEW_DAY_KLINE)
 				{
-					STOCK::KLineData* klineObj = nullptr;
-					if (hover.viewMode == UI_VIEW_DAY_KLINE)
-						klineObj = stockData->getKLineData();
-					else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
-						klineObj = stockData->getWeekKLineData();
-					else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
-						klineObj = stockData->getMonthKLineData();
-
-					if (klineObj && klineObj->data.size() >= 26)
+					std::vector<STOCK::Bar> barsK;
+					std::vector<std::string> barKDays;
 					{
-						std::vector<STOCK::Bar> barsK;
-						barsK.reserve(klineObj->data.size());
-						for (const auto& kp : klineObj->data) barsK.push_back(STOCK::Bar::FromKLinePoint(kp));
+						std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+						STOCK::KLineData* klineObj = nullptr;
+						if (hover.viewMode == UI_VIEW_DAY_KLINE)
+							klineObj = stockData->getKLineData();
+						else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
+							klineObj = stockData->getWeekKLineData();
+						else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
+							klineObj = stockData->getMonthKLineData();
 
+						if (klineObj && klineObj->data.size() >= 26)
+						{
+							barsK.reserve(klineObj->data.size());
+							barKDays.reserve(klineObj->data.size());
+							for (const auto& kp : klineObj->data)
+							{
+								barsK.push_back(STOCK::Bar::FromKLinePoint(kp));
+								barKDays.push_back(kp.day);
+							}
+						}
+					}
+
+					if (barsK.size() >= 26)
+					{
 						auto ar = CSignalAnalyzer::AnalyzeSignalAt(barsK, bars30, static_cast<int>(barsK.size()) - 1);
 						auto& allSignals = ar.batchSignals;
 
 						std::vector<CSignalAnalyzer::SmartSignalPoint> signals;
 						for (const auto& sig : allSignals)
 						{
-							if (sig.barIndex < 0 || sig.barIndex >= static_cast<int>(klineObj->data.size()))
+							if (sig.barIndex < 0 || sig.barIndex >= static_cast<int>(barsK.size()))
 								continue;
 							signals.push_back(sig);
 						}
@@ -823,7 +841,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 
 						for (const auto& sig : signals)
 						{
-							const auto& barKTime = klineObj->data[sig.barIndex].day;
+							const auto& barKTime = barKDays[sig.barIndex];
 							std::string timeStr;
 							if (barKTime.length() >= 10)
 								timeStr = barKTime.substr(5, 5);
@@ -1827,18 +1845,21 @@ void CTimelineChart::DrawPriceChartArea(CDC& memDC, const TimelineDrawContext& c
 		if (stockData)
 		{
 			std::vector<STOCK::Bar> bars;
-			STOCK::KLineData* klineObj = nullptr;
-			if (hover.viewMode == UI_VIEW_DAY_KLINE)
-				klineObj = stockData->getKLineData();
-			else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
-				klineObj = stockData->getWeekKLineData();
-			else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
-				klineObj = stockData->getMonthKLineData();
-
-			if (klineObj && klineObj->data.size() >= 26)
 			{
-				bars.reserve(klineObj->data.size());
-				for (const auto& kp : klineObj->data) bars.push_back(STOCK::Bar::FromKLinePoint(kp));
+				std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+				STOCK::KLineData* klineObj = nullptr;
+				if (hover.viewMode == UI_VIEW_DAY_KLINE)
+					klineObj = stockData->getKLineData();
+				else if (hover.viewMode == UI_VIEW_WEEK_KLINE)
+					klineObj = stockData->getWeekKLineData();
+				else if (hover.viewMode == UI_VIEW_MONTH_KLINE)
+					klineObj = stockData->getMonthKLineData();
+
+				if (klineObj && klineObj->data.size() >= 26)
+				{
+					bars.reserve(klineObj->data.size());
+					for (const auto& kp : klineObj->data) bars.push_back(STOCK::Bar::FromKLinePoint(kp));
+				}
 			}
 
 			if (bars.size() >= 26)

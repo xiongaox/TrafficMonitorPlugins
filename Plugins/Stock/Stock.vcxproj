@@ -171,12 +171,13 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Optimization>MinSpace</Optimization>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalDependencies>utilities.lib;gdiplus.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -232,12 +233,13 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Optimization>MinSpace</Optimization>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalDependencies>utilities.lib;gdiplus.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -255,12 +257,13 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir)include;$(SolutionDir);$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <Optimization>MinSpace</Optimization>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalDependencies>utilities.lib;gdiplus.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)lib\$(Platform)\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -350,6 +353,7 @@
     <ClCompile Include="sqlite3.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>SQLITE_THREADSAFE=0;SQLITE_DEFAULT_MEMSTATUS=0;SQLITE_OMIT_JSON;SQLITE_OMIT_EXPLAIN;SQLITE_OMIT_AUTHORIZATION;SQLITE_OMIT_TRACE;SQLITE_OMIT_LOAD_EXTENSION;SQLITE_OMIT_TCL_VARIABLE;SQLITE_OMIT_PROGRESS_CALLBACK;SQLITE_OMIT_COMPLETE;SQLITE_OMIT_DECLTYPE;SQLITE_OMIT_CHECK;SQLITE_OMIT_DATETIME_FUNCS;SQLITE_OMIT_GET_TABLE;SQLITE_OMIT_INTEGRITY_CHECK;SQLITE_OMIT_SHARED_CACHE;SQLITE_OMIT_DEPRECATED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <ClCompile Include="StockDbManager.cpp" />
     <ClCompile Include="Stock.cpp" />

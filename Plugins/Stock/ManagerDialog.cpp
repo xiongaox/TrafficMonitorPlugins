@@ -70,6 +70,7 @@ namespace
 	};
 	const UINT WM_APP_WEBDAV_RESULT = WM_APP + 130;
 	const UINT WM_APP_API_PROBE_FINISHED = WM_APP + 131;
+	const UINT WM_APP_SEARCH_RESULT_READY = WM_APP + 132;
 	const UINT IDC_API_TEST_BTN = 1197;
 
 	struct WebDavAsyncResult
@@ -1679,6 +1680,7 @@ BEGIN_MESSAGE_MAP(CManagerDialog, CDialog)
 	ON_MESSAGE(WM_APP_WEBDAV_RESULT, &CManagerDialog::OnWebDavResult)
 	ON_BN_CLICKED(IDC_API_TEST_BTN, &CManagerDialog::OnBnClickedApiTestBtn)
 	ON_MESSAGE(WM_APP_API_PROBE_FINISHED, &CManagerDialog::OnApiProbeFinished)
+	ON_MESSAGE(WM_APP_SEARCH_RESULT_READY, &CManagerDialog::OnSearchResultReady)
 
 	// 列表行自绘（交替行底色/选中高亮）
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_MGR_LIST, &CManagerDialog::OnListCustomDraw)
@@ -5313,17 +5315,38 @@ void CManagerDialog::OnSearchEditChange()
 
 	if (query.IsEmpty())
 	{
+		++m_search_seq;
 		if (m_search_dropdown.GetSafeHwnd())
 			m_search_dropdown.HidePopup();
 		return;
 	}
 
-	std::vector<StockSearchResult> results = CCommon::SearchStock(query.GetString());
-	if (results.empty())
+	uint32_t seq = ++m_search_seq;
+	HWND hWnd = m_hWnd;
+	std::wstring qStr = query.GetString();
+
+	// 异步检索股票，带120ms防抖，避免每次输入字符阻塞UI主线程发起HTTP请求
+	std::thread([hWnd, seq, qStr]() {
+		std::this_thread::sleep_for(std::chrono::milliseconds(120));
+		auto* pResults = new std::vector<StockSearchResult>(CCommon::SearchStock(qStr));
+		if (!::IsWindow(hWnd) || !::PostMessage(hWnd, WM_APP_SEARCH_RESULT_READY, static_cast<WPARAM>(seq), reinterpret_cast<LPARAM>(pResults)))
+		{
+			delete pResults;
+		}
+	}).detach();
+}
+
+LRESULT CManagerDialog::OnSearchResultReady(WPARAM wParam, LPARAM lParam)
+{
+	std::unique_ptr<std::vector<StockSearchResult>> pResults(reinterpret_cast<std::vector<StockSearchResult>*>(lParam));
+	if (wParam != m_search_seq.load() || !pResults)
+		return 0;
+
+	if (pResults->empty())
 	{
 		if (m_search_dropdown.GetSafeHwnd())
 			m_search_dropdown.HidePopup();
-		return;
+		return 0;
 	}
 
 	std::vector<CSearchResultDropdown::GroupMenuItem> groupItems;
@@ -5340,7 +5363,8 @@ void CManagerDialog::OnSearchEditChange()
 
 	CRect editRc;
 	m_search_edit.GetWindowRect(&editRc);
-	m_search_dropdown.ShowResults(results, editRc, groupItems);
+	m_search_dropdown.ShowResults(*pResults, editRc, groupItems);
+	return 0;
 }
 
 BOOL CManagerDialog::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)

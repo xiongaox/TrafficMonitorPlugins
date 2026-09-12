@@ -42,6 +42,8 @@ public:
 	// 投递一个高优先级后台任务（插队到队列最前端，立刻优先执行）
 	// 用于用户交互触发的 ETF 持仓等即时请求
 	void PostHighPriorityBackgroundTask(Task task);
+	// 投递焦点股票切换即时任务（优先级高于图表定时任务，确保首屏日K/快照立即可用）
+	void PostFocusTask(Task task);
 
 	// 工作线程是否正忙于执行常规任务
 	bool IsBusy() const { return m_busy.load(); }
@@ -141,6 +143,9 @@ private:
 	std::atomic<bool> m_callAuction_busy{ false };
 	Task m_callAuction_task;
 	bool m_has_callAuction_task{ false };
+
+	// 焦点股票即时任务队列（切换股票时优先执行）
+	std::deque<Task> m_focus_tasks;
 
 	// 后台任务队列（预加载、筹码峰等，排队执行不丢弃）
 	std::deque<Task> m_background_tasks;

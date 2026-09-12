@@ -73,6 +73,10 @@ static std::wstring GetEastMoneySecId(const std::wstring& stockId)
 
 	if (stockId.rfind(kHK, 0) == 0 && stockId.size() > 5)
 		return L"116." + stockId.substr(5);
+	if (stockId.rfind(L"hk", 0) == 0 && stockId.size() > 2)
+		return L"116." + stockId.substr(2);
+	if (stockId.size() == 5 && iswdigit(stockId[0]))
+		return L"116." + stockId;
 
 	// 美股标的转换（gb_ 或 us 前缀，或带 .oq / .n / .a 后缀）
 	if (stockId.rfind(kMG, 0) == 0 || stockId.rfind(L"us", 0) == 0)
@@ -456,7 +460,10 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 	{
 		std::wstring url{ L"https://cn.finance.sina.com.cn/minline/getMinlineData?" };
 		std::vector<std::wstring> params;
-		params.push_back(L"symbol=" + code);
+		std::wstring sinaSymbol = code;
+		if (sinaSymbol.rfind(kHK, 0) == 0 && sinaSymbol.size() > 5)
+			sinaSymbol = L"hk" + sinaSymbol.substr(5);
+		params.push_back(L"symbol=" + sinaSymbol);
 		params.push_back(L"version=7.11.0");
 		params.push_back(L"dpc=1");
 

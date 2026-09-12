@@ -354,6 +354,8 @@ public:
 	afx_msg LRESULT OnWebDavResult(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnBnClickedApiTestBtn();
 	afx_msg LRESULT OnApiProbeFinished(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnSearchResultReady(WPARAM wParam, LPARAM lParam);
+	std::atomic<uint32_t> m_search_seq{ 0 };
 	bool m_webdav_busy{ false };  // 是否有 WebDAV 操作在后台执行（此时禁用操作按钮）
 	std::wstring m_webdav_restore_file; // 待恢复的云端备份文件名（在列表中选中后回填）
 	std::wstring m_webdav_restore_name; // 待恢复备份的展示名（用于确认与成功提示）

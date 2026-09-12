@@ -34,6 +34,7 @@ static Price GetJsonPrice(yyjson_val* obj, const char* key);
 
 void STOCK::StockMarket::LoadRealtimeDataByJson(std::string json, const std::vector<std::wstring>& codes)
 {
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
 	ClearRealtimeData(codes);
 
 	if (json.empty())
@@ -248,6 +249,7 @@ void STOCK::StockData::UpdateOrderBookCumVol(Price prevAsk1, Price prevBid1)
 
 void STOCK::StockMarket::LoadInnerOuterData(std::string data)
 {
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
 	if (data.empty())
 	{
 		return;
@@ -2322,6 +2324,7 @@ double STOCK::StockData::CalculateAnnualizedReturn(double costPrice, double hold
 
 std::shared_ptr<StockData> STOCK::StockMarket::findMatchingStock(const std::wstring& code)
 {
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
 	auto it = stocks.find(code);
 	if (it != stocks.end())
 		return it->second;
@@ -2364,6 +2367,7 @@ std::shared_ptr<StockData> STOCK::StockMarket::findMatchingStock(const std::wstr
 
 std::shared_ptr<StockData> STOCK::StockMarket::getStock(const std::wstring& code)
 {
+	std::lock_guard<std::recursive_mutex> lock(m_mutex);
 	auto stock = findMatchingStock(code);
 	if (stock)
 	{

@@ -4,6 +4,7 @@
 #include "Common.h"
 #include "DataManager.h"
 #include "SignalAnalyzer.h"
+#include "Stock.h"
 #include <algorithm>
 #include <cmath>
 
@@ -160,13 +161,17 @@ void CKLineChart::DrawKLineGrid(CDC& memDC, const KLineDrawData& drawData)
 
 void CKLineChart::DrawYearAverageLines(CDC& memDC, const KLineDrawData& drawData, const HoverState& hover)
 {
-	auto stockDataPtr = g_data.GetStockData(hover.stockId);
-	auto* klineObj = stockDataPtr ? stockDataPtr->getKLineData() : nullptr;
-	if (!klineObj) return;
+	STOCK::Price avg1Year = 0, avg2Year = 0, avg3Year = 0;
+	{
+		std::lock_guard<std::mutex> lock(Stock::Instance().m_stockDataMutex);
+		auto stockDataPtr = g_data.GetStockData(hover.stockId);
+		auto* klineObj = stockDataPtr ? stockDataPtr->getKLineData() : nullptr;
+		if (!klineObj) return;
 
-	STOCK::Price avg1Year = klineObj->CalculateMAPeriod(1, 1);
-	STOCK::Price avg2Year = klineObj->CalculateMAPeriod(2, 1);
-	STOCK::Price avg3Year = klineObj->CalculateMAPeriod(3, 1);
+		avg1Year = klineObj->CalculateMAPeriod(1, 1);
+		avg2Year = klineObj->CalculateMAPeriod(2, 1);
+		avg3Year = klineObj->CalculateMAPeriod(3, 1);
+	}
 
 	auto drawLine = [&](STOCK::Price price, COLORREF color) {
 		if (price > 0 && price >= drawData.minPrice && price <= drawData.maxPrice)
