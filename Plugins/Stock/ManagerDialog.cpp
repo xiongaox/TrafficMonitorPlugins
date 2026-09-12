@@ -2408,6 +2408,8 @@ int CManagerDialog::CalcPageContentHeight()
 		// 卡片1高86 + 间距10 + 候选库自然高度
 		return g_data.DPI(86 + 10) + MeasureMetricCard2Height(rightWidth) + g_data.DPI(8);
 	}
+	case PAGE_ABOUT:
+		return g_data.DPI(330);
 	default:
 		return 0;
 	}
@@ -4363,18 +4365,21 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	Gdiplus::SolidBrush infoBrush(Gdiplus::Color(255, 148, 163, 184));
 	g.DrawString(L"版本: v1.15   |   原作者: CListery   |   开发贡献: TrafficMonitor Community", -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
 
-	textY += g_data.DPI(30);
+	textY += g_data.DPI(26);
 	const wchar_t* features[] = {
-		L"• 全天候股票/基金行情实时监测，毫秒级状态栏高频刷新",
-		L"• 高清分时走势图与多周期K线（日K/周K/月K）自绘预览",
-		L"• 自定义均线指标系统（MA5/MA17/MA60等）多周期叠加分析",
-		L"• 自选股、持仓盈亏核算、自定义分组多维度分类管理",
-		L"• WebDAV 云端备份同步与 SOCKS5 代理网络支持"
+		L"• 全景行情中心：内置大盘趋势、资金流向、板块分时走势、ETF排行与现货黄金监控",
+		L"• 多市场全品种支持：全面覆盖 A股、港股、美股、场内基金及黄金现货行情与检索",
+		L"• 专业自绘图表引擎：高清抗锯齿分时走势（含集合竞价）、多周期K线与智能复权校验",
+		L"• 丰富技术指标系统：自定义均线叠加 (MA5/17/60等)、布林线与 VOL/MACD/KDJ 指标栏",
+		L"• 多源容灾与手动刷新：多数据源自动降级，支持一键强制刷新与加载进度实时反馈",
+		L"• 资产核算与隐私模式：支持自选多分组、持仓浮动盈亏核算与一键金额脱敏遮罩",
+		L"• 现代暗黑沉浸体验：悬浮窗内嵌即时设置、任务栏自适应宽度计算与高DPI矢量精绘",
+		L"• 云端备份与接口诊断：WebDAV 云端自动备份/历史恢复选择器、SOCKS5 代理与接口健康检测"
 	};
 	for (const auto* feat : features)
 	{
 		g.DrawString(feat, -1, &infoFont, Gdiplus::PointF(static_cast<Gdiplus::REAL>(textX), static_cast<Gdiplus::REAL>(textY)), &infoBrush);
-		textY += g_data.DPI(24);
+		textY += g_data.DPI(22);
 	}
 
 	textY += g_data.DPI(18);
