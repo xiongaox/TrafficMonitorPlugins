@@ -21,6 +21,7 @@
 #include <uxtheme.h>
 #include <dwmapi.h>
 #include <fstream>
+#include <thread>
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -766,7 +767,7 @@ public:
 
 		// 列宽自适应：先窄占位避免灌条目时挤出横向滚动条，
 		// 条目灌完出现纵向滚动条后，再按实际客户区（已扣滚动条）定宽
-		int sizeW = g_data.DPI(56);
+		int sizeW = g_data.DPI(95);
 		m_list.InsertColumn(0, L"备份时间", LVCFMT_LEFT, listRect.Width() - sizeW - g_data.DPI(40));
 		m_list.InsertColumn(1, L"大小", LVCFMT_RIGHT, sizeW);
 
@@ -5721,7 +5722,8 @@ void CManagerDialog::StartWebDavAsync(int op)
 	HWND hWnd = GetSafeHwnd();
 	SettingData data = m_data;
 
-	CStockFetchThread::Instance().PostBackgroundTask([hWnd, result, data]() {
+	std::thread([hWnd, result, data]() {
+		AFX_MANAGE_STATE(AfxGetStaticModuleState());
 		switch (result->op)
 		{
 		case WEBDAV_OP_TEST:
@@ -5741,7 +5743,7 @@ void CManagerDialog::StartWebDavAsync(int op)
 		}
 		if (!::PostMessage(hWnd, WM_APP_WEBDAV_RESULT, 0, (LPARAM)result))
 			delete result; // 对话框已关闭，结果无人接收
-		});
+	}).detach();
 
 	// 后台执行期间禁用操作按钮并显示进行中状态
 	m_webdav_busy = true;
@@ -5982,10 +5984,11 @@ void CManagerDialog::ApplySettings()
 	if (m_data.m_webdav_auto_backup && !m_data.m_webdav_url.empty())
 	{
 		SettingData curData = m_data;
-		CStockFetchThread::Instance().PostBackgroundTask([curData]() {
+		std::thread([curData]() {
+			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 			std::wstring err;
 			CWebDavSync::UploadBackup(curData, err);
-		});
+		}).detach();
 	}
 
 	if (stock_code_changed)
