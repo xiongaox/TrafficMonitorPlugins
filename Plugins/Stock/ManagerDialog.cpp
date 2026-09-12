@@ -4581,8 +4581,8 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 		L"•  【新增】 悬浮窗内嵌设置视图，彻底废弃旧版独立大弹窗，支持无边框平滑滚动与配置即时生效",
 		L"•  【优化】 右键快捷菜单精炼简化，仅保留一键快速刷新股票行情",
 		L"•  【优化】 分时走势曲线铺满边缘自绘，重构集合竞价 62:38 黄金分割比例与盘前走势回放",
-		L"•  【修复】 彻底解决顶部状态栏指标多语言 UTF-8 BOM 乱码问题，增强配置文件读写兼容性",
-		L"•  【优化】 重构「关于插件」为时间轴版本日志流，支持平滑滚轮浏览与大字号排版"
+		L"•  【优化】 开源仓库与关于页面重命名为 StockPlusPlus，更新项目主页跳转与远程地址",
+		L"•  【修复】 彻底解决顶部状态栏指标多语言 UTF-8 BOM 乱码问题，增强配置文件读写兼容性"
 	};
 	const wchar_t* items_0911[] = {
 		L"•  【新增】 行情中心增加资金流向全景监控页、板块分时走势图与领涨股看板",
@@ -4619,7 +4619,7 @@ void CManagerDialog::DrawAboutPage(Gdiplus::Graphics& g, const CRect& contentRec
 	};
 
 	LogGroup groups[] = {
-		{ L"2026-09-12 (v2.0.5)", items_0912, _countof(items_0912) },
+		{ L"2026-09-12 (v2.0.6)", items_0912, _countof(items_0912) },
 		{ L"2026-09-11 (v2.0.4)", items_0911, _countof(items_0911) },
 		{ L"2026-09-10 (v2.0.3)", items_0910, _countof(items_0910) },
 		{ L"2026-09-09 (v2.0.2)", items_0909, _countof(items_0909) },
@@ -5207,7 +5207,7 @@ void CManagerDialog::OnLButtonDown(UINT nFlags, CPoint point)
 		}
 		if (m_about_repo_rect.PtInRect(point))
 		{
-			ShellExecute(nullptr, L"open", L"https://github.com/xiongaox/TrafficMonitorPlugins", nullptr, nullptr, SW_SHOWNORMAL);
+			ShellExecute(nullptr, L"open", L"https://github.com/xiongaox/StockPlusPlus", nullptr, nullptr, SW_SHOWNORMAL);
 			return;
 		}
 	}
