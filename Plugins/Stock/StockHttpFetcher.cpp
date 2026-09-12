@@ -74,7 +74,7 @@ static std::wstring GetEastMoneySecId(const std::wstring& stockId)
 	if (stockId.rfind(kHK, 0) == 0 && stockId.size() > 5)
 		return L"116." + stockId.substr(5);
 
-	// 美股标的转换（gb_ 或 us 前缀）
+	// 美股标的转换（gb_ 或 us 前缀，或带 .oq / .n / .a 后缀）
 	if (stockId.rfind(kMG, 0) == 0 || stockId.rfind(L"us", 0) == 0)
 	{
 		std::wstring pure = (stockId.rfind(kMG, 0) == 0) ? stockId.substr(3) : stockId.substr(2);
@@ -96,6 +96,18 @@ static std::wstring GetEastMoneySecId(const std::wstring& stockId)
 			return L"107." + upperTicker;  // 美交所
 		else
 			return L"105." + upperTicker;  // 默认纳斯达克
+	}
+
+	size_t dotPos = stockId.find(L'.');
+	if (dotPos != std::wstring::npos && !CCommon::IsEmSecidCode(stockId))
+	{
+		std::wstring suffix = stockId.substr(dotPos);
+		std::transform(suffix.begin(), suffix.end(), suffix.begin(), ::towlower);
+		std::wstring ticker = stockId.substr(0, dotPos);
+		std::transform(ticker.begin(), ticker.end(), ticker.begin(), ::towupper);
+		if (suffix == L".oq" || suffix == L".o") return L"105." + ticker;
+		if (suffix == L".n") return L"106." + ticker;
+		if (suffix == L".a") return L"107." + ticker;
 	}
 
 	std::wstring code = stockId;
@@ -121,34 +133,20 @@ static std::wstring ToTencentKLineCode(const std::wstring& code)
 	if (code.find(kMG) == 0 && code.size() > 3)
 	{
 		std::wstring pure = code.substr(3);
-		if (pure.find(L'.') != std::wstring::npos)
-		{
-			std::wstring lowerPure = pure;
-			std::transform(lowerPure.begin(), lowerPure.end(), lowerPure.begin(), ::towlower);
-			return L"us" + lowerPure;
-		}
-		else
-		{
-			std::wstring upperPure = pure;
-			std::transform(upperPure.begin(), upperPure.end(), upperPure.begin(), ::towupper);
-			return L"us" + upperPure;
-		}
+		size_t dot = pure.find(L'.');
+		if (dot != std::wstring::npos) pure = pure.substr(0, dot);
+		std::wstring upperPure = pure;
+		std::transform(upperPure.begin(), upperPure.end(), upperPure.begin(), ::towupper);
+		return L"us" + upperPure;
 	}
 	if (code.find(L"us") == 0 && code.size() > 2)
 	{
 		std::wstring pure = code.substr(2);
-		if (pure.find(L'.') != std::wstring::npos)
-		{
-			std::wstring lowerPure = pure;
-			std::transform(lowerPure.begin(), lowerPure.end(), lowerPure.begin(), ::towlower);
-			return L"us" + lowerPure;
-		}
-		else
-		{
-			std::wstring upperPure = pure;
-			std::transform(upperPure.begin(), upperPure.end(), upperPure.begin(), ::towupper);
-			return L"us" + upperPure;
-		}
+		size_t dot = pure.find(L'.');
+		if (dot != std::wstring::npos) pure = pure.substr(0, dot);
+		std::wstring upperPure = pure;
+		std::transform(upperPure.begin(), upperPure.end(), upperPure.begin(), ::towupper);
+		return L"us" + upperPure;
 	}
 	return code;
 }
@@ -377,29 +375,71 @@ bool CStockHttpFetcher::FetchCallAuctionHtml(const std::vector<std::wstring>& al
 
 bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& outResp)
 {
-	// secid 形态代码（上金所/港股/美股等焦点品种）：直接走东财分时（腾讯/新浪无这些市场行情）
-	if (IsEmSecidCode(code))
+	bool isUS = CCommon::IsUSStockCode(code);
+
+	// 1. 美股或 secid 形态代码：必须优先走东方财富分时（trends2）
+	// 注：腾讯 minute/query 接口对美股只返回当前1分钟快照，无全天分时序列，必须走东财
+	if (isUS || IsEmSecidCode(code))
 	{
-		NotifyStatus(code, L"分时", L"东方财富源", L"正在拉取数据…");
-		std::wstring url = L"https://push2.eastmoney.com/api/qt/stock/trends2/get?secid=" + code
-			+ L"&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1";
+		std::wstring secId = isUS ? GetEastMoneySecId(code) : code;
 		bool skip_eastmoney = (m_eastmoney_fail_until > 0 && time(nullptr) < m_eastmoney_fail_until);
-		if (!skip_eastmoney)
+		if (!secId.empty() && !skip_eastmoney)
 		{
-			CString strHeaders = _T("Referer: https://quote.eastmoney.com");
-			if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength())
-				&& !outResp.empty() && outResp.find("\"trends\"") != std::string::npos)
+			try
 			{
-				NotifyStatus(code, L"分时", L"东方财富源", L"拉取成功");
-				return true;
+				NotifyStatus(code, L"分时", L"东方财富源", L"正在拉取数据…");
+				std::wstring url{ L"https://push2.eastmoney.com/api/qt/stock/trends2/get?" };
+				std::vector<std::wstring> params;
+				params.push_back(L"secid=" + secId);
+				params.push_back(L"fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
+				params.push_back(L"fields2=f51,f52,f53,f54,f55,f56,f57,f58");
+				params.push_back(L"iscr=0");
+				params.push_back(L"ndays=1");
+				url += CCommon::vectorJoinString(params, L"&");
+
+				CString strHeaders = _T("Referer: https://quote.eastmoney.com");
+				if (CCommon::GetURL(url, outResp, true, WEB_USERAGENT, strHeaders, strHeaders.GetLength())
+					&& !outResp.empty() && outResp.find("\"trends\"") != std::string::npos)
+				{
+					NotifyStatus(code, L"分时", L"东方财富源", L"拉取成功");
+					return true;
+				}
+				NotifyStatus(code, L"分时", L"东方财富源", L"拉取失败");
+				m_eastmoney_fail_until = time(nullptr) + 5;
 			}
-			m_eastmoney_fail_until = time(nullptr) + 5;
+			catch (...)
+			{
+				NotifyStatus(code, L"分时", L"东方财富源", L"拉取异常");
+				m_eastmoney_fail_until = time(nullptr) + 5;
+			}
 		}
-		NotifyStatus(code, L"分时", L"东方财富源", L"拉取失败");
+
+		if (!isUS)
+		{
+			return false;
+		}
+
+		// 美股一级保底：新浪美股分时
+		NotifyStatus(code, L"分时", L"新浪源", L"正在拉取备用数据…");
+		std::wstring pure = CCommon::GetPureCode(code);
+		size_t dot = pure.find(L'.');
+		if (dot != std::wstring::npos) pure = pure.substr(0, dot);
+		std::transform(pure.begin(), pure.end(), pure.begin(), ::towlower);
+
+		std::wstring url = L"https://stock.finance.sina.com.cn/usstock/api/openapi.php/US_MinlineService.getMinline?symbol=" + pure;
+		CString strHeaders = _T("Referer: https://finance.sina.com.cn");
+		if (CCommon::GetURL(url, outResp, false, WEB_USERAGENT, strHeaders, strHeaders.GetLength())
+			&& !outResp.empty() && outResp.find("\"minline_1\"") != std::string::npos)
+		{
+			NotifyStatus(code, L"分时", L"新浪源", L"拉取成功");
+			return true;
+		}
+
+		NotifyStatus(code, L"分时", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
 		return false;
 	}
 
-	// 1. 主数据源：腾讯分时 (minute/query)
+	// 2. 主数据源：腾讯分时 (仅A股/港股)
 	{
 		std::wstring txCode = ToTencentKLineCode(code);
 
@@ -412,20 +452,11 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 		}
 	}
 
-	// 2. 一级保底：新浪分时 (getMinlineData)
+	// 3. 一级保底：新浪分时 (getMinlineData)
 	{
 		std::wstring url{ L"https://cn.finance.sina.com.cn/minline/getMinlineData?" };
 		std::vector<std::wstring> params;
-		std::wstring sinaSymbol = code;
-		if (sinaSymbol.find(kMG) == 0 || sinaSymbol.find(L"us") == 0)
-		{
-			std::wstring pure = (sinaSymbol.find(kMG) == 0) ? sinaSymbol.substr(3) : sinaSymbol.substr(2);
-			size_t dot = pure.find(L'.');
-			if (dot != std::wstring::npos) pure = pure.substr(0, dot);
-			std::transform(pure.begin(), pure.end(), pure.begin(), ::towlower);
-			sinaSymbol = L"gb_" + pure;
-		}
-		params.push_back(L"symbol=" + sinaSymbol);
+		params.push_back(L"symbol=" + code);
 		params.push_back(L"version=7.11.0");
 		params.push_back(L"dpc=1");
 
@@ -447,7 +478,7 @@ bool CStockHttpFetcher::FetchTimeline(const std::wstring& code, std::string& out
 		}
 	}
 
-	// 3. 二级保底：东方财富分时 (trends2)
+	// 4. 二级保底：东方财富分时 (trends2)
 	std::wstring secId = GetEastMoneySecId(code);
 	bool skip_eastmoney = (m_eastmoney_fail_until > 0 && time(nullptr) < m_eastmoney_fail_until);
 	if (!secId.empty() && !skip_eastmoney)
@@ -740,6 +771,31 @@ bool CStockHttpFetcher::FetchMonthKLine(const std::wstring& code, int months, st
 
 bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, std::string& outResp)
 {
+	bool isUS = CCommon::IsUSStockCode(code);
+	if (isUS)
+	{
+		std::wstring secId = GetEastMoneySecId(code);
+		bool skip_eastmoney = (m_eastmoney_fail_until > 0 && time(nullptr) < m_eastmoney_fail_until);
+		if (!secId.empty() && !skip_eastmoney)
+		{
+			try
+			{
+				NotifyStatus(code, L"5分钟K线", L"东方财富源", L"正在拉取数据…");
+				std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=5&fqt=1&end=20500101&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
+				CString emHeaders = _T("Referer: https://quote.eastmoney.com");
+				if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
+				{
+					NotifyStatus(code, L"5分钟K线", L"东方财富源", L"拉取成功");
+					return true;
+				}
+				NotifyStatus(code, L"5分钟K线", L"东方财富源", L"拉取失败");
+			}
+			catch (...) {}
+		}
+		NotifyStatus(code, L"5分钟K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
+		return false;
+	}
+
 	// 1. 主数据源：腾讯5分钟K
 	{
 		NotifyStatus(code, L"5分钟K线", L"腾讯源", L"正在拉取数据…");
@@ -801,6 +857,31 @@ bool CStockHttpFetcher::FetchMin5KLine(const std::wstring& code, int datalen, st
 
 bool CStockHttpFetcher::FetchMin30KLine(const std::wstring& code, int datalen, std::string& outResp)
 {
+	bool isUS = CCommon::IsUSStockCode(code);
+	if (isUS)
+	{
+		std::wstring secId = GetEastMoneySecId(code);
+		bool skip_eastmoney = (m_eastmoney_fail_until > 0 && time(nullptr) < m_eastmoney_fail_until);
+		if (!secId.empty() && !skip_eastmoney)
+		{
+			try
+			{
+				NotifyStatus(code, L"30分钟K线", L"东方财富源", L"正在拉取数据…");
+				std::wstring emUrl = L"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=" + secId + L"&klt=30&fqt=1&end=20500101&lmt=" + std::to_wstring(datalen) + L"&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56";
+				CString emHeaders = _T("Referer: https://quote.eastmoney.com");
+				if (CCommon::GetURL(emUrl, outResp, true, WEB_USERAGENT, emHeaders, emHeaders.GetLength()) && !outResp.empty() && outResp.find("\"klines\"") != std::string::npos)
+				{
+					NotifyStatus(code, L"30分钟K线", L"东方财富源", L"拉取成功");
+					return true;
+				}
+				NotifyStatus(code, L"30分钟K线", L"东方财富源", L"拉取失败");
+			}
+			catch (...) {}
+		}
+		NotifyStatus(code, L"30分钟K线", L"全部数据源", L"拉取失败，保留当前数据稍后重试");
+		return false;
+	}
+
 	// 1. 主数据源：腾讯30分钟K
 	{
 		NotifyStatus(code, L"30分钟K线", L"腾讯源", L"正在拉取数据…");
