@@ -329,7 +329,7 @@ void CStockListPanel::Draw(CDC& memDC, int x, int y, int w, int h, const std::ws
 		CRect cardRect(
 			x + cardPadX,
 			currentY + cardPadY,
-			x + w - cardPadX,
+			x + w,
 			currentY + rowHeight - cardPadY);
 
 		bool isCurrent = (code == currentStockId);

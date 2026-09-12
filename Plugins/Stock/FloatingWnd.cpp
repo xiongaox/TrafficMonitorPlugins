@@ -1022,15 +1022,14 @@ void CFloatingWnd::OnPaint()
 			}
 		}
 
-		// 集合竞价模式绘制（主图+副图各占一半）
+		// 集合竞价模式绘制（普通模式主副图高度划分与分时/日K保持统一的 62%:38%，展开模式仍对半分）
 		if (m_viewMode == UI_VIEW_AUCTION)
 		{
-			// 竞价模式：主图价格和副图成交量各占一半
-				int totalChartHeight = priceChartHeight + volumeChartHeight;
-			int halfChartHeight = totalChartHeight / 2;
 			const int titleH = g_data.RDPI(16);
 			int origPriceTop = priceChartTop;
-			int origVolTop = priceChartTop + halfChartHeight;
+			const int priceAreaH = m_expandedMode ? (priceChartHeight + volumeChartHeight) / 2 : priceChartHeight;
+			const int subAreaH = m_expandedMode ? (priceChartHeight + volumeChartHeight) - priceAreaH : volumeChartHeight;
+			int origVolTop = priceChartTop + priceAreaH;
 
 			TimelineDrawContext ctx;
 			ctx.chartLeft = stockListWidth + yAxisWidth;
@@ -1038,12 +1037,12 @@ void CFloatingWnd::OnPaint()
 			ctx.windowWidth = w;
 			ctx.chartHeight = h;
 			ctx.priceChartTop = origPriceTop + titleH;
-			ctx.priceChartHeight = halfChartHeight - titleH;
+			ctx.priceChartHeight = priceAreaH - titleH;
 			ctx.volumeChartTop = origVolTop + titleH;
-			ctx.volumeChartHeight = halfChartHeight - titleH;
+			ctx.volumeChartHeight = subAreaH - titleH;
 			ctx.macdChartTop = origVolTop + titleH;
-			ctx.macdChartHeight = halfChartHeight - titleH;
-			ctx.positionY = origVolTop + halfChartHeight + g_data.RDPI(2);
+			ctx.macdChartHeight = subAreaH - titleH;
+			ctx.positionY = origVolTop + subAreaH + g_data.RDPI(2);
 			ctx.realtimeData = realtimeData;
 			ctx.startIndex = 0;
 			ctx.visibleCount = 0;
@@ -1134,14 +1133,25 @@ void CFloatingWnd::OnPaint()
 
 				// 标题栏和图表底层先绘制，竞价图随后覆盖其专用内容与图例。
 				m_timelineChart.DrawTimelineHeader(memDC, ctx, tlHover);
-				m_timelineChart.DrawPriceChartArea(memDC, ctx, origPriceTop, halfChartHeight, tlHover);
+				m_timelineChart.DrawPriceChartArea(memDC, ctx, origPriceTop, priceAreaH, tlHover);
+				// 竞价模式主图标题栏向左延伸铺满Y轴留白区（其他模式保留留白显示Y轴刻度）
+				memDC.FillSolidRect(-yAxisWidth, origPriceTop, yAxisWidth, titleH, COLOR_BG_HEADER);
 				{
 					CIndicatorChart::HoverState volHover;
 					volHover.isHoveringVolume = m_isHoveringVolume;
 					volHover.hoveredBarIndex = m_hoveredBarIndex;
 					volHover.viewMode = m_viewMode;
 					volHover.timelineVolumeTitleTip = m_timelineVolumeTitleTip;
-					m_indicatorChart.DrawVolumeChartArea(memDC, ctx, origVolTop, halfChartHeight, false, volHover);
+					m_indicatorChart.DrawVolumeChartArea(memDC, ctx, origVolTop, subAreaH, false, volHover);
+				}
+				// 竞价模式副图标题栏向左延伸铺满Y轴留白区
+				{
+					CPen gridPen(PS_SOLID, 1, COLOR_GRAY_GRID);
+					CPen* pOldExtendPen = memDC.SelectObject(&gridPen);
+					memDC.FillSolidRect(-yAxisWidth, origVolTop, yAxisWidth, titleH, COLOR_BG_HEADER);
+					memDC.MoveTo(-yAxisWidth, origVolTop + titleH);
+					memDC.LineTo(0, origVolTop + titleH);
+					memDC.SelectObject(pOldExtendPen);
 				}
 				m_callAuctionChart.Draw(memDC, ctx, callAuctionData, m_stock_id);
 
