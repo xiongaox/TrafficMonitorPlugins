@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <cmath>
 #include <algorithm>
+#include <thread>
 
 #include "Stock.h"
 #include "MarketCenterData.h"
@@ -245,13 +246,14 @@ void Stock::OnExtenedInfo(ExtendedInfoIndex index, const wchar_t* data)
 		// 检查是否开启了启动时自动同步 WebDAV 云端备份
 		if (g_data.m_setting_data.m_webdav_auto_sync && !g_data.m_setting_data.m_webdav_url.empty())
 		{
-			CStockFetchThread::Instance().PostBackgroundTask([]() {
+			std::thread([]() {
+				AFX_MANAGE_STATE(AfxGetStaticModuleState());
 				std::wstring errMsg;
 				if (CWebDavSync::DownloadBackup(g_data.m_setting_data, errMsg))
 				{
 					Stock::Instance().SendStockInfoRequest();
 				}
-			});
+			}).detach();
 		}
 		break;
 	case ITMPlugin::EI_TASKBAR_WND_VALUE_RIGHT_ALIGN:

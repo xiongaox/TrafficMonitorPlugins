@@ -440,12 +440,16 @@ bool CWebDavSync::UploadBackup(const SettingData& settings, std::wstring& errorM
 	// 每次备份独立存档，以本地时间戳命名，不覆盖历史备份
 	std::wstring targetPath = NormalizeRemotePath(basePath, settings.m_webdav_dir, MakeBackupFileName());
 
-	// 首次备份时远端目录可能还不存在，先逐级创建
-	if (!EnsureRemoteDir(settings, basePath, errorMsg))
-		return false;
-
 	std::wstring err;
 	DWORD code = ExecuteDavRequest(settings, L"PUT", targetPath, fileData, nullptr, 10, err);
+	// 若远端目录尚不存在（404 或 409 Conflict），则自动逐级创建目录后重试一次
+	if (code == 404 || code == 409)
+	{
+		if (!EnsureRemoteDir(settings, basePath, errorMsg))
+			return false;
+		code = ExecuteDavRequest(settings, L"PUT", targetPath, fileData, nullptr, 10, err);
+	}
+
 	if (code == 0)
 	{
 		errorMsg = err.empty() ? L"无法连接 WebDAV 服务器" : err;
