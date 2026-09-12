@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     为 StockPlusPlus 创建独立的 git worktree 开发环境。
 

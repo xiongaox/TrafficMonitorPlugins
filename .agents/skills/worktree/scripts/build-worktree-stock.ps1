@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     在指定的 Worktree 目录下编译 Stock.dll，严格不自启动 PluginTester.exe。
 
