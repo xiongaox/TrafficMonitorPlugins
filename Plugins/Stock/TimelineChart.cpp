@@ -297,6 +297,14 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 	const int totalPoints = static_cast<int>(timelinePoint.size());
 	const int xAxisPts = ctx.xAxisPoints > 0 ? ctx.xAxisPoints : totalPoints;
 
+	// 数据铺满可见窗口时，曲线首尾顶满绘图区两侧；未铺满（盘中走势未到右侧）时保持槽位居中
+	const bool stretchToEdges = (totalPoints > 1 && totalPoints >= xAxisPts);
+	auto pointXAt = [&](int i) -> float {
+		return stretchToEdges
+			? ctx.chartWidth * i / static_cast<float>(totalPoints - 1)
+			: (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+	};
+
 	STOCK::Price maxPrice = ctx.maxPrice;
 	STOCK::Price minPrice = ctx.minPrice;
 	double unitY = ctx.unitY;
@@ -324,7 +332,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		else if (lastValidPrice > 0)
 			p = lastValidPrice;
 
-		float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+		float pointX = pointXAt(i);
 		float yVal = static_cast<float>((p - minPrice) * unitY);
 		float py = ctx.priceChartTop + ctx.priceChartHeight - yVal;
 		py = (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
@@ -355,7 +363,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		else if (ptPrice > 0)
 			ap = ptPrice;
 
-		float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+		float pointX = pointXAt(i);
 		float yVal = static_cast<float>((ap - minPrice) * unitY);
 		float py = ctx.priceChartTop + ctx.priceChartHeight - yVal;
 		py = (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
@@ -405,7 +413,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 			double upper = ma + K * stddev;
 			double lower = ma - K * stddev;
 
-			float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+			float pointX = pointXAt(i);
 			auto calcPy = [&](double price) -> float {
 				float py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<float>((price - minPrice) * unitY);
 				return (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
@@ -429,7 +437,7 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 		for (int i = 0; i < totalPoints; i++)
 		{
 			const auto& item = timelinePoint[i];
-			float pointX = (ctx.chartWidth / static_cast<float>(xAxisPts)) * (i + 0.5f);
+			float pointX = pointXAt(i);
 			auto calcPy = [&](STOCK::Price price) -> float {
 				float py = ctx.priceChartTop + ctx.priceChartHeight - static_cast<float>((price - minPrice) * unitY);
 				return (std::max)(static_cast<float>(ctx.priceChartTop), (std::min)(py, static_cast<float>(ctx.priceChartTop + ctx.priceChartHeight)));
@@ -651,7 +659,9 @@ void CTimelineChart::DrawTimelinePriceCurve(CDC& memDC, const TimelineDrawContex
 					continue;
 
 				int relIdx = fullIdx - startIdx;
-				int pointX = static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * relIdx) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
+				int pointX = stretchToEdges
+					? static_cast<int>(ctx.chartWidth * relIdx / static_cast<float>(totalPoints - 1))
+					: static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) * relIdx) + static_cast<int>(ctx.chartWidth / static_cast<float>(xAxisPts) / 2);
 				int pointY = priceToY(iopvVal);
 				if (firstNavPoint)
 				{
@@ -937,7 +947,12 @@ void CTimelineChart::DrawTimelineHoverOverlay(CDC& memDC, const TimelineDrawCont
 
 	const int xSlots = ctx.xAxisPoints > 0 ? ctx.xAxisPoints : static_cast<int>(timelinePoint.size());
 	const auto& item = timelinePoint[hover.hoveredBarIndex];
-	int hoverX = static_cast<int>(ctx.chartWidth / static_cast<float>(xSlots) * hover.hoveredBarIndex + ctx.chartWidth / static_cast<float>(xSlots) / 2);
+	// 分时模式下数据铺满可见窗口时，悬停落点与顶满两边的曲线保持一致；K线蜡烛仍按槽位居中
+	const bool stretchHoverX = (hover.viewMode < UI_VIEW_DAY_KLINE)
+		&& (static_cast<int>(timelinePoint.size()) > 1 && static_cast<int>(timelinePoint.size()) >= xSlots);
+	int hoverX = stretchHoverX
+		? static_cast<int>(ctx.chartWidth * hover.hoveredBarIndex / static_cast<float>(timelinePoint.size() - 1))
+		: static_cast<int>(ctx.chartWidth / static_cast<float>(xSlots) * hover.hoveredBarIndex + ctx.chartWidth / static_cast<float>(xSlots) / 2);
 
 	int dotY = ctx.priceChartTop + ctx.priceChartHeight - static_cast<int>(round((item.price - minPrice) * unitY));
 
